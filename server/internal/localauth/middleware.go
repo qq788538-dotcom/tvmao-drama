@@ -36,8 +36,10 @@ func Middleware(cfg Config) func(http.Handler) http.Handler {
 				h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 				h.Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
 			}
-			// 预检请求浏览器不会带自定义头，token 校验留给随后的真实请求。
-			if r.Method == http.MethodOptions {
+			// 真正的 CORS 预检请求：OPTIONS + Origin 白名单内 + Access-Control-Request-Method。
+			// 只这种情况下浏览器不会带自定义头，token 校验留给随后的真实请求。
+			// 裸 OPTIONS 请求（无 Origin 或无 Access-Control-Request-Method）必须带 token。
+			if r.Method == http.MethodOptions && r.Header.Get("Origin") != "" && r.Header.Get("Access-Control-Request-Method") != "" {
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}

@@ -112,3 +112,10 @@ func TestEmptyConfiguredTokenRejectsEverything(t *testing.T) {
 		t.Fatalf("code = %d, want 401", rec.Code)
 	}
 }
+
+// 裸 OPTIONS（不带 Origin，不是 CORS 预检）不能绕过 token。
+func TestBareOptionsRequiresToken(t *testing.T) {
+	if got := do(t, "OPTIONS", "/x", nil).Code; got != http.StatusUnauthorized {
+		t.Fatalf("code = %d, want 401", got)
+	}
+}
