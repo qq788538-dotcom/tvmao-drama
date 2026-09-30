@@ -54,7 +54,7 @@ describe('getServerInfo', () => {
     expect(invoke).toHaveBeenCalledWith('server_info');
   });
 
-  // sidecar 没起来时 server_info 会 reject；失败不能被缓存，否则用户点“重试”永远失败。
+  // sidecar 没起来时 server_info 会 reject；失败结果不能被缓存，这样之后再次调用会重新调用该命令。
   it('失败时抛出原因且不缓存，下次调用会重试', async () => {
     invoke.mockRejectedValueOnce('本地服务启动失败：找不到 sidecar 程序');
     await expect(getServerInfo()).rejects.toBe('本地服务启动失败：找不到 sidecar 程序');

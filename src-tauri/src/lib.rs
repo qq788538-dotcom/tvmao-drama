@@ -113,8 +113,18 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(ServerInfo, CommandChild), S
     // 握手完成后继续把 sidecar 的日志转到壳的 stderr。
     tauri::async_runtime::spawn(async move {
         while let Some(event) = rx.recv().await {
-            if let CommandEvent::Stderr(line) = event {
-                eprintln!("[sidecar] {}", String::from_utf8_lossy(&line).trim_end());
+            match event {
+                CommandEvent::Stderr(line) => {
+                    eprintln!("[sidecar] {}", String::from_utf8_lossy(&line).trim_end());
+                }
+                // 握手后 sidecar 退出：只记一行日志，不改状态、不重启。
+                CommandEvent::Terminated(payload) => {
+                    eprintln!(
+                        "[sidecar] 进程已退出，code={:?}，signal={:?}",
+                        payload.code, payload.signal
+                    );
+                }
+                _ => {}
             }
         }
     });

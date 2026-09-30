@@ -15,19 +15,17 @@ export function DiagPage() {
   const [results, setResults] = useState<CheckResult[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const connect = () => {
-    setStartError(null);
+  useEffect(() => {
     getServerInfo().then(setInfo, (e) => setStartError(String(e)));
-  };
-  useEffect(connect, []);
+  }, []);
 
-  // sidecar 没起来：显示原因和重试，而不是白屏。
+  // sidecar 没起来：显示原因和提示，而不是白屏（壳不会自动重启 sidecar，重试无意义）。
   if (startError) {
     return (
       <div style={{ padding: 24 }}>
         <h2>本地服务未启动</h2>
         <pre style={{ whiteSpace: 'pre-wrap', color: '#f88' }}>{startError}</pre>
-        <button onClick={connect}>重试</button>
+        <p>请退出并重新打开应用。</p>
       </div>
     );
   }
