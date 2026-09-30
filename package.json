@@ -1,0 +1,12 @@
+{
+  "name": "miaoju-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "scripts/build-sidecar.sh && cargo tauri dev",
+    "build": "scripts/build-sidecar.sh && cargo tauri build",
+    "test:web": "pnpm --dir web test",
+    "test:server": "cd server && go test ./...",
+    "test:tauri": "cd src-tauri && cargo test"
+  }
+}

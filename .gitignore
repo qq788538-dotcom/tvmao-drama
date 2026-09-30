@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/
+
+# Go
+server/bin/
+
+# 本地数据与打包产物
+/out/
+.claude/
+.superpowers/
+.worktrees/
