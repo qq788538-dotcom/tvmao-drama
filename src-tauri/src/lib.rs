@@ -2,8 +2,10 @@
 //! 业务逻辑全部在 sidecar 里，这里不放任何业务代码。
 
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::Serialize;
+use tauri::async_runtime::Receiver;
 use tauri::{Manager, RunEvent, State};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
@@ -39,6 +41,43 @@ pub fn new_token() -> String {
     )
 }
 
+/// 等待 sidecar 就绪的最长时间。
+const READY_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// 等待 "READY <port>"。sidecar 先退出返回其最后一行 stderr，超时返回超时原因。
+async fn wait_ready(rx: &mut Receiver<CommandEvent>, timeout: Duration) -> Result<u16, String> {
+    let mut stderr_tail = String::new();
+    let waited = tokio::time::timeout(timeout, async {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    if let Some(port) = parse_ready(&String::from_utf8_lossy(&line)) {
+                        return Some(port);
+                    }
+                }
+                CommandEvent::Stderr(line) => {
+                    let text = String::from_utf8_lossy(&line);
+                    eprintln!("[sidecar] {}", text.trim_end());
+                    stderr_tail = text.trim().to_string();
+                }
+                CommandEvent::Terminated(_) | CommandEvent::Error(_) => return None,
+                _ => {}
+            }
+        }
+        None
+    })
+    .await;
+    match waited {
+        Ok(Some(port)) => Ok(port),
+        Ok(None) if stderr_tail.is_empty() => Err("sidecar 未就绪即退出".to_string()),
+        Ok(None) => Err(stderr_tail),
+        Err(_) => Err(format!(
+            "sidecar 启动超时（{} 秒内未就绪）",
+            timeout.as_secs()
+        )),
+    }
+}
+
 /// 启动 sidecar 并等到 READY。任何一步失败都返回可读的中文原因。
 fn start_sidecar(app: &tauri::AppHandle) -> Result<(ServerInfo, CommandChild), String> {
     let data_dir = app
@@ -57,36 +96,18 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(ServerInfo, CommandChild), S
         .map_err(|e| format!("无法启动 sidecar：{e}"))?;
 
     // token 只走 stdin：参数和环境变量同机其他进程读得到。
-    child
-        .write(format!("{token}\n").as_bytes())
-        .map_err(|e| format!("无法向 sidecar 传递 token：{e}"))?;
+    if let Err(e) = child.write(format!("{token}\n").as_bytes()) {
+        let _ = child.kill();
+        return Err(format!("无法向 sidecar 传递 token：{e}"));
+    }
 
-    let mut stderr_tail = String::new();
-    let port = tauri::async_runtime::block_on(async {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line) => {
-                    if let Some(port) = parse_ready(&String::from_utf8_lossy(&line)) {
-                        return Some(port);
-                    }
-                }
-                CommandEvent::Stderr(line) => {
-                    let text = String::from_utf8_lossy(&line);
-                    eprintln!("[sidecar] {}", text.trim_end());
-                    stderr_tail = text.trim().to_string();
-                }
-                CommandEvent::Terminated(_) | CommandEvent::Error(_) => return None,
-                _ => {}
-            }
+    let port = match tauri::async_runtime::block_on(wait_ready(&mut rx, READY_TIMEOUT)) {
+        Ok(port) => port,
+        Err(reason) => {
+            // 失败路径显式结束子进程，不依赖 drop 或 stdin EOF。
+            let _ = child.kill();
+            return Err(reason);
         }
-        None
-    });
-    let Some(port) = port else {
-        return Err(if stderr_tail.is_empty() {
-            "sidecar 未就绪即退出".to_string()
-        } else {
-            stderr_tail
-        });
     };
 
     // 握手完成后继续把 sidecar 的日志转到壳的 stderr。
@@ -157,6 +178,48 @@ mod tests {
         assert_eq!(parse_ready("READY"), None);
         assert_eq!(parse_ready("READY abc"), None);
         assert_eq!(parse_ready("READY 99999"), None); // 超出 u16
+    }
+
+    use std::time::{Duration, Instant};
+    use tauri::async_runtime::{block_on, channel};
+    use tauri_plugin_shell::process::TerminatedPayload;
+
+    #[test]
+    fn wait_ready_returns_port_on_ready_line() {
+        let (tx, mut rx) = channel(8);
+        block_on(tx.send(CommandEvent::Stdout(b"READY 54321\n".to_vec()))).unwrap();
+        let r = block_on(wait_ready(&mut rx, Duration::from_secs(5)));
+        assert_eq!(r, Ok(54321));
+    }
+
+    #[test]
+    fn wait_ready_reports_last_stderr_when_terminated() {
+        let (tx, mut rx) = channel(8);
+        block_on(tx.send(CommandEvent::Stderr(b"boom\n".to_vec()))).unwrap();
+        block_on(tx.send(CommandEvent::Terminated(TerminatedPayload {
+            code: Some(1),
+            signal: None,
+        })))
+        .unwrap();
+        let err = block_on(wait_ready(&mut rx, Duration::from_secs(5))).unwrap_err();
+        assert!(err.contains("boom"), "{err}");
+    }
+
+    #[test]
+    fn wait_ready_reports_exit_when_sender_dropped() {
+        let (tx, mut rx) = channel::<CommandEvent>(8);
+        drop(tx);
+        let err = block_on(wait_ready(&mut rx, Duration::from_secs(5))).unwrap_err();
+        assert_eq!(err, "sidecar 未就绪即退出");
+    }
+
+    #[test]
+    fn wait_ready_times_out_when_silent() {
+        let (_tx, mut rx) = channel::<CommandEvent>(8); // 发送端保持存活
+        let start = Instant::now();
+        let err = block_on(wait_ready(&mut rx, Duration::from_millis(50))).unwrap_err();
+        assert!(err.contains("启动超时"), "{err}");
+        assert!(start.elapsed() < Duration::from_secs(2));
     }
 
     #[test]
