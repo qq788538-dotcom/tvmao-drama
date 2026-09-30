@@ -179,7 +179,7 @@ JSON 结构草案（v2，已作废）：
 
 | 阶段 | 内容 | 预估 | 状态 |
 |---|---|---|---|
-| P0 | 验证原型。WebCodecs、mediabunny、127.0.0.1 Range 请求已在 2026-09-30 实测通过（见 D7）；剩余：sidecar 启动握手（stdin 传 token、stdout 回端口）、Agent WebSocket、Windows 上跑同一套测试 | 1 天 | ✅ 已确认 |
+| P0 | 验证原型。WebCodecs、mediabunny、127.0.0.1 Range 请求已在 2026-09-30 实测通过（见 D7）；剩余：sidecar 启动握手（stdin 传 token、stdout 回端口）、Agent WebSocket、Windows 上跑同一套测试 | 1 天 | ✅ 已完成（2026-09-30 合并到 main）；macOS 诊断 17/17 PASS，Windows 实机验证待补，见 `docs/superpowers/plans/p0-results.md` |
 | P1 | Go sidecar：从参考仓复制画布相关包；MySQL → SQLite（modernc，合并成一份 schema，方言替换）；本地文件存储 + `media://` 转本地 URL；固定本地用户；计费空实现；去掉 Redis、owner 锁、多实例租约；任务恢复；孤儿回收；token + Origin 校验；sidecar 启动入口；Go 测试迁到 SQLite | 2–2.5 周 | ✅ 已确认 |
 | P2 | 内置数据：从生产库导出模型、settings 配置、Skill、Agent 工具目录、AI 角色数据，去掉 Key，go:embed；首次启动导入；升级时按 modelId 字段级合并（M11）；“恢复默认” | 1 周 | ✅ 已确认 |
 | P3 | 前端迁移：复制画布模块和 shared；删除协作、发布、分享、计费、登录、ChatPanel；启动直接进画布（F9）；“返回”改“所有项目”；“保存到本地”节点放回菜单；右键“在访达中显示”；下载失败提示与重试（S5）；字体本地化；vitest 测试迁移 | 1.5–2 周 | ✅ 已确认 |
@@ -284,3 +284,4 @@ JSON 结构草案（v2，已作废）：
 | 2026-09-30 | P2 | 种子数据已从生产库只读导出到 `seed/`（7 个 JSONL，见 seed/README.md），已扫描不含密钥 | 3D 导演台内置模型库在生产库为空 |
 | 2026-09-30 | P7 | newapi 接口（Seedance 合规、AI 角色库图片）后续再补，P7 挂起 | |
 | 2026-09-30 | P0–P8 | ✅ 实施阶段确认 | P7 挂起 |
+| 2026-09-30 | P0 | ✅ 完成并合并到 main；macOS 诊断 17/17 PASS | Windows 实机验证待补（用户决定不等） |
