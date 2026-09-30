@@ -13,15 +13,32 @@
 
 ### macOS 打包版（dmg）
 
-系统版本：
+系统版本：macOS 26.2（用户于 2026-09-30 实机运行并反馈）
 诊断页“复制结果”的文本：
 
 ```
-（粘贴到这里）
+UA: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)
+PASS HTTP ping（带 token） — version=0.1.0 (19ms)
+PASS HTTP ping（不带 token 应被拒绝） — 401 (2ms)
+PASS WebSocket 回显 — 回显一致 (4ms)
+PASS API VideoEncoder — 存在 (0ms)
+PASS API VideoDecoder — 存在 (0ms)
+PASS API AudioEncoder — 存在 (1ms)
+PASS API AudioDecoder — 存在 (0ms)
+PASS 编码 H.264 1080p — 支持 (4ms)
+PASS 解码 H.264 — 支持 (59ms)
+PASS 编码 AAC — 支持 (0ms)
+PASS 解码 AAC — 支持 (8ms)
+PASS Range 请求返回 206 — bytes 0-99/11576606 (3ms)
+PASS 抽缩略图条（10 帧） — 时长 8.38 秒 (342ms)
+PASS 剪辑（截取前段） — 输出 6380901 字节 (17ms)
+PASS 强制重编码 H.264 — 输出 1065762 字节 (498ms)
+PASS 音频分离：无声 mp4 — 输出 11367794 字节 (18ms)
+PASS 音频分离：WAV — 输出 1478700 字节 (57ms)
 ```
 
-- [ ] 连接检查 3 项 + 编解码检查 8 项全部 PASS
-- [ ] 选择测试视频后 6 项媒体检查全部 PASS
+- [x] 连接检查 3 项 + 编解码检查 8 项全部 PASS
+- [x] 选择测试视频后 6 项媒体检查全部 PASS（测试视频 11.6MB、8.38 秒）
 - [ ] 再次打开应用，只有一个窗口
 - [ ] 退出应用后 `pgrep -fl sidecar` 无输出
 - [ ] 在“活动监视器”强制退出 `miaoju` 后，5 秒内 `sidecar` 消失
