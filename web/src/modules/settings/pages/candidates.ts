@@ -56,10 +56,22 @@ export function postprocessErrors(cfg: PostprocessConfig): string[] {
   return errs;
 }
 
-export function moveItem<T>(arr: T[], from: number, to: number): T[] {
-  if (to < 0 || to >= arr.length || from === to) return arr.slice();
-  const copy = arr.slice();
-  const [it] = copy.splice(from, 1);
-  copy.splice(to, 0, it);
-  return copy;
+const pick = (src: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.filter((k) => k in src).map((k) => [k, src[k]]));
+
+/**
+ * 脚本配置的提交值：以服务端当前值为底，只带入后端白名单允许改的字段
+ * （候选条目的 displayName、concurrency、maxRetries）；条目增删、顺序、modelId 一律取原值。
+ */
+export function scriptPayload(orig: ScriptConfig, draft: ScriptConfig): ScriptConfig {
+  const out: ScriptConfig = { ...orig, modelCandidates: (orig.modelCandidates ?? []).map((c, i) => ({ ...c, ...pick(draft.modelCandidates?.[i] ?? {}, ['displayName']) })) };
+  return { ...out, ...pick(draft, ['concurrency', 'maxRetries']) };
+}
+
+/** 后处理配置的提交值：去字幕条目只带 label / subtitle / isTimeLimited，另外只有旧格式的 upscaleModel；其余取原值。 */
+export function postprocessPayload(orig: PostprocessConfig, draft: PostprocessConfig): PostprocessConfig {
+  const out: PostprocessConfig = { ...orig, ...pick(draft, ['upscaleModel']) };
+  if (orig.subtitleRemovalModels) {
+    out.subtitleRemovalModels = orig.subtitleRemovalModels.map((b, i) => ({ ...b, ...pick(draft.subtitleRemovalModels?.[i] ?? {}, ['label', 'subtitle', 'isTimeLimited']) }));
+  }
+  return out;
 }

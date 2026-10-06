@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MAX_RETRIES, moveItem, postprocessErrors, scriptErrors, upscaleMode } from './candidates';
+import { DEFAULT_MAX_RETRIES, postprocessErrors, postprocessPayload, scriptErrors, scriptPayload, upscaleMode } from './candidates';
 
 describe('upscaleMode', () => {
   it('有列表用列表，否则有旧单字段用单字段，都没有则 none', () => {
@@ -19,39 +19,23 @@ describe('scriptErrors', () => {
   });
 });
 
-describe('moveItem', () => {
-  it('返回新数组，原数组不变', () => {
-    const a = [1, 2, 3];
-    expect(moveItem(a, 2, 0)).toEqual([3, 1, 2]);
-    expect(a).toEqual([1, 2, 3]);
-    expect(moveItem(a, 0, -1)).toEqual([1, 2, 3]);
+describe('scriptPayload / postprocessPayload', () => {
+  it('脚本：只采纳 displayName、concurrency、maxRetries，条目增删、顺序、modelId 取原值', () => {
+    const orig = { modelCandidates: [{ modelId: 'a', displayName: 'A' }, { modelId: 'b', displayName: 'B' }], styles: [], concurrency: 1 };
+    const draft = { ...orig, modelCandidates: [{ modelId: 'x', displayName: 'A2' }], concurrency: 3, maxRetries: 2 };
+    expect(scriptPayload(orig, draft)).toEqual({
+      modelCandidates: [{ modelId: 'a', displayName: 'A2' }, { modelId: 'b', displayName: 'B' }],
+      styles: [],
+      concurrency: 3,
+      maxRetries: 2,
+    });
   });
-});
-
-describe('scriptErrors：空候选与数值范围（与 sidecar 一致）', () => {
-  const ok = [{ modelId: 'a', displayName: 'A' }];
-  it('候选列表不能为空', () => {
-    expect(scriptErrors({ modelCandidates: [], styles: [] })).toEqual(['至少保留一个候选模型']);
-  });
-  it('重跑次数只接受 1–10 的整数，缺省按 1 处理', () => {
-    expect(DEFAULT_MAX_RETRIES).toBe(1);
-    expect(scriptErrors({ modelCandidates: ok, styles: [] })).toEqual([]);
-    for (const n of [1, 10]) expect(scriptErrors({ modelCandidates: ok, styles: [], maxRetries: n })).toEqual([]);
-    for (const n of [0, 11, -1, 1.5]) {
-      expect(scriptErrors({ modelCandidates: ok, styles: [], maxRetries: n })).toEqual(['失败自动重跑次数必须是 1 到 10 的整数']);
-    }
-  });
-  it('并发数只接受 1–20 的整数', () => {
-    expect(scriptErrors({ modelCandidates: ok, styles: [], concurrency: 0 })).toEqual(['同时执行的任务数必须是 1 到 20 的整数']);
-    expect(scriptErrors({ modelCandidates: ok, styles: [], concurrency: 20 })).toEqual([]);
-  });
-});
-
-describe('postprocessErrors', () => {
-  it('去字幕选项必须选择模型', () => {
-    expect(postprocessErrors({ subtitleRemovalModels: [{ modelId: 'a', label: 'A' }, { modelId: '', label: 'B' }] })).toEqual(['第 2 个去字幕选项没有选择模型']);
-    expect(postprocessErrors({ subtitleRemovalModels: [{ modelId: '  ', label: 'A' }] })).toEqual(['第 1 个去字幕选项没有选择模型']);
-    expect(postprocessErrors({ subtitleRemovalModels: [{ modelId: 'a', label: 'A' }] })).toEqual([]);
-    expect(postprocessErrors({})).toEqual([]);
+  it('后处理：去字幕条目只采纳 label、subtitle、isTimeLimited', () => {
+    const orig = { subtitleRemovalModels: [{ modelId: 'v1', label: 'L', subtitle: 's' }], whiteModelModel: 'w' };
+    const draft = { subtitleRemovalModels: [{ modelId: 'zzz', label: 'L2', subtitle: 's2', isTimeLimited: true }, { modelId: 'n', label: 'n' }], whiteModelModel: 'hack' };
+    expect(postprocessPayload(orig, draft)).toEqual({
+      subtitleRemovalModels: [{ modelId: 'v1', label: 'L2', subtitle: 's2', isTimeLimited: true }],
+      whiteModelModel: 'w',
+    });
   });
 });
