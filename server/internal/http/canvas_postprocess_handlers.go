@@ -6,8 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/james/huabu_studio/apps/api/internal/billing"
 	"github.com/james/huabu_studio/apps/api/internal/canvasgen"
@@ -18,9 +23,22 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/settings"
 )
 
-// maxDesubDownloadBytes 限制去字幕懒回填一次性下载源视频的体积上限，
-// 防单次探测（老视频首次去字幕才会触发，见包注释）把内存打爆。
+// maxDesubDownloadBytes 限制懒回填时落临时文件的源视频体积上限（只在对象不是本地文件、
+// 需要先流式落盘时生效；本地 /media 文件原地探测，不受此限）。
 const maxDesubDownloadBytes = 500 << 20 // 500MB
+
+// postprocessProbeTimeout 是一次懒回填（打开/下载 + 探测）的总时限。本地 /media 卡住或远端
+// 不回包时，请求不能无限挂住。var 而非 const：测试缩短它。
+var postprocessProbeTimeout = 2 * time.Minute
+
+// postprocessDownloadClient 是 HTTP 回退路径专用 client：带整体超时，作为 ctx 超时之外的第二道保险。
+var postprocessDownloadClient = &http.Client{Timeout: 5 * time.Minute}
+
+// postprocessObjects 是 assets.Storage 在这里用到的方法：按 key 直接打开存储里的对象。
+// 本地存储返回 *os.File，探测器原地读，不经 HTTP、不进内存。
+type postprocessObjects interface {
+	GetObject(ctx context.Context, key string) (io.ReadCloser, error)
+}
 
 // canvasPostprocessEnqueuer 是 canvasgen.Service 的窄接口——去字幕产物入队用。
 type canvasPostprocessEnqueuer interface {
@@ -69,10 +87,15 @@ type CanvasPostprocessHandler struct {
 	// （计费由 generation 侧统一做），故这个依赖是预估端点引入的。
 	models postprocessModelLookup
 	signer postprocessSigner
-	// download/probe 是懒回填时长的两步：下载源视频全量字节 → 探测时长（先试系统 ffprobe，
-	// 没有就读 MP4 容器时长；桌面端用户机器通常没有 ffprobe）。拆成可替换字段，测试注入 fake。
-	download func(ctx context.Context, url string) ([]byte, error)
-	probe    func(ctx context.Context, data []byte) (int64, error)
+	// objects 非 nil 时，懒回填优先按 object key 直接打开存储里的文件（见 WithObjectStore）。
+	objects postprocessObjects
+	// download/probe 是懒回填时长的两步：拿到源视频的流（对象存储打不开时才走 HTTP）→ 探测
+	// 磁盘上的文件（先试系统 ffprobe，没有就只读 MP4 的 moov；桌面端用户机器通常没有 ffprobe）。
+	// 拆成可替换字段，测试注入 fake。
+	download func(ctx context.Context, url string) (io.ReadCloser, error)
+	probe    func(ctx context.Context, path string) (int64, error)
+	// probes 合并同一 object key 的并发探测：多个节点同时点预估/提交只下载探测一次。
+	probes singleflight.Group
 }
 
 func NewCanvasPostprocessHandler(
@@ -93,8 +116,26 @@ func NewCanvasPostprocessHandler(
 		models:   modelRepo,
 		signer:   signer,
 		download: downloadMedia,
-		probe:    mediaprobe.ProbeDurationMsPortable,
+		probe:    mediaprobe.ProbeDurationMsPortableFile,
 	}
+}
+
+// WithObjectStore 让懒回填按 object key 直接从存储打开源视频（本地 /media 即磁盘文件，原地探测）。
+// 不设置时退回用签名 URL 走 HTTP 下载。
+func (h *CanvasPostprocessHandler) WithObjectStore(objects postprocessObjects) *CanvasPostprocessHandler {
+	h.objects = objects
+	return h
+}
+
+// loadConfig 读后处理配置；读失败或存量数据损坏时记日志并按“未配置”降级——
+// 一份坏配置不能让所有后处理接口 500（同 T1 各 handler 的 load）。
+func (h *CanvasPostprocessHandler) loadConfig() canvasgen.CanvasPostprocessConfig {
+	cfg, err := canvasgen.LoadCanvasPostprocessConfig(h.settings.Get)
+	if err != nil {
+		slog.Warn("画布后处理配置读取失败，按未配置处理", "err", err)
+		return canvasgen.CanvasPostprocessConfig{}
+	}
+	return cfg
 }
 
 // GetConfig GET /canvas/postprocess-config（需登录，只读）：画布去字幕白名单 + 转高清/转白模的
@@ -104,11 +145,7 @@ func NewCanvasPostprocessHandler(
 // 可以在模型中心保持「隐藏」——它们不该出现在生视频的模型选择列表里污染选项，但节点仍要
 // 能显示 1080p/2K/4K 档位。仿 drama 的 upscaleResolutionOptions 同一思路。
 func (h *CanvasPostprocessHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
-	cfg, err := canvasgen.LoadCanvasPostprocessConfig(h.settings.Get)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	cfg := h.loadConfig()
 	subs := make([]map[string]any, 0, len(cfg.SubtitleRemovalModels))
 	for _, d := range cfg.SubtitleRemovalModels {
 		subs = append(subs, map[string]any{"modelId": d.ModelID, "label": d.Label, "subtitle": d.Subtitle, "isTimeLimited": d.IsTimeLimited})
@@ -188,10 +225,7 @@ func (h *CanvasPostprocessHandler) resolutionAllowed(modelID, resolution string)
 // 走 LoadCanvasPostprocessConfig 而非原样回显 settings：存量的旧版单模型 upscaleModel
 // 要折成列表第一行给后台展示，管理员补上显示名保存后就只剩新格式。
 func (h *CanvasPostprocessHandler) AdminGet(w http.ResponseWriter, r *http.Request) {
-	cfg, err := canvasgen.LoadCanvasPostprocessConfig(h.settings.Get)
-	if err != nil {
-		cfg = canvasgen.CanvasPostprocessConfig{} // 损坏降级成默认，不 500
-	}
+	cfg := h.loadConfig()
 	// nil 切片会序列化成 null，后台表单按数组读，统一给空数组。
 	if cfg.SubtitleRemovalModels == nil {
 		cfg.SubtitleRemovalModels = []canvasgen.CanvasDesubBinding{}
@@ -203,11 +237,53 @@ func (h *CanvasPostprocessHandler) AdminGet(w http.ResponseWriter, r *http.Reque
 }
 
 // AdminPut PUT /admin/canvas/postprocess-config：整份覆盖存 settings。
+// 先按结构体反序列化（类型不对 400），逐项校验后用结构体重新序列化落库——存进去的永远是
+// LoadCanvasPostprocessConfig 能读回的形状，多余字段丢弃（校验口径同 T1 的三个 AdminPut）。
 func (h *CanvasPostprocessHandler) AdminPut(w http.ResponseWriter, r *http.Request) {
-	var body map[string]any
+	var body canvasgen.CanvasPostprocessConfig
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
+	}
+	// 旧版单模型字段折进列表（与加载口径一致），落库只留新格式。
+	if len(body.UpscaleModels) == 0 && strings.TrimSpace(body.UpscaleModel) != "" {
+		body.UpscaleModels = []canvasgen.CanvasUpscaleBinding{{ModelID: body.UpscaleModel}}
+	}
+	body.UpscaleModel = ""
+	if body.SubtitleRemovalModels == nil {
+		body.SubtitleRemovalModels = []canvasgen.CanvasDesubBinding{}
+	}
+	if body.UpscaleModels == nil {
+		body.UpscaleModels = []canvasgen.CanvasUpscaleBinding{}
+	}
+	body.WhiteModelModel = strings.TrimSpace(body.WhiteModelModel)
+	seen := map[string]bool{}
+	for i := range body.SubtitleRemovalModels {
+		d := &body.SubtitleRemovalModels[i]
+		d.ModelID = strings.TrimSpace(d.ModelID)
+		if d.ModelID == "" {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("去字幕第 %d 条：模型 ID 不能为空", i+1))
+			return
+		}
+		if seen[d.ModelID] {
+			writeError(w, http.StatusBadRequest, "去字幕模型重复："+d.ModelID)
+			return
+		}
+		seen[d.ModelID] = true
+	}
+	seen = map[string]bool{}
+	for i := range body.UpscaleModels {
+		u := &body.UpscaleModels[i]
+		u.ModelID = strings.TrimSpace(u.ModelID)
+		if u.ModelID == "" {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("转高清第 %d 条：模型 ID 不能为空", i+1))
+			return
+		}
+		if seen[u.ModelID] {
+			writeError(w, http.StatusBadRequest, "转高清模型重复："+u.ModelID)
+			return
+		}
+		seen[u.ModelID] = true
 	}
 	blob, err := json.Marshal(body)
 	if err != nil {
@@ -259,11 +335,7 @@ func (h *CanvasPostprocessHandler) Desub(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	cfg, err := canvasgen.LoadCanvasPostprocessConfig(h.settings.Get)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	cfg := h.loadConfig()
 	dm, ok := cfg.DesubModel(body.ModelID)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "未知去字幕模型")
@@ -382,11 +454,7 @@ func (h *CanvasPostprocessHandler) submitTiered(
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	cfg, err := canvasgen.LoadCanvasPostprocessConfig(h.settings.Get)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	cfg := h.loadConfig()
 	if !modelAllowed(cfg, body.ModelID) {
 		writeError(w, http.StatusBadRequest, unknownModelMsg)
 		return
@@ -470,11 +538,7 @@ func (h *CanvasPostprocessHandler) Estimate(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	cfg, err := canvasgen.LoadCanvasPostprocessConfig(h.settings.Get)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	cfg := h.loadConfig()
 	// 白名单校验：只有后台配过的后处理模型能问价。否则这个端点就成了任意模型的
 	// 价格试探接口(模型中心里隐藏的模型本不该被外部枚举)。
 	_, isDesub := cfg.DesubModel(body.ModelID)
@@ -574,8 +638,11 @@ func (h *CanvasPostprocessHandler) liveUpstreamURL(ctx context.Context, userID, 
 }
 
 // resolveDurationMs 服务端权威时长(毫秒)：优先读 assets.duration_ms；NULL 则懒回填——
-// 下载源视频字节 → ffprobe 探测真实帧时长 → 回填(best-effort，失败不影响本次已探测到的结果)。
-// 下载/探测任一步失败直接返回 error，调用方据此拒绝(不估算，防篡改薅按秒计费)。
+// 拿到源视频文件 → 探测时长 → 回填(best-effort，失败不影响本次已探测到的结果)。
+// 打开/下载/探测任一步失败直接返回 error，调用方据此拒绝(不估算)。
+//
+// 峰值内存：本地 /media 按 key 打开后原地探测（ffprobe 直接读文件，或只读 moov），不整读；
+// 其余来源流式落临时文件再探测。同一 key 的并发请求经 singleflight 合并，整体受 postprocessProbeTimeout 限时。
 func (h *CanvasPostprocessHandler) resolveDurationMs(ctx context.Context, src canvasSourceNode) (int64, error) {
 	objKey := h.signer.ObjectKey(src.Content)
 	if objKey != "" {
@@ -586,18 +653,98 @@ func (h *CanvasPostprocessHandler) resolveDurationMs(ctx context.Context, src ca
 	if objKey == "" {
 		return 0, errors.New("源视频对象 key 未知，无法探测时长")
 	}
-	// Sign 吃 src.Content(canonical media://key 形式)而非裸 objKey——裸 key 不带前缀，
-	// 签名器认不出来会原样透传，签不出可下载的 URL(踩过一次，见本文件同名坑的另一处修复)。
-	data, err := h.download(ctx, h.signer.Sign(src.Content))
-	if err != nil {
-		return 0, fmt.Errorf("下载源视频失败: %w", err)
+	// 合并后的探测不随任一请求取消（否则第一个请求断开会连带其余请求失败），只受总时限约束。
+	ch := h.probes.DoChan(objKey, func() (any, error) {
+		pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postprocessProbeTimeout)
+		defer cancel()
+		ms, err := h.probeSource(pctx, objKey, src.Content)
+		if err != nil {
+			return int64(0), err
+		}
+		_ = h.assets.SetDurationMsByObjectKey(objKey, ms) // 回填 best-effort
+		return ms, nil
+	})
+	select {
+	case res := <-ch:
+		if res.Err != nil {
+			return 0, res.Err
+		}
+		return res.Val.(int64), nil
+	case <-ctx.Done():
+		return 0, ctx.Err()
 	}
-	ms, err := h.probe(ctx, data)
+}
+
+// probeSource 拿到源视频的磁盘文件并探测。优先按 key 直接打开对象存储：本地存储返回 *os.File，
+// 原地探测、零拷贝；返回的不是文件就流式落临时文件。对象存储不可用/打不开时才走签名 URL 的 HTTP 下载。
+func (h *CanvasPostprocessHandler) probeSource(ctx context.Context, objKey, content string) (int64, error) {
+	var rc io.ReadCloser
+	if h.objects != nil {
+		if o, err := h.objects.GetObject(ctx, objKey); err == nil {
+			rc = o
+		}
+	}
+	if rc == nil {
+		// Sign 吃 content(canonical media://key 形式)而非裸 objKey——裸 key 不带前缀，
+		// 签名器认不出来会原样透传，签不出可下载的 URL。
+		o, err := h.download(ctx, h.signer.Sign(content))
+		if err != nil {
+			return 0, fmt.Errorf("下载源视频失败: %w", err)
+		}
+		rc = o
+	}
+	defer rc.Close()
+
+	path := ""
+	if f, ok := rc.(*os.File); ok {
+		path = f.Name()
+	} else {
+		tmp, err := spoolToTemp(ctx, rc)
+		if err != nil {
+			return 0, fmt.Errorf("读取源视频失败: %w", err)
+		}
+		defer os.Remove(tmp)
+		path = tmp
+	}
+	ms, err := h.probe(ctx, path)
 	if err != nil {
 		return 0, fmt.Errorf("探测视频时长失败: %w", err)
 	}
-	_ = h.assets.SetDurationMsByObjectKey(objKey, ms) // 回填 best-effort
 	return ms, nil
+}
+
+// spoolToTemp 把流拷到临时文件（有体积上限，随 ctx 取消中止），返回路径；调用方负责删除。
+func spoolToTemp(ctx context.Context, r io.Reader) (string, error) {
+	f, err := os.CreateTemp("", "postprocess-probe-*.bin")
+	if err != nil {
+		return "", err
+	}
+	n, err := io.Copy(f, io.LimitReader(ctxReader{ctx: ctx, r: r}, maxDesubDownloadBytes+1))
+	cerr := f.Close()
+	if err == nil {
+		err = cerr
+	}
+	if err == nil && n > maxDesubDownloadBytes {
+		err = fmt.Errorf("源视频超出上限(%dMB)", maxDesubDownloadBytes>>20)
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
+}
+
+// ctxReader 让 io.Copy 在 ctx 取消后尽快停下（对不感知 ctx 的 Reader 也有效）。
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }
 
 // toInt64 把快照 settings 里的数字字段转 int64——JSON 反序列化成 map[string]any 后数字统一是
@@ -618,26 +765,20 @@ func toInt64(v any) int64 {
 	}
 }
 
-// downloadMedia 是 resolveDurationMs 懒回填用的真实下载实现：一次性拉全量字节(有上限保护)。
-func downloadMedia(ctx context.Context, url string) ([]byte, error) {
+// downloadMedia 是懒回填的 HTTP 回退实现：返回响应体流，不整读进内存。
+// 时限由调用方的 ctx（postprocessProbeTimeout）和 client 自身的 Timeout 共同保证。
+func downloadMedia(ctx context.Context, url string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := postprocessDownloadClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("下载源视频失败: HTTP %d", resp.StatusCode)
+		resp.Body.Close()
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxDesubDownloadBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(body) > maxDesubDownloadBytes {
-		return nil, fmt.Errorf("源视频超出下载上限(%dMB)", maxDesubDownloadBytes>>20)
-	}
-	return body, nil
+	return resp.Body, nil
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -253,8 +254,8 @@ func TestDesub_StandardLazyBackfillSucceeds(t *testing.T) {
 		desubSnapshot(t, "node-src", "media://video2.mp4", nil),
 		assetsRepo, nil,
 	)
-	h.download = func(_ context.Context, url string) ([]byte, error) { return []byte("fake-bytes"), nil }
-	h.probe = func(_ context.Context, data []byte) (int64, error) { return 6000, nil }
+	h.download = fakeDownload([]byte("fake-bytes"))
+	h.probe = func(_ context.Context, _ string) (int64, error) { return 6000, nil }
 
 	rec := httptest.NewRecorder()
 	h.Desub(rec, desubReq(map[string]any{
@@ -279,8 +280,8 @@ func TestDesub_StandardLazyBackfillFails(t *testing.T) {
 		desubSnapshot(t, "node-src", "media://video3.mp4", nil),
 		assetsRepo, nil,
 	)
-	h.download = func(_ context.Context, url string) ([]byte, error) { return []byte("fake-bytes"), nil }
-	h.probe = func(_ context.Context, data []byte) (int64, error) { return 0, errors.New("ffprobe: no video packets") }
+	h.download = fakeDownload([]byte("fake-bytes"))
+	h.probe = func(_ context.Context, _ string) (int64, error) { return 0, errors.New("ffprobe: no video packets") }
 
 	rec := httptest.NewRecorder()
 	h.Desub(rec, desubReq(map[string]any{
@@ -484,8 +485,8 @@ func TestPostprocessEstimate_LazyBackfill(t *testing.T) {
 		desubSnapshot(t, "node-src", "media://fresh.mp4", nil),
 		&desubFakeAssets{},
 	)
-	h.download = func(_ context.Context, _ string) ([]byte, error) { return []byte("fake-bytes"), nil }
-	h.probe = func(_ context.Context, _ []byte) (int64, error) { return 6000, nil }
+	h.download = fakeDownload([]byte("fake-bytes"))
+	h.probe = func(_ context.Context, _ string) (int64, error) { return 6000, nil }
 
 	rec := httptest.NewRecorder()
 	h.Estimate(rec, estimateReq(map[string]any{
@@ -509,8 +510,8 @@ func TestPostprocessEstimate_ProbeFails(t *testing.T) {
 		desubSnapshot(t, "node-src", "media://broken.mp4", nil),
 		&desubFakeAssets{},
 	)
-	h.download = func(_ context.Context, _ string) ([]byte, error) { return []byte("fake-bytes"), nil }
-	h.probe = func(_ context.Context, _ []byte) (int64, error) { return 0, errors.New("ffprobe: no video packets") }
+	h.download = fakeDownload([]byte("fake-bytes"))
+	h.probe = func(_ context.Context, _ string) (int64, error) { return 0, errors.New("ffprobe: no video packets") }
 
 	rec := httptest.NewRecorder()
 	h.Estimate(rec, estimateReq(map[string]any{
@@ -909,8 +910,8 @@ func TestUpscale_DurationUnavailable(t *testing.T) {
 		desubSnapshot(t, "node-src", "media://nodur.mp4", nil),
 		&desubFakeAssets{},
 	)
-	h.download = func(_ context.Context, _ string) ([]byte, error) { return []byte("x"), nil }
-	h.probe = func(_ context.Context, _ []byte) (int64, error) { return 0, errors.New("ffprobe failed") }
+	h.download = fakeDownload([]byte("x"))
+	h.probe = func(_ context.Context, _ string) (int64, error) { return 0, errors.New("ffprobe failed") }
 
 	rec := httptest.NewRecorder()
 	h.Upscale(rec, upscaleReq(map[string]any{
@@ -1259,7 +1260,7 @@ func TestDesub_DefaultProbeReadsMP4WithoutFFprobe(t *testing.T) {
 		desubSnapshot(t, "node-src", "media://video9.mp4", nil),
 		assetsRepo, nil,
 	)
-	h.download = func(context.Context, string) ([]byte, error) { return postprocessMP4(7300), nil }
+	h.download = fakeDownload(postprocessMP4(7300))
 	rec := httptest.NewRecorder()
 	h.Desub(rec, desubReq(map[string]any{
 		"projectId": 2, "nodeId": "node-sub", "sourceNodeId": "node-src", "modelId": "desub-std",
@@ -1282,7 +1283,7 @@ func TestDesub_DefaultProbeRejectsNonMP4(t *testing.T) {
 		desubSnapshot(t, "node-src", "media://clip.webm", nil),
 		&desubFakeAssets{}, nil,
 	)
-	h.download = func(context.Context, string) ([]byte, error) { return []byte{0x1a, 0x45, 0xdf, 0xa3}, nil }
+	h.download = fakeDownload([]byte{0x1a, 0x45, 0xdf, 0xa3})
 	rec := httptest.NewRecorder()
 	h.Desub(rec, desubReq(map[string]any{
 		"projectId": 2, "nodeId": "node-sub", "sourceNodeId": "node-src", "modelId": "desub-std",
@@ -1292,5 +1293,12 @@ func TestDesub_DefaultProbeRejectsNonMP4(t *testing.T) {
 	}
 	if enq.captured != nil {
 		t.Error("不应 enqueue")
+	}
+}
+
+// fakeDownload 返回一个固定内容的下载流（替代真实 HTTP 下载）。
+func fakeDownload(data []byte) func(context.Context, string) (io.ReadCloser, error) {
+	return func(context.Context, string) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(data)), nil
 	}
 }

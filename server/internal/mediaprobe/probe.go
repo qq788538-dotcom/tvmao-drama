@@ -31,13 +31,20 @@ func ProbeDurationMs(ctx context.Context, data []byte) (int64, error) {
 		return 0, err
 	}
 	f.Close()
+	return ProbeDurationMsFile(ctx, f.Name())
+}
 
+// ProbeDurationMsFile 同 ProbeDurationMs，直接探测磁盘上的文件（不经内存、不写临时文件）。
+func ProbeDurationMsFile(ctx context.Context, path string) (int64, error) {
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		return 0, ErrProbeUnavailable
+	}
 	// -select_streams v:0 只看首个视频流;packet 级 pts_time/duration_time = 实际帧时间。
 	cmd := exec.CommandContext(ctx, "ffprobe",
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-show_entries", "packet=pts_time,duration_time",
-		"-of", "json", f.Name())
+		"-of", "json", path)
 	out, err := cmd.Output()
 	if err != nil {
 		return 0, fmt.Errorf("ffprobe: %w", err)
