@@ -78,7 +78,34 @@ func TestCountProjectsReferencingEscapesAndScopes(t *testing.T) {
 	insertProjectWithPayload(t, conn, 1, `{"nodes":[{"content":"media://u1/ab12_chair.fbx"}]}`, true)
 	insertProjectWithPayload(t, conn, 2, `{"nodes":[{"content":"media://u1/ab12_chair.fbx"}]}`, false)
 	for key, want := range map[string]int64{"u1/ab12_chair.fbx": 1, "u1/ab12Xchair.fbx": 1, "u1/nothing.fbx": 0} {
-		n, err := repo.CountProjectsReferencing(1, key)
+		n, err := repo.CountProjectsReferencing(conn, 1, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != want {
+			t.Fatalf("%s: n=%d want %d", key, n, want)
+		}
+	}
+}
+
+// 引用检查必须精确匹配 media://<key>：区分大小写、key 后面必须紧跟 JSON 字符串
+// 结束引号（或嵌套 JSON 里的转义引号），不能把 LIB/A.FBX、a.fbx2 算成 a.fbx 的引用。
+func TestCountProjectsReferencingExactMatch(t *testing.T) {
+	conn := dbtest.Open(t)
+	repo := NewSQLiteRepository(conn)
+	insertProjectWithPayload(t, conn, 1, `{"n":[{"content":"media://LIB/A.FBX"}]}`, false)
+	insertProjectWithPayload(t, conn, 1, `{"n":[{"content":"media://lib/a.fbx2"}]}`, false)
+	insertProjectWithPayload(t, conn, 1, `{"n":[{"content":"media://lib/a.fbx.bak"}]}`, false)
+	insertProjectWithPayload(t, conn, 1, `{"n":[{"content":"media://lib/b.fbx"}]}`, false)
+	insertProjectWithPayload(t, conn, 1, `{"n":[{"raw":"{\"u\":\"media://lib/b.fbx\"}"}]}`, false)
+	for key, want := range map[string]int64{
+		"lib/a.fbx":  0,
+		"LIB/A.FBX":  1,
+		"lib/a.fbx2": 1,
+		"lib/b.fbx":  2, // 普通字符串值 + 嵌套 JSON 字符串里的转义引号
+		"lib/b":      0,
+	} {
+		n, err := repo.CountProjectsReferencing(conn, 1, key)
 		if err != nil {
 			t.Fatal(err)
 		}

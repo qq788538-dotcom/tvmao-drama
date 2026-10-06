@@ -8,13 +8,16 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/directormodels"
 )
 
-// 模型文件校验与引用 LIKE 构造直接复用 directormodels 的实现：全局模型库与
+// 模型文件校验与引用匹配直接复用 directormodels 的实现：全局模型库与
 // 用户模型库承载的是同一类资产（3D 模型文件、media:// 引用形态），格式/大小
 // 约束与转义规则必须一致——各写一份迟早漂移（同构纪律同 canvasinputs 的教训）。
 var (
-	ValidateUpload       = directormodels.ValidateUpload
-	ReferenceLikePattern = directormodels.ReferenceLikePattern
+	ValidateUpload   = directormodels.ValidateUpload
+	ReferenceNeedles = directormodels.ReferenceNeedles
 )
+
+// ReferenceMatchSQL 与 directormodels 共用同一个引用匹配片段。
+const ReferenceMatchSQL = directormodels.ReferenceMatchSQL
 
 const (
 	// MaxThumbSizeBytes 是缩略图上限（5MB）。缩略图只是目录里的预览小图，

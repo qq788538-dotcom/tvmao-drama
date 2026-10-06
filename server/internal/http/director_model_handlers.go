@@ -187,21 +187,6 @@ func (h *DirectorModelHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 引用检查：模型被画布快照以 media://<object_key> 字符串引用，删了对象
-	// 那些项目的 3D 导演台就断链。默认拦下并告知引用项目数，前端确认后带
-	// force=1 强删。
-	if r.URL.Query().Get("force") != "1" {
-		n, err := h.svc.Repo.CountProjectsReferencing(userID, m.ObjectKey)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if n > 0 {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": "referenced", "referencedProjects": n})
-			return
-		}
-	}
-
 	// 删行 + 标 orphan 必须同事务：只删行不标 orphan 就是永久裸对象，
 	// 只标 orphan 不删行则 7 天后 GC 会删掉仍在目录里的模型的对象。
 	// 不用 library.TryReclaim——它的引用检查查的是 assets ∪ library_items，
@@ -213,6 +198,23 @@ func (h *DirectorModelHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+
+	// 引用检查：模型被画布快照以 media://<object_key> 字符串引用，删了对象
+	// 那些项目的 3D 导演台就断链。默认拦下并告知引用项目数，前端确认后带
+	// force=1 强删。检查放在删除事务里（immediate 事务已持写锁），检查到提交
+	// 之间并发的画布保存写不进新引用。
+	if r.URL.Query().Get("force") != "1" {
+		n, err := h.svc.Repo.CountProjectsReferencing(tx, userID, m.ObjectKey)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if n > 0 {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "referenced", "referencedProjects": n})
+			return
+		}
+	}
+
 	if err := h.svc.Repo.Delete(tx, userID, id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -32,7 +33,7 @@ func (directorFakeRepo) GetByID(int64) (*directormodels.Model, error) {
 }
 func (directorFakeRepo) Delete(directormodels.Execer, int64, int64) error { return nil }
 func (directorFakeRepo) CountByUser(int64) (int64, error)                 { return 0, nil }
-func (directorFakeRepo) CountProjectsReferencing(int64, string) (int64, error) {
+func (directorFakeRepo) CountProjectsReferencing(directormodels.Querier, int64, string) (int64, error) {
 	return 0, nil
 }
 
@@ -188,6 +189,42 @@ func TestDirectorModelDelete_ReferencedNeedsForce(t *testing.T) {
 	}
 	if len(users.added) != 1 || users.added[0] != -42 {
 		t.Fatalf("应释放配额: %v", users.added)
+	}
+}
+
+// txCheckingRepo 记录引用检查是否在删除事务内执行。
+type txCheckingRepo struct {
+	*directormodels.SQLiteRepository
+	calls, inTx int
+}
+
+func (r *txCheckingRepo) CountProjectsReferencing(q directormodels.Querier, userID int64, key string) (int64, error) {
+	r.calls++
+	if _, ok := q.(*sql.Tx); ok {
+		r.inTx++
+	}
+	return r.SQLiteRepository.CountProjectsReferencing(q, userID, key)
+}
+
+// 引用检查必须与删行、标 orphan 在同一个事务里：_txlock=immediate 下事务一开始
+// 就拿写锁，检查到提交之间并发的画布保存写不进新引用。
+func TestDirectorModelDelete_ReferenceCheckInsideTx(t *testing.T) {
+	conn := dbtest.Open(t)
+	base := directormodels.NewSQLiteRepository(conn)
+	id, err := base.Insert(directormodels.Model{UserID: 1, Name: "m", FileName: "m.fbx", ObjectKey: "u1/m.fbx", SizeBytes: 1, MimeType: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := &txCheckingRepo{SQLiteRepository: base}
+	h := NewDirectorModelHandler(&directormodels.Service{Repo: repo}, &directorTrackingStorage{},
+		library.NewSQLiteOrphansRepository(conn), &directorFakeUserRepo{}, directorFakeSigner{}, conn)
+	rec := httptest.NewRecorder()
+	h.Delete(rec, directorDeleteReq(strconv.FormatInt(id, 10), 1, false))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body)
+	}
+	if repo.calls != 1 || repo.inTx != 1 {
+		t.Fatalf("引用检查应在事务内执行一次: calls=%d inTx=%d", repo.calls, repo.inTx)
 	}
 }
 

@@ -114,6 +114,8 @@ func TestCountProjectsReferencingAllUsers(t *testing.T) {
 		{2, `"media://lib/a_b.glb"`, false},
 		{2, `"media://lib/a_b.glb"`, true},
 		{1, `"media://lib/aXb.glb"`, false},
+		{1, `"media://LIB/A_B.GLB"`, false},
+		{1, `"media://lib/a_b.glb2"`, false},
 	} {
 		res, err := conn.Exec(`INSERT INTO projects (user_id, name) VALUES (?, 'p')`, p.user)
 		if err != nil {
