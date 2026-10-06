@@ -138,7 +138,8 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
           if (finalTask.status === 'succeeded') {
             const url = finalTask.outputUrls?.[0];
             if (url) {
-              updateNodeSettings(id, { kind: 'video' });
+              // 新结果属于这次任务：清掉上次下载失败留下的 unsaved / genTaskId 标记。
+              updateNodeSettings(id, { kind: 'video', unsaved: undefined, genTaskId: undefined });
               updateNode(id, { content: url, status: 'succeeded', error: undefined, taskId: undefined });
             } else {
               updateNode(id, { status: 'failed', error: '上游未返回视频', taskId: undefined });

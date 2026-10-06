@@ -9,6 +9,7 @@ import { queryClient } from '@/shared/queryClient';
 import { getServerInfo, type ServerInfo } from '@/shared/server';
 import { SidecarGate } from '@/shared/SidecarGate';
 import { getSidecarSession, setSidecarSession, setSidecarSessionLoader } from '@/shared/sidecarSession';
+import { useAgentStore } from '@/modules/canvas/editor/agent/agentStore';
 import { darkTheme } from './theme';
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -34,7 +35,12 @@ let sessionEpoch = 0;
 export function adoptSidecarSession(info: ServerInfo): number {
   const prev = getSidecarSession();
   if (!prev || prev.port !== info.port || prev.token !== info.token) {
-    if (prev) queryClient.clear();
+    if (prev) {
+      queryClient.clear();
+      // Agent 对话的消息缓存是模块级 zustand store，不随页面树重挂而清空；里面的原图链接由
+      // 旧会话签发，留着的话 Lightbox 看原图会失败（final-review M-6）。清掉后重挂时重新拉。
+      useAgentStore.setState({ messages: {}, pageState: {} });
+    }
     setSidecarSession(info);
     sessionEpoch += 1;
   }

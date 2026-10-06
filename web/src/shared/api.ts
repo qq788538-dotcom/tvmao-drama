@@ -34,20 +34,6 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-export interface AuthUser {
-  id: number;
-  email: string;
-  role: string;
-  balanceCredits?: number;
-  storageQuotaBytes?: number;
-  storageUsedBytes?: number;
-}
-
-export async function me(): Promise<AuthUser> {
-  const { data } = await api.get<AuthUser>('/me');
-  return data;
-}
-
 export interface Project {
   id: number;
   userId: number;

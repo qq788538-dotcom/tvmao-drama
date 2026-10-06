@@ -4,6 +4,7 @@ import {
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { errorText, listModels, patchModel, restoreModel, type ModelPatch, type ModelView } from '../api';
+import { invalidateAfterSettingsChange } from '../invalidate';
 import { ReadonlyJson } from '../components/ReadonlyJson';
 import { RestoreDefaultButton } from '../components/RestoreDefaultButton';
 import { filterModels, formToPatch, MODEL_FIELD_LABELS, modelToForm, TYPE_OPTIONS, type ModelFormValues } from './modelForm';
@@ -17,7 +18,11 @@ export function ModelCenterPage() {
   const [form] = Form.useForm<ModelFormValues>();
   const { data = [], isLoading } = useQuery({ queryKey: ['settings-models'], queryFn: listModels });
 
-  const replace = (m: ModelView) => qc.setQueryData<ModelView[]>(['settings-models'], (old) => (old ?? []).map((x) => (x.id === m.id ? m : x)));
+  const replace = (m: ModelView) => {
+    qc.setQueryData<ModelView[]>(['settings-models'], (old) => (old ?? []).map((x) => (x.id === m.id ? m : x)));
+    // 启用 / 隐藏 / 改名会影响画布节点的模型下拉、剧本候选、Agent 候选。
+    invalidateAfterSettingsChange(qc);
+  };
   const patch = useMutation({
     mutationFn: ({ id, p }: { id: number; p: ModelPatch }) => patchModel(id, p),
     onSuccess: (m) => {

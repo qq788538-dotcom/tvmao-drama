@@ -46,6 +46,10 @@ describe('settings api', () => {
     expect(err).toBeInstanceOf(SettingsApiError);
     expect(err.message).toContain('502');
   });
+  it('网络层失败（fetch 抛错）给中文提示，不透出英文 Failed to fetch', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    await expect(getGeneral()).rejects.toThrow('连接本地服务失败，请稍后重试');
+  });
   it('applyDataDirChange 调用 Tauri 命令', async () => {
     await applyDataDirChange('/Volumes/X/data');
     expect(invoke).toHaveBeenCalledWith('apply_data_dir_change', { path: '/Volumes/X/data' });

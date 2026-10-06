@@ -33,6 +33,8 @@ const configureCanvasPersistence = vi.fn();
 const setCanvasOwnerToken = vi.fn();
 const flushCanvasMutations = vi.fn(async () => undefined);
 const resetCanvasPersistence = vi.fn();
+const retireCanvasPersistence = vi.fn();
+const waitForCanvasMutationsIdle = vi.fn(async () => undefined);
 const seedCanvasBaselines = vi.fn();
 const loadLocalView = vi.fn(() => ({ x: 7, y: 8, zoom: 1.2 }));
 // 真实 antd 的 App.useApp() 每次调用返回同一个 message API 对象（走 context，
@@ -87,6 +89,8 @@ vi.mock('@/modules/canvas/editor/persistence/canvasMutations', () => ({
   setCanvasOwnerToken: (...args: Parameters<typeof setCanvasOwnerToken>) => setCanvasOwnerToken(...args),
   flushCanvasMutations: (...args: Parameters<typeof flushCanvasMutations>) => flushCanvasMutations(...args),
   resetCanvasPersistence: (...args: Parameters<typeof resetCanvasPersistence>) => resetCanvasPersistence(...args),
+  retireCanvasPersistence: (...args: Parameters<typeof retireCanvasPersistence>) => retireCanvasPersistence(...args),
+  waitForCanvasMutationsIdle: (...args: Parameters<typeof waitForCanvasMutationsIdle>) => waitForCanvasMutationsIdle(...args),
   seedCanvasBaselines: (...args: Parameters<typeof seedCanvasBaselines>) => seedCanvasBaselines(...args),
   persistNodeById: vi.fn(),
 }));
@@ -211,6 +215,36 @@ describe('CanvasEditorPage access guard', () => {
       setCanvasOwnerToken.mock.invocationCallOrder[0],
     );
     expect(loadMock).toHaveBeenCalledWith({ nodes: [], connections: [], view: { x: 7, y: 8, zoom: 1.2 } });
+  });
+
+  // final-review I-1：sidecar 自动重启时 SidecarGate 卸掉整棵树再重挂。
+  it('卸载时走 retire（先 flush debounce 中的 patch 再 reset），而不是直接 reset 丢弃', async () => {
+    getSnapshot.mockResolvedValue({ payload: { nodes: [], connections: [] }, version: 1 });
+    retireCanvasPersistence.mockClear();
+    const { unmount } = renderPage();
+    await waitFor(() => expect(screen.getByTestId('canvas-editor')).toBeInTheDocument());
+
+    unmount();
+
+    expect(retireCanvasPersistence).toHaveBeenCalledTimes(1);
+    expect(resetCanvasPersistence).not.toHaveBeenCalled();
+  });
+
+  it('重挂后先等上一棵树留下的 mutation 落定，再拉快照', async () => {
+    let drain!: () => void;
+    waitForCanvasMutationsIdle.mockImplementationOnce(() => new Promise<undefined>((resolve) => {
+      drain = () => resolve(undefined);
+    }));
+    getSnapshot.mockResolvedValue({ payload: { nodes: [], connections: [] }, version: 1 });
+
+    renderPage();
+    await waitFor(() => expect(waitForCanvasMutationsIdle).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(getSnapshot).not.toHaveBeenCalled();
+
+    drain();
+    await waitFor(() => expect(getSnapshot).toHaveBeenCalledWith(14));
+    await waitFor(() => expect(screen.getByTestId('canvas-editor')).toBeInTheDocument());
   });
 
   it('snapshot 返回 404 时不渲染编辑器并跳回 /canvas', async () => {

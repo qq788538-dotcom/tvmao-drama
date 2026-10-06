@@ -11,7 +11,7 @@ import { api, currentProjectId } from '@/shared/api';
 import { useCanvasStore } from '@/modules/canvas/editor/store';
 import { persistNodeById } from '@/modules/canvas/editor/persistence/canvasMutations';
 import type { CanvasNode, NodeType } from '@/modules/canvas/editor/types';
-import { isRemoteMediaUrl } from './localMedia';
+import { isLocalMediaUrl, isRemoteMediaUrl } from './localMedia';
 
 // 产物由 sidecar 生成管线写回的节点类型（canvasgen 的 sink 只写这几类）。
 const GENERATED_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
@@ -25,7 +25,10 @@ const GENERATED_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
 
 export function isUnsavedNode(node: CanvasNode | undefined): boolean {
   if (!node) return false;
-  if (node.settings?.unsaved === true) return true;
+  // 快照里的 unsaved 标记只在内容仍是外链时才算数：页面开着重新生成拿到本地地址后，
+  // store 里可能残留旧标记（服务端 sink 已经删了），这时不能再挂角标，否则重试会把
+  // 新结果换回旧任务的图。
+  if (node.settings?.unsaved === true && !isLocalMediaUrl(node.content)) return true;
   // 页面开着时生成结果靠轮询任务回填，任务状态里没有 unsaved（它只写进快照），要等重新
   // 打开项目才读得到。所以对生成类节点按「成功了但内容是外链」认定：桌面端生成结果正常
   // 都是本机地址，只有下载失败才会留下外链。

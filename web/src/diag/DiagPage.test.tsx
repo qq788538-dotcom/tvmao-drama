@@ -54,4 +54,20 @@ describe('DiagPage', () => {
     fireEvent.click(screen.getByText('复制结果'));
     expect(await screen.findByText(/复制失败/)).toBeInTheDocument();
   });
+
+  it('独立页面显示返回链接和标题；嵌进设置页时不显示（M-2）', async () => {
+    const { unmount } = renderPage();
+    expect(await screen.findByText('← 返回画布')).toBeInTheDocument();
+    expect(screen.getByText('喵剧AI · 环境诊断')).toBeInTheDocument();
+    unmount();
+
+    render(
+      <MemoryRouter>
+        <DiagPage embedded />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('1. 运行连接与编解码检查')).toBeInTheDocument();
+    expect(screen.queryByText('← 返回画布')).toBeNull();
+    expect(screen.queryByText('喵剧AI · 环境诊断')).toBeNull();
+  });
 });

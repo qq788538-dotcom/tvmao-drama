@@ -19,11 +19,17 @@ async function request<T>(method: 'GET' | 'PUT' | 'PATCH' | 'POST', path: string
   const info = await getServerInfo();
   const headers: Record<string, string> = { ...authHeaders(info) };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const resp = await fetch(buildHttpUrl(info, `/api/v1/settings${path}`), {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(buildHttpUrl(info, `/api/v1/settings${path}`), {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    // 网络层失败时浏览器给的是英文 "Failed to fetch"，换成中文提示。
+    throw new Error('连接本地服务失败，请稍后重试');
+  }
   const text = await resp.text();
   let data: any = null;
   try {

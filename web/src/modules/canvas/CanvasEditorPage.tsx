@@ -17,9 +17,10 @@ import {
   flushCanvasMutations,
   onCanvasOwnerLost,
   persistNodeById,
-  resetCanvasPersistence,
+  retireCanvasPersistence,
   seedCanvasBaselines,
   setCanvasOwnerToken,
+  waitForCanvasMutationsIdle,
 } from '@/modules/canvas/editor/persistence/canvasMutations';
 import { loadLocalView } from '@/modules/canvas/editor/persistence/localView';
 import {
@@ -261,7 +262,12 @@ export function CanvasEditorPage() {
 
   const snapshotQuery = useQuery<Snapshot, AxiosError>({
     queryKey: ['snapshot', pid],
-    queryFn: () => getSnapshot(pid),
+    // 先等上一棵树留下的 mutation 落定再拉快照（sidecar 重启重挂时会有），否则快照里
+    // 没有这些修改，load() 会把它们从 store 里覆盖掉。
+    queryFn: async () => {
+      await waitForCanvasMutationsIdle();
+      return getSnapshot(pid);
+    },
     enabled: Number.isFinite(pid) && pid > 0,
     refetchOnWindowFocus: false,
     staleTime: Infinity,
@@ -392,7 +398,9 @@ export function CanvasEditorPage() {
 
   // 离开画布时清干净持久化运行态（owner-token、心跳队列、debounce 计时器、
   // 事件监听）。切项目由 configureCanvasPersistence 内部处理，这里兜卸载。
-  useEffect(() => () => resetCanvasPersistence(), []);
+  // 卸载时先把 debounce 中的 patch flush 进队列再 reset：sidecar 自动重启时整棵树会被
+  // SidecarGate 卸掉，这些修改不能丢；已入队的任务会等拦截器拿到新端口后照常发出。
+  useEffect(() => () => retireCanvasPersistence(), []);
 
   // Ctrl/Cmd + S 不再触发保存（画布即时落库，没有「保存」这个动作了），但仍然
   // 拦掉它：不拦的话浏览器会弹出「另存为网页」对话框——在一个网页应用里按 Cmd+S
