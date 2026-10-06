@@ -16,6 +16,8 @@ type Deps struct {
 	Auth    localauth.Config
 	DataDir string
 	Version string
+	// SettingsCenter 是设置页接口（P4）的依赖；为 nil 的那部分接口不注册。
+	SettingsCenter SettingsCenterDeps
 }
 
 func NewRouter(d Deps) nethttp.Handler {
@@ -32,6 +34,14 @@ func NewRouter(d Deps) nethttp.Handler {
 	diag := &diagHandler{dir: d.DataDir}
 	r.Post("/api/v1/diag/upload", diag.upload)
 	r.Get("/api/v1/diag/media/{name}", diag.media)
+	sc := d.SettingsCenter
+	if sc.DataDir == "" {
+		sc.DataDir = d.DataDir
+	}
+	if sc.Version == "" {
+		sc.Version = d.Version
+	}
+	mountSettingsCenter(r, sc)
 	return r
 }
 
