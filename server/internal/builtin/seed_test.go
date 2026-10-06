@@ -13,15 +13,15 @@ func TestLoadEmbeddedSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Models) != 47 || len(s.Settings) != 6 {
-		t.Fatalf("models=%d settings=%d, want 47/6", len(s.Models), len(s.Settings))
+	if len(s.Models) != 42 || len(s.Settings) != 6 {
+		t.Fatalf("models=%d settings=%d, want 42/6", len(s.Models), len(s.Settings))
 	}
 	byType := map[string]int{}
 	for _, m := range s.Models {
 		byType[m.Type]++
 	}
-	if byType["text"] != 8 || byType["image"] != 11 || byType["video"] != 26 || byType["audio"] != 2 {
-		t.Fatalf("按类型计数 %v，want text 8 / image 11 / video 26 / audio 2（seed/README.md）", byType)
+	if byType["text"] != 4 || byType["image"] != 11 || byType["video"] != 25 || byType["audio"] != 2 {
+		t.Fatalf("按类型计数 %v，want text 4 / image 11 / video 25 / audio 2（seed/README.md）", byType)
 	}
 	// agent_tools.source_model_id 引用生产 id，必须原样保留。
 	if m, ok := s.Model("gpt-image-2"); !ok || m.ID != 9 || m.Type != "image" {
