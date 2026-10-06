@@ -1,8 +1,11 @@
 //! Tauri 薄壳：拉起 Go sidecar、完成 token 握手、把端口和 token 交给前端。
 //! 业务逻辑全部在 sidecar 里，这里不放任何业务代码。
 
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
+
+mod datadir;
 
 use serde::Serialize;
 use tauri::async_runtime::Receiver;
@@ -25,6 +28,27 @@ struct Sidecar {
 #[tauri::command]
 fn server_info(state: State<'_, Sidecar>) -> Result<ServerInfo, String> {
     state.info.lock().unwrap().clone()
+}
+
+/// 设置页“更改数据目录”：记下待迁移路径，结束 sidecar 后重启应用；迁移在下次启动时进行。
+#[tauri::command]
+fn apply_data_dir_change(
+    app: tauri::AppHandle,
+    sidecar: State<'_, Sidecar>,
+    dirs: State<'_, datadir::DataDirState>,
+    path: String,
+) -> Result<(), String> {
+    datadir::check_path_syntax(&path)?;
+    if Path::new(&path) == dirs.current.as_path() {
+        return Err("新目录与当前数据目录相同".into());
+    }
+    let mut loc = datadir::read_location(&dirs.pointer)?;
+    loc.pending_data_dir = Some(path);
+    datadir::write_location(&dirs.pointer, &loc)?;
+    if let Some(child) = sidecar.child.lock().unwrap().take() {
+        let _ = child.kill();
+    }
+    app.restart();
 }
 
 /// 解析 sidecar 的就绪行 "READY <port>"。
@@ -79,13 +103,7 @@ async fn wait_ready(rx: &mut Receiver<CommandEvent>, timeout: Duration) -> Resul
 }
 
 /// 启动 sidecar 并等到 READY。任何一步失败都返回可读的中文原因。
-fn start_sidecar(app: &tauri::AppHandle) -> Result<(ServerInfo, CommandChild), String> {
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法确定数据目录：{e}"))?;
-    std::fs::create_dir_all(&data_dir).map_err(|e| format!("无法创建数据目录：{e}"))?;
-
+fn start_sidecar(app: &tauri::AppHandle, data_dir: &Path) -> Result<(ServerInfo, CommandChild), String> {
     let token = new_token();
     let (mut rx, mut child) = app
         .shell()
@@ -144,8 +162,11 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let state = match start_sidecar(app.handle()) {
+            let (dirs, data_dir) = datadir::prepare(app.handle());
+            let started = data_dir.and_then(|dir| start_sidecar(app.handle(), &dir));
+            let state = match started {
                 Ok((info, child)) => Sidecar {
                     info: Mutex::new(Ok(info)),
                     child: Mutex::new(Some(child)),
@@ -157,9 +178,15 @@ pub fn run() {
                 },
             };
             app.manage(state);
+            app.manage(dirs);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![server_info])
+        .invoke_handler(tauri::generate_handler![
+            server_info,
+            apply_data_dir_change,
+            datadir::data_dir_status,
+            datadir::dismiss_data_dir_error
+        ])
         .build(tauri::generate_context!())
         .expect("构建 Tauri 应用失败")
         .run(|app, event| {
