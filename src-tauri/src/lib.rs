@@ -3,6 +3,7 @@
 
 pub mod data_dir;
 pub mod lifecycle;
+pub mod media_save;
 pub mod native_dialog;
 pub mod sidecar;
 pub mod webview2;
@@ -103,6 +104,9 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        // 只用 Rust 侧 API（media_save 里弹保存对话框）；前端不授予 dialog 权限，写盘路径只能来自用户选择。
+        .plugin(tauri_plugin_dialog::init())
+        .manage(media_save::MediaRoot::default())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -110,6 +114,9 @@ pub fn run() {
             let make_spec: SpecFactory = Arc::new(move || {
                 let info = data_dir::resolve(&default_data_dir(&spec_app)?)?;
                 data_dir::prepare(&info)?;
+                spec_app
+                    .state::<media_save::MediaRoot>()
+                    .set(media_save::media_root_of(&info.current));
                 Ok(sidecar::LaunchSpec {
                     program: sidecar_program()?,
                     args: sidecar_args(&info.current, cfg!(debug_assertions)),
@@ -134,7 +141,10 @@ pub fn run() {
             sidecar_status,
             restart_sidecar,
             get_data_dir,
-            set_data_dir
+            set_data_dir,
+            media_save::save_media,
+            media_save::save_media_batch,
+            media_save::save_bytes
         ])
         .build(tauri::generate_context!());
 

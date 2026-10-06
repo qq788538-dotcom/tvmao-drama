@@ -3,6 +3,7 @@ import { requestViewportCapture } from "../io/captureBridge";
 import { serializeProject } from "../io/exportProjectJson";
 import { parseProject } from "../io/importProjectJson";
 import { downloadCaptureResults } from "../io/screenshotExport";
+import { saveBlobToDisk } from "@/shared/saveToDisk";
 import { useDirectorStore } from "../store/directorStore";
 
 export function CapturePanel() {
@@ -18,8 +19,8 @@ export function CapturePanel() {
         preset,
         source: "capture-panel",
       });
-      const count = downloadCaptureResults(results);
-      setCaptureStatus(`已导出 ${count} 张截图`);
+      const count = await downloadCaptureResults(results);
+      setCaptureStatus(count > 0 ? `已导出 ${count} 张截图` : "已取消导出");
     } catch (error) {
       setCaptureStatus(error instanceof Error ? error.message : "截图失败");
     }
@@ -41,10 +42,15 @@ export function CapturePanel() {
       <button
         className="capture-action"
         type="button"
-        onClick={() => {
+        onClick={async () => {
+          // 原先 window.open(blob:) 在 Tauri 里打不开新窗口；改为保存对话框。
           const blob = new Blob([serializeProject(project)], { type: "application/json" });
-          const url = URL.createObjectURL(blob);
-          window.open(url, "_blank");
+          try {
+            const r = await saveBlobToDisk(blob, `director-project-${Date.now()}.json`);
+            if (r === "saved") setCaptureStatus("工程 JSON 已保存");
+          } catch (error) {
+            setCaptureStatus(`导出失败：${error instanceof Error ? error.message : String(error)}`);
+          }
         }}
       >
         导出工程 JSON

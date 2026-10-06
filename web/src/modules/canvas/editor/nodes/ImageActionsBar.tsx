@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';
+import { extFromUrl, saveMediaToDisk, saveWithFeedback } from '@/shared/saveToDisk';
 import {
   Brush,
   ChevronDown,
@@ -236,22 +237,15 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
     setRotateUrl(url);
   };
 
-  // 下载：与 LocalSaveNode 单文件下载同一套隐藏 <a download> 触发。跨域源浏览器
-  // 会忽略 download 属性退化成新标签打开，靠 target=_blank 兜底不至于把画布顶掉。
+  // 下载：统一走 saveMediaToDisk（Tauri 里弹系统保存对话框、Rust 直接复制本地媒体；
+  // <a download> 在 Tauri/macOS 下会被 WebView 直接取消，见 shared/saveToDisk.ts）。
   const handleDownload = () => {
     const url = resolveImageUrl();
     if (!url) {
       message.warning('当前节点没有可下载的图片');
       return;
     }
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'image.png';
-    a.target = '_blank';
-    a.rel = 'noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    void saveWithFeedback(() => saveMediaToDisk(url, `image-${Date.now()}.${extFromUrl(url, 'png')}`), message);
   };
 
   // 放大查看：走全局 Lightbox（与双击节点图片同一个弹框，自带下载/Esc 关闭）。
