@@ -1,10 +1,12 @@
 package db_test
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/james/huabu_studio/apps/api/internal/db"
@@ -244,5 +246,115 @@ func TestOpenRejectsPathsTheDriverWouldMisparse(t *testing.T) {
 			conn.Close()
 			t.Fatalf("Open(%q) 应当报错", p)
 		}
+	}
+}
+
+// 0002 重建 projects 表（SQLite 无法 ALTER COLUMN 时的标准做法）：建新表、拷数据、删旧表、改名。
+const rebuildProjectsSQL = `
+CREATE TABLE projects_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users (id),
+  name TEXT NOT NULL,
+  description TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME NULL,
+  cover_url TEXT NULL
+);
+INSERT INTO projects_new SELECT id, user_id, name, description, created_at, updated_at, deleted_at, cover_url FROM projects;
+DROP TABLE projects;
+ALTER TABLE projects_new RENAME TO projects;
+CREATE INDEX idx_projects_user ON projects (user_id);
+CREATE INDEX idx_projects_deleted_at ON projects (deleted_at);
+CREATE TRIGGER trg_projects_updated_at AFTER UPDATE ON projects
+FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+  UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+`
+
+func mapFSWith(t *testing.T, extra map[string]string) fstest.MapFS {
+	t.Helper()
+	init, err := db.EmbeddedMigrations.ReadFile("migrations/0001_init.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := fstest.MapFS{"0001_init.sql": {Data: init}}
+	for name, body := range extra {
+		m[name] = &fstest.MapFile{Data: []byte(body)}
+	}
+	return m
+}
+
+func openRaw(t *testing.T) *sql.DB {
+	t.Helper()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "m.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
+// 表重建迁移里的 DROP TABLE 在外键开启时会触发 ON DELETE CASCADE，悄悄删光子表行。
+func TestMigrationTableRebuildKeepsChildRows(t *testing.T) {
+	conn := openRaw(t)
+	if err := db.MigrateFS(conn, mapFSWith(t, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(`INSERT INTO projects (id, user_id, name) VALUES (7, 1, 'p')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(`INSERT INTO workflow_snapshots (project_id, payload) VALUES (7, '{}')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.MigrateFS(conn, mapFSWith(t, map[string]string{"0002_rebuild.sql": rebuildProjectsSQL})); err != nil {
+		t.Fatalf("migrate 0002: %v", err)
+	}
+	var n int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM workflow_snapshots WHERE project_id = 7`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("重建 projects 后快照行数 = %d，want 1（被级联删了）", n)
+	}
+	// 连接池里每条连接的外键都必须恢复为开启。
+	for i := 0; i < 8; i++ {
+		var fk int
+		if err := conn.QueryRow(`PRAGMA foreign_keys`).Scan(&fk); err != nil || fk != 1 {
+			t.Fatalf("foreign_keys=%d err=%v，want 1", fk, err)
+		}
+	}
+}
+
+func TestMigrationDanglingForeignKeyRollsBack(t *testing.T) {
+	conn := openRaw(t)
+	bad := `INSERT INTO workflow_snapshots (project_id, payload) VALUES (999, '{}');`
+	err := db.MigrateFS(conn, mapFSWith(t, map[string]string{"0002_bad.sql": bad}))
+	if err == nil {
+		t.Fatal("悬挂外键的迁移应当失败")
+	}
+	var n int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE name = '0002_bad.sql'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("失败的迁移不应留下记录: n=%d err=%v", n, err)
+	}
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM workflow_snapshots`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("失败的迁移应整体回滚: n=%d err=%v", n, err)
+	}
+	var fk int
+	if err := conn.QueryRow(`PRAGMA foreign_keys`).Scan(&fk); err != nil || fk != 1 {
+		t.Fatalf("失败后 foreign_keys=%d err=%v，want 1", fk, err)
+	}
+}
+
+// JSON 列必须是 TEXT：[]byte 会以 BLOB 入库，读回时与字符串行为不一致。
+func TestJSONColumnsRejectBlob(t *testing.T) {
+	conn := dbtest.Open(t)
+	const q = `INSERT INTO model_configs (type, name, model_id, base_path, request_template) VALUES ('image', 'n', ?, '/p', ?)`
+	if _, err := conn.Exec(q, "m-blob", []byte("{}")); err == nil {
+		t.Fatal("BLOB 写入 request_template 应当被 CHECK 拒绝")
+	}
+	if _, err := conn.Exec(q, "m-text", "{}"); err != nil {
+		t.Fatalf("字符串写入应成功: %v", err)
 	}
 }

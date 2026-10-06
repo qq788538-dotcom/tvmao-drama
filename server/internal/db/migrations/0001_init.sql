@@ -37,11 +37,11 @@ CREATE TABLE model_configs (
   enabled INTEGER NOT NULL DEFAULT 1,
   hidden INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
-  request_template TEXT NOT NULL,
-  polling_template TEXT NULL,
-  ui_schema TEXT NULL,
-  billing_config TEXT NULL,
-  gen_control TEXT NULL,
+  request_template TEXT NOT NULL CHECK (typeof(request_template) = 'text'),
+  polling_template TEXT NULL CHECK (polling_template IS NULL OR typeof(polling_template) = 'text'),
+  ui_schema TEXT NULL CHECK (ui_schema IS NULL OR typeof(ui_schema) = 'text'),
+  billing_config TEXT NULL CHECK (billing_config IS NULL OR typeof(billing_config) = 'text'),
+  gen_control TEXT NULL CHECK (gen_control IS NULL OR typeof(gen_control) = 'text'),
   image_input_format TEXT NOT NULL DEFAULT 'url',
   image_request_mode TEXT NOT NULL DEFAULT 'json',
   admin_note TEXT NOT NULL DEFAULT '',
@@ -67,7 +67,7 @@ CREATE INDEX idx_projects_deleted_at ON projects (deleted_at);
 
 CREATE TABLE workflow_snapshots (
   project_id INTEGER PRIMARY KEY REFERENCES projects (id) ON DELETE CASCADE,
-  payload TEXT NOT NULL,
+  payload TEXT NOT NULL CHECK (typeof(payload) = 'text'),
   -- 乐观锁版本号，每次成功保存自增。
   version INTEGER NOT NULL DEFAULT 0,
   -- 最后一次客户端保存后的版本号；后端权威回写不更新它。

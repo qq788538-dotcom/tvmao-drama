@@ -8,6 +8,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -61,7 +62,22 @@ func Open(path string) (*sql.DB, error) {
 }
 
 // Migrate 按文件名顺序执行尚未执行过的嵌入迁移；每个文件一个事务，失败整体回滚。
+//
+// 迁移在外键关闭的专用连接上执行（PRAGMA foreign_keys=OFF → BEGIN → 执行 → foreign_key_check
+// → 提交 → 恢复 ON）。原因：SQLite 不能 ALTER COLUMN，改列要「建新表、拷数据、DROP 旧表、改名」，
+// 外键开着时 DROP 旧表会触发 ON DELETE CASCADE，悄悄删光子表行（如重建 projects 会清空所有快照）；
+// 而 PRAGMA foreign_keys 在事务内是空操作，所以迁移文件里写 PRAGMA 不起作用，必须由这里在事务外切换。
+// 提交前若 foreign_key_check 发现悬挂引用，整个迁移回滚并报错。
 func Migrate(conn *sql.DB) error {
+	sub, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		return err
+	}
+	return migrate(conn, sub)
+}
+
+// migrate 对 files 根目录下的 *.sql 按文件名顺序执行尚未执行的迁移（拆出来供测试注入迁移集）。
+func migrate(conn *sql.DB, files fs.FS) error {
 	if _, err := conn.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		name TEXT PRIMARY KEY,
 		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -87,17 +103,16 @@ func Migrate(conn *sql.DB) error {
 		return err
 	}
 
-	paths, err := fs.Glob(migrationsFS, "migrations/*.sql")
+	names, err := fs.Glob(files, "*.sql")
 	if err != nil {
 		return err
 	}
-	sort.Strings(paths)
-	for _, p := range paths {
-		name := strings.TrimPrefix(p, "migrations/")
+	sort.Strings(names)
+	for _, name := range names {
 		if applied[name] {
 			continue
 		}
-		raw, err := migrationsFS.ReadFile(p)
+		raw, err := fs.ReadFile(files, name)
 		if err != nil {
 			return err
 		}
@@ -108,16 +123,54 @@ func Migrate(conn *sql.DB) error {
 	return nil
 }
 
-func applyMigration(conn *sql.DB, name, script string) error {
-	tx, err := conn.Begin()
+func applyMigration(conn *sql.DB, name, script string) (err error) {
+	ctx := context.Background()
+	c, err := conn.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(script); err != nil {
+	defer c.Close()
+	if _, err := c.ExecContext(ctx, `PRAGMA foreign_keys=OFF`); err != nil {
+		return fmt.Errorf("迁移 %s 关闭外键: %w", name, err)
+	}
+	// 无论成败都要把外键开回去再还连接池；开不回去就报错，免得带着外键关闭的连接继续服务。
+	defer func() {
+		if _, e := c.ExecContext(ctx, `PRAGMA foreign_keys=ON`); e != nil && err == nil {
+			err = fmt.Errorf("迁移 %s 恢复外键: %w", name, e)
+		}
+	}()
+
+	tx, err := c.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, script); err != nil {
 		tx.Rollback()
 		return fmt.Errorf("执行迁移 %s: %w", name, err)
 	}
-	if _, err := tx.Exec(`INSERT INTO schema_migrations (name) VALUES (?)`, name); err != nil {
+	// 外键关闭期间迁移可能留下悬挂引用，提交前整库检查一遍。
+	fkRows, err := tx.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("迁移 %s 外键检查: %w", name, err)
+	}
+	if fkRows.Next() {
+		var table string
+		var rowid sql.NullInt64
+		var parent string
+		var fkid int64
+		_ = fkRows.Scan(&table, &rowid, &parent, &fkid)
+		fkRows.Close()
+		tx.Rollback()
+		return fmt.Errorf("迁移 %s 留下悬挂外键：表 %s 引用了不存在的 %s", name, table, parent)
+	}
+	if err := fkRows.Err(); err != nil {
+		fkRows.Close()
+		tx.Rollback()
+		return err
+	}
+	fkRows.Close()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (name) VALUES (?)`, name); err != nil {
 		tx.Rollback()
 		return fmt.Errorf("记录迁移 %s: %w", name, err)
 	}
