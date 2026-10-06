@@ -25,18 +25,62 @@ const RELEASE_ORIGINS: &str = "tauri://localhost,http://tauri.localhost";
 const DEV_ORIGIN: &str = "http://localhost:5173";
 
 /// 传给 sidecar 的参数。token 不在这里：它只走 stdin（SEC3）。
-pub fn sidecar_args(data_dir: &Path, debug: bool) -> Vec<String> {
+pub fn sidecar_args(data_dir: &Path, debug: bool, python_home: Option<&Path>) -> Vec<String> {
     let mut origins = RELEASE_ORIGINS.to_string();
     if debug {
         origins.push(',');
         origins.push_str(DEV_ORIGIN);
     }
-    vec![
+    let mut args = vec![
         "--data-dir".into(),
         data_dir.to_string_lossy().into_owned(),
         "--origins".into(),
         origins,
-    ]
+    ];
+    if let Some(home) = python_home {
+        args.push("--python-home".into());
+        args.push(home.to_string_lossy().into_owned());
+    }
+    args
+}
+
+/// 内置 Python 的解释器相对路径（占位目录里只有 README，不算“存在”）。
+fn python_interpreter(home: &Path) -> PathBuf {
+    if cfg!(windows) {
+        home.join("python.exe")
+    } else {
+        home.join("bin").join("python3")
+    }
+}
+
+/// 在候选的 resources 根目录里按顺序找 `python/`，返回第一个带解释器的绝对路径。
+/// 候选顺序：Tauri resource_dir（macOS .app 的 Contents/Resources、Windows zip 的 exe 同目录、dev 的 target/debug）；
+/// debug 构建再退到源码里的 src-tauri/resources（fetch-python.sh 的产出位置）。
+pub fn locate_python_home(roots: &[PathBuf]) -> Option<PathBuf> {
+    roots
+        .iter()
+        .map(|r| r.join("python"))
+        .find(|home| python_interpreter(home).is_file())
+        .map(|home| std::fs::canonicalize(&home).unwrap_or(home))
+}
+
+fn python_home(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(dir) = app.path().resource_dir() {
+        roots.push(dir);
+    }
+    if cfg!(debug_assertions) {
+        roots.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("resources"));
+    }
+    let found = locate_python_home(&roots);
+    match &found {
+        Some(p) => eprintln!("[miaoju] 内置 Python：{}", p.display()),
+        None => eprintln!(
+            "[miaoju] 未找到内置 Python（已查找：{:?}），不传 --python-home，脚本节点将不可用",
+            roots
+        ),
+    }
+    found
 }
 
 /// Tauri 把 externalBin 放在主程序同目录（dev：target/debug；macOS：Contents/MacOS；Windows zip：exe 同目录）。
@@ -147,9 +191,10 @@ pub fn run() {
             let make_spec: SpecFactory = Arc::new(move || {
                 let info = data_dir::resolve(&default_data_dir(&spec_app)?)?;
                 data_dir::prepare(&info)?;
+                let py = python_home(&spec_app);
                 Ok(sidecar::LaunchSpec {
                     program: sidecar_program()?,
-                    args: sidecar_args(&info.current, cfg!(debug_assertions)),
+                    args: sidecar_args(&info.current, cfg!(debug_assertions), py.as_deref()),
                 })
             });
 
@@ -226,7 +271,7 @@ mod tests {
 
     #[test]
     fn release_args_exclude_dev_origin() {
-        let args = sidecar_args(Path::new("/data"), false);
+        let args = sidecar_args(Path::new("/data"), false, None);
         assert_eq!(
             args,
             vec!["--data-dir", "/data", "--origins", "tauri://localhost,http://tauri.localhost"]
@@ -235,14 +280,57 @@ mod tests {
 
     #[test]
     fn debug_args_include_dev_origin() {
-        let args = sidecar_args(Path::new("/data"), true);
+        let args = sidecar_args(Path::new("/data"), true, None);
         assert_eq!(args[3], "tauri://localhost,http://tauri.localhost,http://localhost:5173");
     }
 
     #[test]
     fn sidecar_args_keep_cjk_and_spaces() {
-        let args = sidecar_args(Path::new("/Users/张 三/Library/Application Support/com.miaoju.desktop"), false);
+        let args = sidecar_args(Path::new("/Users/张 三/Library/Application Support/com.miaoju.desktop"), false, None);
         assert_eq!(args[1], "/Users/张 三/Library/Application Support/com.miaoju.desktop");
+    }
+
+    #[test]
+    fn args_append_python_home_when_present() {
+        let args = sidecar_args(Path::new("/data"), false, Some(Path::new("/res/python")));
+        assert_eq!(&args[4..], ["--python-home", "/res/python"]);
+        assert_eq!(args.len(), 6);
+    }
+
+    fn fake_python(root: &Path) {
+        let exe = python_interpreter(&root.join("python"));
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(exe, b"").unwrap();
+    }
+
+    fn tmp() -> PathBuf {
+        let d = std::env::temp_dir().join(format!("miaoju-py-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn locate_python_home_found_feeds_args() {
+        let (empty, full) = (tmp(), tmp());
+        fake_python(&full);
+        let home = locate_python_home(&[empty, full.clone()]).expect("应找到 python");
+        assert!(home.is_absolute() && home.ends_with("python"));
+        let args = sidecar_args(Path::new("/data"), false, Some(&home));
+        assert_eq!(args[4], "--python-home");
+        assert_eq!(args[5], home.to_string_lossy());
+    }
+
+    #[test]
+    fn locate_python_home_missing_or_placeholder_only_omits_flag() {
+        let root = tmp();
+        assert!(locate_python_home(&[root.clone()]).is_none());
+        // 只有占位 README，没有解释器，也视为不存在
+        std::fs::create_dir_all(root.join("python")).unwrap();
+        std::fs::write(root.join("python/README.md"), b"x").unwrap();
+        let py = locate_python_home(&[root]);
+        assert!(py.is_none());
+        let args = sidecar_args(Path::new("/data"), false, py.as_deref());
+        assert!(!args.iter().any(|a| a == "--python-home"));
     }
 
     #[test]
