@@ -1,13 +1,11 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode } from 'react';
 import {
-  FileJson,
   FolderOpen,
   History,
   Layout,
   MousePointer2,
   Redo2,
   Undo2,
-  Workflow,
 } from 'lucide-react';
 import { useCanvasStore } from './store';
 import { autoArrangeNodes } from './utils/autoArrange';
@@ -17,9 +15,6 @@ import {
   getCanvasOwnerToken,
 } from './persistence/canvasMutations';
 import { patchCanvasNodePositions } from '@/shared/api';
-import { useIsSuperAdmin } from '@/shared/permissions';
-import { WorkflowExportModal } from './WorkflowExportModal';
-import { WorkflowImportModal } from './WorkflowImportModal';
 
 type Tool = 'select' | 'history';
 
@@ -49,9 +44,6 @@ export function Sidebar({
 }: SidebarProps) {
   const undo = useCanvasStore((s) => s.undo);
   const redo = useCanvasStore((s) => s.redo);
-  const isSuperAdmin = useIsSuperAdmin();
-  const [exportOpen, setExportOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
   const undoLen = useCanvasStore((s) => s.undoStack.length);
   const redoLen = useCanvasStore((s) => s.redoStack.length);
 
@@ -148,35 +140,7 @@ export function Sidebar({
             反而让人以为不点就会丢东西（Ctrl+S 保留，仍可手动 flush）。
             AI 对话：入口移到了顶栏右侧的「Agent」按钮（CanvasEditorPage 顶栏），
             对标上游 Tapnow 的位置。 */}
-
-        {/* 超级管理员运维工具——对其他人不可见。把 canvas 编译成 Skill JSON
-            （导出），或从粘贴的 JSON 重建 canvas（导入）。不涉及后端 API。 */}
-        {isSuperAdmin && (
-          <>
-            <div className="w-full px-3 my-1">
-              <span className="h-px w-full bg-sidebar-border block" />
-            </div>
-            <div className="w-full flex flex-col items-center gap-1">
-              <DockBtn
-                onClick={() => setExportOpen(true)}
-                icon={<Workflow size={18} />}
-                title="导出画布为 Skill JSON（仅管理员）"
-              />
-              <DockBtn
-                onClick={() => setImportOpen(true)}
-                icon={<FileJson size={18} />}
-                title="从 Skill JSON 导入到画布（仅管理员）"
-              />
-            </div>
-          </>
-        )}
       </div>
-      {isSuperAdmin && (
-        <>
-          <WorkflowExportModal open={exportOpen} onClose={() => setExportOpen(false)} />
-          <WorkflowImportModal open={importOpen} onClose={() => setImportOpen(false)} />
-        </>
-      )}
     </div>
   );
 }
