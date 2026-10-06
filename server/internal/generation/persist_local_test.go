@@ -89,6 +89,7 @@ func TestPersistOutputs_FileURLUploadFailureIsError(t *testing.T) {
 }
 
 func TestPersistOutputs_HTTPFailureStillKeepsUpstreamURL(t *testing.T) {
+	zeroPersistRetryDelays(t)
 	// 现状语义不变：http(s) 拉不到就保留上游 URL,不报错。
 	s := &Service{storage: &captureStorage{}, httpClient: httpClientAlwaysFail()}
 	urls, ids, _, err := s.persistOutputs(context.Background(), 64, 1, nil, []string{"https://gone.example/1.png"}, 0)

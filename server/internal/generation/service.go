@@ -133,6 +133,8 @@ type Service struct {
 	pollRetryMax     time.Duration
 	// promptPreset 见 SetPromptPresetResolver。
 	promptPreset func(key string, params map[string]string) (string, bool)
+	// repersist 只供测试注入；nil 时 repersistStore() 回退到 repo（SQLiteRepository 实现 UpdateOutput）。
+	repersist RepersistStore
 }
 
 func NewService(
@@ -1351,7 +1353,7 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 				continue
 			}
 		}
-		stored, assetID, mime, err := s.persistSlot(ctx, userID, taskID, pid, i, rawURL, durationMs)
+		stored, assetID, mime, err := s.persistSlotWithRetry(ctx, userID, taskID, pid, i, rawURL, durationMs)
 		if err != nil {
 			if strings.HasPrefix(rawURL, "file://") {
 				log.Printf("generation: persist local output failed task=%d idx=%d: %v", taskID, i, err)
@@ -1359,8 +1361,7 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 			}
 			// 抓不到(未知 scheme / 超时 / 上游 4xx)或传不上:保留原始 URL、assetId 记 0,
 			// 任务照常成功——用户看到的仍是真实生成的图。日志必须留:曾经这里全静默,
-			// 线上 87 条泄漏一条痕迹都没有。补搬由 RunRepersistWorker 按 outputUrls 形态
-			// 扫出来重试,不靠这里打标记。
+			// 线上 87 条泄漏一条痕迹都没有。已自动重试 3 次;之后由用户在节点上点「重试」走 RepersistTask（spec S5）。
 			log.Printf("generation: persist output failed task=%d idx=%d url=%s: %v (kept upstream url)", taskID, i, rawURL, err)
 			out = append(out, rawURL)
 			assetIDs = append(assetIDs, 0)
