@@ -1,5 +1,5 @@
 //! sidecar 进程层：拉起进程、stdin 传 token、等 "READY <port>"、转发并保留 stderr 尾部、
-//! 通知进程退出、优雅关闭（先关 stdin，等待，再强杀）。
+//! 通知进程退出、优雅关闭（先写 SHUTDOWN 并关 stdin，等待，再强杀）。
 //! 不依赖 Tauri，单测直接用 /bin/sh 脚本扮演 sidecar。
 //!
 //! 启动协议见 server/cmd/sidecar/main.go 顶部注释：stdin 第一行是 token；
@@ -104,9 +104,17 @@ impl ProcessHandle {
         })
     }
 
-    /// 优雅关闭：先关 stdin（sidecar 约定读到 EOF 即收尾退出），最多等 grace，仍未退出再强杀。
+    /// 优雅关闭：先写一行 SHUTDOWN 再关 stdin（sidecar 读到 SHUTDOWN 或 EOF 都会收尾退出），
+    /// 最多等 grace，仍未退出再强杀。
     pub async fn shutdown(mut self, grace: Duration) -> ExitInfo {
-        self.stdin.take();
+        if let Some(mut stdin) = self.stdin.take() {
+            // 尽力而为：进程已退出时写入会失败（EPIPE），忽略即可；关 stdin 本身也是退出信号。
+            let _ = tokio::time::timeout(Duration::from_millis(500), async {
+                let _ = stdin.write_all(b"SHUTDOWN\n").await;
+                let _ = stdin.flush().await;
+            })
+            .await;
+        }
         if let Some(info) = self.wait_exit_for(grace).await {
             return info;
         }
@@ -288,6 +296,15 @@ mod process_tests {
         let info = l.handle.shutdown(Duration::from_secs(3)).await;
         assert_eq!(info.code, Some(0));
         assert!(start.elapsed() < Duration::from_secs(2), "关 stdin 后应自行退出");
+    }
+
+    #[tokio::test]
+    async fn shutdown_sends_shutdown_line_before_closing_stdin() {
+        // 只有读到 SHUTDOWN 行才以 0 退出；读到 EOF 而没有 SHUTDOWN 则以 5 退出。
+        let spec = sh(r#"read t; echo "READY 7"; while read l; do [ "$l" = "SHUTDOWN" ] && exit 0; done; exit 5"#);
+        let l = launch(&spec, TOKEN, Duration::from_secs(5)).await.unwrap();
+        let info = l.handle.shutdown(Duration::from_secs(3)).await;
+        assert_eq!(info.code, Some(0), "壳退出时应先写 SHUTDOWN 行");
     }
 
     #[tokio::test]

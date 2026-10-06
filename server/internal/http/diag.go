@@ -56,7 +56,7 @@ func (h *diagHandler) upload(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 	dir := filepath.Join(h.dir, "diag")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		nethttp.Error(w, err.Error(), nethttp.StatusInternalServerError)
 		return
 	}
