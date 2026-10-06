@@ -17,6 +17,9 @@ func TestRepositoryNovelSkillDeclaresCandidateArtifact(t *testing.T) {
 		t.Fatal("locate test file")
 	}
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(testFile), "..", "..", "..", ".."))
+	if _, err := os.Stat(filepath.Join(repoRoot, "skills", "novel-real-person-short-drama-v1")); err != nil {
+		t.Skip("仓库根目录没有 novel-real-person-short-drama-v1 Skill，跳过")
+	}
 	catalog, err := NewCatalog(filepath.Join(repoRoot, "skills"))
 	if err != nil {
 		t.Fatal(err)

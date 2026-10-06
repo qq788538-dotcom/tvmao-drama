@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/cloudwego/eino/adk/filesystem"
 	"github.com/cloudwego/eino/components/model"
@@ -53,7 +52,6 @@ print(Path("input.txt").read_text().strip())
 		t.Fatalf("unexpected exit code: %#v", result.ExitCode)
 	}
 }
-
 
 type shellModelState struct {
 	sawExecuteTool  bool

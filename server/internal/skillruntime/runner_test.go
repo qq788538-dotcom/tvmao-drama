@@ -20,7 +20,7 @@ import (
 )
 
 // TestNewRuntimeRequiresShellFactory —— 显式传 nil shell 工厂时 Run 必须报错，
-// 保证生产绝不会因为漏配沙箱而静默退回裸 bash 执行。
+// 保证生产绝不会因为漏配沙箱而静默退回不受限执行。
 func TestNewRuntimeRequiresShellFactory(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "story-style", "SKILL.md"), `---
@@ -78,7 +78,7 @@ print(Path("candidate.json").read_text())
 	}
 	state := &shellModelState{}
 	var factoryCalls int32
-	factory := func(root string) (filesystem.Shell, error) {
+	factory := func(root, _ string) (filesystem.Shell, error) {
 		atomic.AddInt32(&factoryCalls, 1)
 		return NewTrustedShell(root)
 	}
