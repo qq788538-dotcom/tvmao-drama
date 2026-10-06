@@ -10,6 +10,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,8 +19,10 @@ import (
 	"net"
 	nethttp "net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/james/huabu_studio/apps/api/internal/db"
 	apphttp "github.com/james/huabu_studio/apps/api/internal/http"
 	"github.com/james/huabu_studio/apps/api/internal/localauth"
 )
@@ -54,6 +57,20 @@ func run() error {
 		return err
 	}
 
+	conn, err := db.Open(filepath.Join(*dataDir, "data.db"))
+	if err != nil {
+		return fmt.Errorf("打开数据库: %w", err)
+	}
+	if err := db.Migrate(conn); err != nil {
+		return fmt.Errorf("迁移数据库: %w", err)
+	}
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
+	agentW, err := wireAgent(appCtx, agentWiringDeps{DB: conn})
+	if err != nil {
+		return fmt.Errorf("装配 Agent: %w", err)
+	}
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return fmt.Errorf("监听端口: %w", err)
@@ -62,6 +79,7 @@ func run() error {
 		Auth:    localauth.Config{Token: token, AllowedOrigins: splitOrigins(*origins)},
 		DataDir: *dataDir,
 		Version: version,
+		Agent:   agentW.Agent, Skills: agentW.Skills, AdminAgent: agentW.AdminAgent,
 	})
 
 	// 壳退出（含崩溃、被强杀）时 stdin 管道关闭，这里读到 EOF 就跟着退出。

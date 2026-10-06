@@ -13,7 +13,7 @@ import (
 )
 
 // wsEcho 原样回显每一帧。P0 只用它验证 WKWebView / WebView2 能带 token 连上
-// sidecar 的 WebSocket；P5 会把这条路由换成真正的 Agent hub。
+// sidecar 的 WebSocket；诊断页用它验证 WebView 能带 token 连 WebSocket。
 func wsEcho(w nethttp.ResponseWriter, r *nethttp.Request) {
 	// Origin 已由 localauth 校验过，这里不再让 websocket 库按同源规则二次拦截。
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
