@@ -354,3 +354,49 @@ func TestSnapshotProjectsContaining(t *testing.T) {
 		t.Fatalf("空子串应返回 nil，got %v", ids)
 	}
 }
+
+// 子串搜索必须精确：区分大小写，且不把 URL 里的 _ 当 LIKE 通配符。
+func TestSnapshotProjectsContainingExact(t *testing.T) {
+	repo, _ := newRepo(t)
+	a := mustCreate(t, repo, "a")
+	if _, err := repo.SaveAuthoritative(a, json.RawMessage(`{"content":"https://up.example/A_b.mp4"}`)); err != nil {
+		t.Fatal(err)
+	}
+	for _, miss := range []string{"https://up.example/a_b.mp4", "https://up.example/AXb.mp4"} {
+		if ids, err := repo.SnapshotProjectsContaining(miss); err != nil || len(ids) != 0 {
+			t.Fatalf("%q 不应命中: ids=%v err=%v", miss, ids, err)
+		}
+	}
+	if ids, err := repo.SnapshotProjectsContaining("https://up.example/A_b.mp4"); err != nil || len(ids) != 1 || ids[0] != a {
+		t.Fatalf("精确子串应命中: ids=%v err=%v", ids, err)
+	}
+}
+
+// updated_at 秒级精度，同秒创建的项目靠 id 兜底排序，翻页才不重不漏。
+func TestListForUserStablePaginationOnTies(t *testing.T) {
+	repo, conn := newRepo(t)
+	for i := 0; i < 5; i++ {
+		mustCreate(t, repo, fmt.Sprintf("p%d", i))
+	}
+	if _, err := conn.Exec(`UPDATE projects SET updated_at = '2026-01-01 00:00:00'`); err != nil {
+		t.Fatal(err)
+	}
+	var got []int64
+	for _, off := range []int{0, 2, 4} {
+		page, _, err := repo.ListForUser(uid, 2, off)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range page {
+			got = append(got, p.ID)
+		}
+	}
+	if len(got) != 5 {
+		t.Fatalf("got=%v，want 5 个", got)
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i] >= got[i-1] {
+			t.Fatalf("应按 id 降序且不重复: %v", got)
+		}
+	}
+}

@@ -25,7 +25,7 @@ type ModelConfig struct {
 	RequestTemplate  json.RawMessage `json:"requestTemplate"`
 	PollingTemplate  json.RawMessage `json:"pollingTemplate,omitempty"`
 	UISchema         json.RawMessage `json:"uiSchema,omitempty"`
-	BillingConfigRaw json.RawMessage `json:"billingConfig"` // {flatFee,freezeEstimate,items[]}，统一计费模型；解析见 BillingConfig()
+	BillingConfigRaw json.RawMessage `json:"billingConfig"`        // {flatFee,freezeEstimate,items[]}，统一计费模型；解析见 BillingConfig()
 	GenControlRaw    json.RawMessage `json:"genControl,omitempty"` // {concurrency,modules{<模块>{maxRetries,retryIntervalSec}}}，生成并发+重试统一配置；解析见 GenConcurrency()/GenRetry()
 	CreatedAt        time.Time       `json:"createdAt"`
 	UpdatedAt        time.Time       `json:"updatedAt"`

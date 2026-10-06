@@ -93,7 +93,7 @@ func (r *SQLiteRepository) ListForUser(userID int64, limit, offset int) ([]Proje
 	inner := `SELECT id, user_id, name, description, created_at, updated_at, cover_url
 	            FROM projects
 	           WHERE user_id = ? AND deleted_at IS NULL
-	           ORDER BY updated_at DESC`
+	           ORDER BY updated_at DESC, id DESC`
 	args := []any{userID}
 	if limit > 0 {
 		inner += ` LIMIT ? OFFSET ?`
@@ -121,7 +121,7 @@ func (r *SQLiteRepository) ListForUser(userID int64, limit, offset int) ([]Proje
 		  FROM (`+inner+`) p
 		  LEFT JOIN assets a ON a.project_id = p.id
 		 GROUP BY p.id
-		 ORDER BY p.updated_at DESC`, args...)
+		 ORDER BY p.updated_at DESC, p.id DESC`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -166,7 +166,7 @@ func (r *SQLiteRepository) Update(userID, projectID int64, name, description str
 	return err
 }
 
-// SetCover 落手动封面。传空串走的是 UPDATE …='' 而不是 NULL——两者在读侧被
+// SetCover 落手动封面。传空串走的是 UPDATE …=” 而不是 NULL——两者在读侧被
 // NULLIF 一视同仁，写侧统一成一种形态就不用在这里分支。
 // 存在性先于写入单独查一次（与 Update 同一模式）。不靠 UPDATE 的 RowsAffected
 // 判 ErrNotFound：MySQL 对「新值与旧值相同」的 UPDATE 报告 0 行受影响，
@@ -314,8 +314,8 @@ func (r *SQLiteRepository) MutateSnapshot(projectID int64, fn func(payload json.
 	return nextVersion, nil
 }
 
-// MutateClientSnapshot applies a user-triggered local canvas mutation under the snapshot row lock.
-// Unlike backend authoritative writeback, client mutations raise last_client_version to the new version.
+// MutateClientSnapshot 在 BEGIN IMMEDIATE 事务内应用一次用户触发的画布改动（事务开头即拿库级写锁）。
+// 与后端权威回写不同，客户端改动会把 last_client_version 提到新版本号。
 func (r *SQLiteRepository) MutateClientSnapshot(projectID int64, fn func(payload json.RawMessage) (json.RawMessage, bool, error)) (int64, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -422,16 +422,15 @@ func (r *SQLiteRepository) getSnapshotVersion(projectID int64) (int64, error) {
 	return version, nil
 }
 
-
 // SnapshotProjectsContaining 找快照 JSON 里含某个子串的项目——补搬 worker 用它定位
 // 「哪些画布存了这条上游外链」。旧 URL 可能被复制粘贴到别的画布,所以按内容搜而不是
-// 只看任务的 project_id。LIKE 全表扫:调用方是每 5 分钟、每轮几十条的后台 worker,
+// 只看任务的 project_id。instr 精确子串(区分大小写,不把 _ % 当通配符)全表扫:调用方是每 5 分钟、每轮几十条的后台 worker,
 // 快照表行数=项目数,可接受;做索引/倒排为这一个低频场景不值。
 func (r *SQLiteRepository) SnapshotProjectsContaining(substr string) ([]int64, error) {
 	if substr == "" {
 		return nil, nil
 	}
-	rows, err := r.db.Query(`SELECT project_id FROM workflow_snapshots WHERE payload LIKE '%' || ? || '%'`, substr)
+	rows, err := r.db.Query(`SELECT project_id FROM workflow_snapshots WHERE instr(payload, ?) > 0`, substr)
 	if err != nil {
 		return nil, err
 	}
