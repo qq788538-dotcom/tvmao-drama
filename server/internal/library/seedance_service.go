@@ -196,7 +196,7 @@ var ErrLocalMediaNoPublicURL = errors.New("本机素材暂无公网地址，暂�
 func (s *SeedanceService) signedURL(objectKey string) (string, error) {
 	url := s.signer.Sign(mediaProtocol + objectKey)
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return "", errors.New("无法生成素材直链，请联系管理员检查存储配置")
+		return "", errors.New("无法生成素材直链，请检查存储配置")
 	}
 	// 桌面端 MediaSigner 签出的是 http://127.0.0.1:<端口>/media/…，发给上游必然拉取失败，
 	// 且会被上游晦涩的 URL 错误掩盖根因。S12 定下公网方案前一律就地拒绝。

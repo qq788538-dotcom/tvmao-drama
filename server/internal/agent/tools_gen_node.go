@@ -83,5 +83,5 @@ func (t *CreateGenNodeTool) InvokableRun(ctx context.Context, argsJSON string, _
 		Source:       CreateGenNodeToolName,
 	})
 
-	return fmt.Sprintf("已在画布创建%s节点并预填提示词（未生成、未扣积分）。请告知用户：到节点上自选模型并手动点击生成。", kindLabel), nil
+	return fmt.Sprintf("已在画布创建%s节点并预填提示词（未生成）。请告知用户：到节点上自选模型并手动点击生成。", kindLabel), nil
 }

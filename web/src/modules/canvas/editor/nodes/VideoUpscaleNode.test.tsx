@@ -208,7 +208,7 @@ describe('VideoUpscaleNode', () => {
     expect(screen.getByRole('button', { name: '转高清' })).toBeDisabled();
   });
 
-  it('F. 后台未配转高清模型 → 「未配置转高清模型」+ 按钮 disabled', async () => {
+  it('F. 设置中未配转高清模型 → 「未配置转高清模型」+ 按钮 disabled', async () => {
     seedStoreWithSource();
     vi.mocked(fetchCanvasPostprocessConfig).mockResolvedValue(unconfigured);
     renderNode();

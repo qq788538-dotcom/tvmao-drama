@@ -192,7 +192,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
       return;
     }
     if (!cfg.models[0]) {
-      message.warning('后台未配置多角度模型');
+      message.warning('请在设置中配置多角度模型');
       return;
     }
     // 编辑类面板互斥打开（下挂面板共用节点下方空间；旋转预览虽在右侧，
@@ -209,7 +209,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
       return;
     }
     if (!cfg.models[0]) {
-      message.warning('后台未配置打光模型');
+      message.warning('请在设置中配置打光模型');
       return;
     }
     setMultiAngleOpen(false);
@@ -306,7 +306,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
       return;
     }
     if (!cfg.presets.some((p) => p.key === PORTRAIT_PRESET_KEY) || !cfg.models[0]) {
-      message.warning('后台未配置 人像质感调节 预设');
+      message.warning('请在设置中配置 人像质感调节 预设');
       return;
     }
     spawnPresetNode(PORTRAIT_PRESET_KEY);
@@ -319,7 +319,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
       return;
     }
     if (!cfg.presets.some((p) => p.key === PANORAMA_PRESET_KEY) || !cfg.models[0]) {
-      message.warning('后台未配置 720全景 预设');
+      message.warning('请在设置中配置 720全景 预设');
       return;
     }
     spawnPresetNode(PANORAMA_PRESET_KEY);
@@ -346,7 +346,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
       return;
     }
     if (!cfg.presets.length || !cfg.models[0]) {
-      message.warning('后台未配置绘图预设');
+      message.warning('请在设置中配置绘图预设');
       return;
     }
     setOpenMenu('grid');

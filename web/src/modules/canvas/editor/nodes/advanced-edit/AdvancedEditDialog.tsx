@@ -107,7 +107,7 @@ export function AdvancedEditDialog({ videoUrl, onSave, onClose }: Props) {
       composeFrame(video, [], 2, 2).toDataURL();
     } catch (err) {
       if (err instanceof DOMException && err.name === 'SecurityError') {
-        setCorsError('视频源未开启 CORS，无法抓帧，请联系管理员配置对象存储 CORS');
+        setCorsError('视频源未开启 CORS，无法抓帧，请检查视频源的 CORS 配置');
       }
     }
   };
@@ -441,7 +441,7 @@ export function AdvancedEditDialog({ videoUrl, onSave, onClose }: Props) {
                   window.setTimeout(() => video.load(), 300);
                   return;
                 }
-                setLoadError('视频加载失败——可能是浏览器缓存或链接过期，请关闭弹框重开；持续出现请联系管理员');
+                setLoadError('视频加载失败——可能是浏览器缓存或链接过期，请关闭弹框重开；持续出现请检查素材来源或网络');
               }}
             />
             <canvas

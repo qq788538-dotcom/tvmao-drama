@@ -127,7 +127,7 @@ export function TextGenPanel({ nodeId }: { nodeId: string }) {
                 </button>
               ))}
               {textModels.length === 0 && (
-                <div className="px-3 py-1.5 text-xs text-muted-foreground">后台未配置文本模型</div>
+                <div className="px-3 py-1.5 text-xs text-muted-foreground">请在设置中配置文本模型</div>
               )}
             </div>
           )}
