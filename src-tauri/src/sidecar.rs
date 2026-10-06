@@ -1,0 +1,238 @@
+// TEMP STUB (p8-t5): 与 Task 2 简报实现一致的占位文件；合并时必须被 Task 2 的真实 sidecar.rs 整体替换。
+//! sidecar 进程层：拉起进程、stdin 传 token、等 "READY <port>"、转发并保留 stderr 尾部、
+//! 通知进程退出、优雅关闭（先关 stdin，等待，再强杀）。
+//! 不依赖 Tauri，单测直接用 /bin/sh 脚本扮演 sidecar。
+//!
+//! 启动协议见 server/cmd/sidecar/main.go 顶部注释：stdin 第一行是 token；
+//! 就绪后 stdout 打印 "READY <port>"；stdin EOF 表示壳要求退出。
+
+use std::collections::VecDeque;
+use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, ChildStderr, ChildStdin, Command};
+use tokio::sync::{oneshot, watch};
+use tokio::task::JoinHandle;
+
+/// 失败原因里保留的 stderr 行数。
+pub const STDERR_TAIL_LINES: usize = 20;
+
+/// 只保留 stderr 的最后若干行（空行跳过）。
+#[derive(Debug)]
+pub struct StderrTail {
+    lines: VecDeque<String>,
+    cap: usize,
+}
+
+impl StderrTail {
+    pub fn new(cap: usize) -> Self {
+        Self { lines: VecDeque::with_capacity(cap), cap }
+    }
+
+    pub fn push(&mut self, line: &str) {
+        let line = line.trim_end();
+        if line.trim().is_empty() {
+            return;
+        }
+        if self.lines.len() == self.cap {
+            self.lines.pop_front();
+        }
+        self.lines.push_back(line.to_string());
+    }
+
+    pub fn joined(&self) -> String {
+        self.lines.iter().cloned().collect::<Vec<_>>().join("\n")
+    }
+}
+
+/// 解析 sidecar 的就绪行 "READY <port>"。
+pub fn parse_ready(line: &str) -> Option<u16> {
+    line.trim().strip_prefix("READY ")?.trim().parse().ok()
+}
+
+#[derive(Debug, Clone)]
+pub struct LaunchSpec {
+    pub program: PathBuf,
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExitInfo {
+    /// 被信号结束（含强杀）时为 None。
+    pub code: Option<i32>,
+    pub stderr_tail: String,
+}
+
+pub struct Launched {
+    pub port: u16,
+    pub handle: ProcessHandle,
+}
+
+/// 运行中的 sidecar。drop 时强杀进程（等价于 kill_on_drop）。
+pub struct ProcessHandle {
+    stdin: Option<ChildStdin>,
+    kill: Option<oneshot::Sender<()>>,
+    exited: watch::Receiver<Option<ExitInfo>>,
+}
+
+impl ProcessHandle {
+    /// 退出通知：值从 None 变成 Some 表示进程已退出。
+    pub fn exited(&self) -> watch::Receiver<Option<ExitInfo>> {
+        self.exited.clone()
+    }
+
+    async fn wait_exit_for(&self, d: Duration) -> Option<ExitInfo> {
+        let mut rx = self.exited.clone();
+        tokio::time::timeout(d, async move {
+            rx.wait_for(|v| v.is_some()).await.ok().and_then(|v| (*v).clone())
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
+    async fn kill_now(&mut self) -> ExitInfo {
+        self.stdin.take();
+        if let Some(k) = self.kill.take() {
+            let _ = k.send(());
+        }
+        self.wait_exit_for(Duration::from_secs(5)).await.unwrap_or(ExitInfo {
+            code: None,
+            stderr_tail: String::new(),
+        })
+    }
+
+    /// 优雅关闭：先关 stdin（sidecar 约定读到 EOF 即收尾退出），最多等 grace，仍未退出再强杀。
+    pub async fn shutdown(mut self, grace: Duration) -> ExitInfo {
+        self.stdin.take();
+        if let Some(info) = self.wait_exit_for(grace).await {
+            return info;
+        }
+        eprintln!("[sidecar] {:.1} 秒内未退出，强制结束", grace.as_secs_f32());
+        self.kill_now().await
+    }
+}
+
+fn with_tail(msg: String, tail: &str) -> String {
+    if tail.is_empty() {
+        msg
+    } else {
+        format!("{msg}：\n{tail}")
+    }
+}
+
+/// 按字节读一行再做有损 UTF-8 转换：非 UTF-8 输出不能让读取中断（否则管道写满会卡住 sidecar）。
+async fn next_line_lossy<R: AsyncBufRead + Unpin>(r: &mut R, buf: &mut Vec<u8>) -> Option<String> {
+    buf.clear();
+    match r.read_until(b'\n', buf).await {
+        Ok(0) | Err(_) => None,
+        Ok(_) => Some(String::from_utf8_lossy(buf).into_owned()),
+    }
+}
+
+async fn pump_stderr(stderr: ChildStderr, tail: Arc<Mutex<StderrTail>>) {
+    let mut r = BufReader::new(stderr);
+    let mut buf = Vec::new();
+    while let Some(line) = next_line_lossy(&mut r, &mut buf).await {
+        eprintln!("[sidecar] {}", line.trim_end());
+        tail.lock().unwrap().push(&line);
+    }
+}
+
+async fn wait_exit(
+    mut child: Child,
+    kill_rx: oneshot::Receiver<()>,
+    stderr_task: JoinHandle<()>,
+    tail: Arc<Mutex<StderrTail>>,
+    tx: watch::Sender<Option<ExitInfo>>,
+) {
+    let status = tokio::select! {
+        s = child.wait() => s,
+        // 收到强杀请求，或 ProcessHandle 被 drop（发送端关闭）
+        _ = kill_rx => {
+            let _ = child.start_kill();
+            child.wait().await
+        }
+    };
+    // 进程退出后 stderr 管道关闭；等读完再取尾部（孙进程占着管道时最多等 1 秒）
+    let _ = tokio::time::timeout(Duration::from_secs(1), stderr_task).await;
+    let code = status.ok().and_then(|s| s.code());
+    let stderr_tail = tail.lock().unwrap().joined();
+    let _ = tx.send(Some(ExitInfo { code, stderr_tail }));
+}
+
+/// 拉起 sidecar 并等到 READY。任何一步失败都返回可读的中文原因（带 stderr 最后几行）。
+pub async fn launch(spec: &LaunchSpec, token: &str, ready_timeout: Duration) -> Result<Launched, String> {
+    let mut cmd = Command::new(&spec.program);
+    cmd.args(&spec.args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW：不弹控制台窗口
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("无法启动 sidecar（{}）：{e}", spec.program.display()))?;
+
+    let mut stdin = child.stdin.take().expect("stdin 已设为 piped");
+    let stdout = child.stdout.take().expect("stdout 已设为 piped");
+    let stderr = child.stderr.take().expect("stderr 已设为 piped");
+
+    let tail = Arc::new(Mutex::new(StderrTail::new(STDERR_TAIL_LINES)));
+    let stderr_task = tokio::spawn(pump_stderr(stderr, tail.clone()));
+    let (exited_tx, exited_rx) = watch::channel(None);
+    let (kill_tx, kill_rx) = oneshot::channel();
+    tokio::spawn(wait_exit(child, kill_rx, stderr_task, tail, exited_tx));
+    let mut handle = ProcessHandle { stdin: None, kill: Some(kill_tx), exited: exited_rx };
+
+    // token 只走 stdin（SEC3）：参数和环境变量同机其他进程读得到。
+    let wrote = async {
+        stdin.write_all(format!("{token}\n").as_bytes()).await?;
+        stdin.flush().await?;
+        Ok::<(), std::io::Error>(())
+    }
+    .await;
+    if let Err(e) = wrote {
+        let info = handle.kill_now().await;
+        return Err(with_tail(format!("无法向 sidecar 传递 token：{e}"), &info.stderr_tail));
+    }
+    handle.stdin = Some(stdin);
+
+    let mut out = BufReader::new(stdout);
+    let ready = tokio::time::timeout(ready_timeout, async {
+        let mut buf = Vec::new();
+        while let Some(line) = next_line_lossy(&mut out, &mut buf).await {
+            if let Some(port) = parse_ready(&line) {
+                return Some(port);
+            }
+        }
+        None
+    })
+    .await;
+
+    match ready {
+        Ok(Some(port)) => {
+            // 之后继续读走 stdout，避免管道写满阻塞 sidecar
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                while next_line_lossy(&mut out, &mut buf).await.is_some() {}
+            });
+            Ok(Launched { port, handle })
+        }
+        Ok(None) => {
+            let info = handle.kill_now().await;
+            Err(with_tail("sidecar 未就绪即退出".to_string(), &info.stderr_tail))
+        }
+        Err(_) => {
+            let info = handle.kill_now().await;
+            Err(with_tail(
+                format!("sidecar 启动超时（{} 秒内未就绪）", ready_timeout.as_secs()),
+                &info.stderr_tail,
+            ))
+        }
+    }
+}
