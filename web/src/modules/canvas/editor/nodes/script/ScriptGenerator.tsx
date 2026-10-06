@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Loader2, Zap } from 'lucide-react';
+import { ArrowUp, Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import {
   getCanvasScriptStyles,
@@ -91,7 +91,6 @@ export function ScriptGenerator({ nodeId }: { nodeId: string }) {
   const candidates = stylesQuery.data?.modelCandidates ?? [];
   const model = gen.model;
   const selectedModel = candidates.find((c) => c.modelId === model);
-  const credits = selectedModel?.credits ?? 0;
   // 上游文字节点的内容也是剧本来源：连线 text → script 即接入，多个按连线顺序
   // 拼接，提交时排在输入框文本前面。selector 返回拼接串（string 相等即不重渲染）。
   const upstreamText = useCanvasStore((s) =>
@@ -214,7 +213,7 @@ export function ScriptGenerator({ nodeId }: { nodeId: string }) {
           popupMatchSelectWidth={false}
           placement="topLeft"
         />
-        {/* 选项只给模型名:右侧 ⚡ 已显示所选模型的积分,再挂到每个选项后面是重复信息。 */}
+        {/* 选项只给模型名。 */}
         <Select
           aria-label="生成模型"
           value={selectedModel ? model : undefined}
@@ -234,12 +233,6 @@ export function ScriptGenerator({ nodeId }: { nodeId: string }) {
           </span>
         ) : (
           <>
-            {credits > 0 && (
-              <span className="flex items-center gap-0.5 text-xs text-muted-foreground" title="预冻结积分，成功结算失败退回">
-                <Zap size={12} />
-                {credits}
-              </span>
-            )}
             <button
               type="button"
               data-testid="script-generator-submit"
