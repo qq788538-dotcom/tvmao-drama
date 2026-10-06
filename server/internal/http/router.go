@@ -3,7 +3,6 @@
 package http
 
 import (
-	"encoding/json"
 	nethttp "net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -33,10 +32,4 @@ func NewRouter(d Deps) nethttp.Handler {
 	r.Post("/api/v1/diag/upload", diag.upload)
 	r.Get("/api/v1/diag/media/{name}", diag.media)
 	return r
-}
-
-func writeJSON(w nethttp.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
 }
