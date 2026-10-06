@@ -59,7 +59,6 @@ export function LibraryPanel({ open, projectId, onClose }: Props) {
       message.success('上传成功');
       queryClient.invalidateQueries({ queryKey: ['library-items'] });
       queryClient.invalidateQueries({ queryKey: ['library-folders'] });
-      queryClient.invalidateQueries({ queryKey: ['me'] });
     },
     onError: (e: any) =>
       message.error(e?.response?.data?.error || e.message || '上传失败'),
@@ -150,7 +149,6 @@ export function LibraryPanel({ open, projectId, onClose }: Props) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['library-items'] });
       queryClient.invalidateQueries({ queryKey: ['library-folders'] });
-      queryClient.invalidateQueries({ queryKey: ['me'] });
       message.success('已重命名');
     },
     onError: (e: any) => message.error(e?.response?.data?.error || e.message || '重命名失败'),
@@ -162,7 +160,6 @@ export function LibraryPanel({ open, projectId, onClose }: Props) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['library-items'] });
       queryClient.invalidateQueries({ queryKey: ['library-folders'] });
-      queryClient.invalidateQueries({ queryKey: ['me'] });
       message.success('已移动');
     },
     onError: (e: any) => message.error(e?.response?.data?.error || e.message || '移动失败'),
@@ -173,7 +170,6 @@ export function LibraryPanel({ open, projectId, onClose }: Props) {
     onSuccess: (item) => {
       queryClient.invalidateQueries({ queryKey: ['library-items'] });
       queryClient.invalidateQueries({ queryKey: ['library-folders'] });
-      queryClient.invalidateQueries({ queryKey: ['me'] });
       message.success(`已删除 ${item.name || `item-${item.id}`}`);
     },
     onError: (e: any) => message.error(e?.response?.data?.error || e.message || '删除失败'),

@@ -705,3 +705,52 @@ describe('GenImageNode 故事板参考区连线编辑', () => {
     expect(useCanvasStore.getState().connections).toHaveLength(1);
   });
 });
+
+describe('GenImageNode 生成成功清掉上次的未保存标记（I-2）', () => {
+  const REMOTE = 'https://upstream.example.com/out/old.png?sig=a';
+  const LOCAL = 'http://127.0.0.1:5123/media/gen/new.png?token=t';
+
+  beforeEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+    vi.mocked(listRuntimeModels).mockResolvedValue([imageModel]);
+    vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
+    vi.mocked(api.post).mockResolvedValue({ data: { thumbs: {} } });
+  });
+
+  it('上次下载失败后重新生成成功：unsaved/genTaskId 被清，角标与重试按钮消失', async () => {
+    useCanvasStore.setState({
+      nodes: [{
+        id: 'image-1',
+        type: 'gen-image',
+        x: 0,
+        y: 0,
+        width: 280,
+        height: 280,
+        status: 'generating',
+        taskId: 88,
+        content: REMOTE,
+        settings: { history: [REMOTE], historyIndex: 0, ratio: '1:1', n: 1, unsaved: true, genTaskId: 7 },
+      }],
+      connections: [],
+      selectedIds: new Set<string>(),
+      view: { x: 0, y: 0, zoom: 1 },
+      lightbox: null,
+      readOnly: false,
+    });
+    vi.mocked(pollCanvasTaskUntilDone).mockResolvedValue({
+      status: 'succeeded',
+      outputUrls: [LOCAL],
+      assetIds: [5],
+    } as never);
+    renderNode();
+
+    await waitFor(() => expect(useCanvasStore.getState().nodes[0].content).toBe(LOCAL));
+    const n = useCanvasStore.getState().nodes[0];
+    expect(n.status).toBe('succeeded');
+    expect(n.settings?.unsaved).toBeUndefined();
+    expect(n.settings?.genTaskId).toBeUndefined();
+    expect(screen.queryByText('未保存到本地')).toBeNull();
+    expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+  });
+});

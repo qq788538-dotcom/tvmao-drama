@@ -1,5 +1,6 @@
 import { App as AntApp } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { invalidateAfterSettingsChange } from './invalidate';
 import { errorText, getConfig, putConfig, restoreConfig, type ConfigKey, type ConfigView } from './api';
 
 /** 五个画布配置页共用：读取、整份保存（草稿含全部原字段）、恢复默认。 */
@@ -13,7 +14,7 @@ export function useConfigEditor<T>(key: ConfigKey) {
     mutationFn: (value) => putConfig<T>(key, value),
     onSuccess: (v) => {
       qc.setQueryData(queryKey, v);
-      qc.invalidateQueries({ queryKey: ['settings-models'] }); // 模型页的“被引用”标记随之变化
+      invalidateAfterSettingsChange(qc); // 画布侧配置缓存 + 模型页的“被引用”标记
       message.success('已保存');
     },
     onError,
@@ -22,7 +23,7 @@ export function useConfigEditor<T>(key: ConfigKey) {
     mutationFn: () => restoreConfig<T>(key),
     onSuccess: (v) => {
       qc.setQueryData(queryKey, v);
-      qc.invalidateQueries({ queryKey: ['settings-models'] });
+      invalidateAfterSettingsChange(qc);
       message.success('已恢复默认');
     },
     onError,

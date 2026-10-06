@@ -352,7 +352,12 @@ function enqueueCanvasMutationInContext(
   context: MutationContext,
 ): Promise<void> {
   const run = async () => {
-    if (!context.ownerToken || !isMutationContextCurrent(context)) return;
+    // 已经入队的 mutation 即使在 reset（页面卸载、sidecar 重启导致整棵树重挂）之后也照常
+    // 发出：那是用户已经做完的修改，丢掉就是静默丢数据。sidecar 重启期间 axios 拦截器会
+    // 等到新端口/新 token 再发。迟到响应只是不再推进基线、不再回调（下面各处仍按
+    // isMutationContextCurrent 隔离），不会污染新会话。
+    // 还没入队的（debounce 中的 patch）由 flushNodePatch 自己按上下文判定。
+    if (!context.ownerToken) return;
 
     try {
       const result = await work();
@@ -459,13 +464,40 @@ export function geometryPatchFromNode(node: {
   };
 }
 
+/**
+ * 画布页卸载时用：先把 debounce 中的 patch 全部 flush 进队列（不 await），再 reset。
+ * 入队的任务不受 reset 影响，会照常发出——sidecar 自动重启时 SidecarGate 会卸掉整棵树，
+ * 这些修改此前会被静默丢掉（final-review I-1）。
+ */
+export function retireCanvasPersistence(): void {
+  // flushNodePatch 在第一个 await 之前就已同步入队，所以紧接着 reset 不会把它们作废。
+  void settleAllNodePatches();
+  resetCanvasPersistence();
+}
+
+/**
+ * 等已入队的 mutation 全部落定（成功或失败都算），最多等 timeoutMs。重挂后的画布页
+ * 先等它再拉快照，保证上一棵树留下的修改在新快照里看得到，不会被快照覆盖掉。
+ * 超时就放行：宁可少等，也不能让页面一直卡在加载。
+ */
+export function waitForCanvasMutationsIdle(timeoutMs = 15_000): Promise<void> {
+  const drained = queue.then(() => undefined, () => undefined);
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs);
+    void drained.then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 export function resetCanvasPersistence(): void {
   setCanvasOpSink(null);
   // 基线是「服务端某个项目的节点状态」，跨项目/跨会话残留会让新画布对不存在的
   // 节点发 patch。清空后即回到「无基线 → 整节点 upsert」的安全默认。
   nodeBaselines = new Map();
   ownerToken = '';
-  queue = Promise.resolve();
+  // 不重置 queue：已入队的任务继续按序发出，新会话的 mutation 排在它们后面，顺序不乱。
   config = { projectID: null };
   lifecycleGeneration += 1;
   for (const timer of nodePatchTimers.values()) {
@@ -478,6 +510,8 @@ export function resetCanvasPersistence(): void {
 
 export function resetCanvasPersistenceForTest(): void {
   resetCanvasPersistence();
+  // 测试之间彻底隔离：上一个用例故意挂起的任务不能拖住下一个用例的队列。
+  queue = Promise.resolve();
 }
 
 export function emitOwnerLostForTest(err: unknown): void {

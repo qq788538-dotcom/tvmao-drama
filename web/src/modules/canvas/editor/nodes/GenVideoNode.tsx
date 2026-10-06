@@ -278,6 +278,9 @@ export function GenVideoNode({ id }: { id: string }) {
                 pendingGen: undefined,
                 assetId: finalTask.assetIds?.[0] || undefined,
                 kind: 'video',
+                // 新结果属于这次任务：清掉上次下载失败留下的标记，否则重试会拿旧任务覆盖新结果。
+                unsaved: undefined,
+                genTaskId: undefined,
               });
               updateNode(id, { content: url, status: 'succeeded', error: undefined, taskId: undefined });
             } else {

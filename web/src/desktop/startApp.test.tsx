@@ -9,6 +9,7 @@ import {
   resetSidecarSessionForTest,
 } from '@/shared/sidecarSession';
 import { queryClient } from '@/shared/queryClient';
+import { useAgentStore } from '@/modules/canvas/editor/agent/agentStore';
 
 // App 本身（画布页、项目列表）不在本文件的测试范围，用占位替代；记录挂载次数，
 // 用来确认 sidecar 换会话后整棵页面树重新挂载（旧页面里的地址、token、媒体 URL 全部作废）。
@@ -116,6 +117,11 @@ describe('startApp', () => {
     const mountsBefore = appMounts.mock.calls.length; // StrictMode 下开发模式会挂两次，只比相对值
     // 旧会话下拉到的快照：里面的媒体 URL 带着旧 token，重启后会 401。
     queryClient.setQueryData(['snapshot', 14], { payload: { nodes: [{ src: 'http://127.0.0.1:50001/media/a?token=old' }] } });
+    // 旧会话下翻页加载过的 Agent 消息（原图链接同样带旧 token）。
+    useAgentStore.setState({
+      messages: { t1: [{ id: 'm1', thread_id: 't1', role: 'assistant', content: 'x', createdAt: '2026-01-01T00:00:00Z' } as never] },
+      pageState: { t1: { hasMore: true, loadingOlder: false } },
+    });
 
     await waitFor(() => expect(statusCb).not.toBeNull());
     // 壳的 server_info 在 sidecar 启动中会一直等到就绪。
@@ -134,6 +140,8 @@ describe('startApp', () => {
 
     expect(getSidecarSession()).toEqual({ port: 50002, token: 'new' });
     expect(queryClient.getQueryData(['snapshot', 14])).toBeUndefined();
+    expect(useAgentStore.getState().messages).toEqual({});
+    expect(useAgentStore.getState().pageState).toEqual({});
     expect(appMounts.mock.calls.length).toBeGreaterThan(mountsBefore);
   });
 

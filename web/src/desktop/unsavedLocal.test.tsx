@@ -1,5 +1,5 @@
 import { App as AntApp } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '@/shared/api';
@@ -51,8 +51,15 @@ afterEach(() => {
 });
 
 describe('isUnsavedNode', () => {
-  it('快照里带 settings.unsaved 的节点算未保存', () => {
-    expect(isUnsavedNode(genNode({ content: LOCAL, settings: { unsaved: true, genTaskId: 3 } }))).toBe(true);
+  it('快照里带 settings.unsaved 且内容不是本机地址的节点算未保存', () => {
+    // 非生成类节点只能靠 unsaved 标记认出来
+    expect(isUnsavedNode(genNode({ type: 'input-image', settings: { unsaved: true, genTaskId: 3 } }))).toBe(true);
+  });
+
+  // I-2：页面开着重新生成拿到本地地址后，store 里可能残留旧的 unsaved 标记。
+  it('unsaved 标记残留但内容已是本机地址（sidecar media 或 media://）时不算', () => {
+    expect(isUnsavedNode(genNode({ content: LOCAL, settings: { unsaved: true, genTaskId: 3 } }))).toBe(false);
+    expect(isUnsavedNode(genNode({ content: 'media://gen/1.png', settings: { unsaved: true, genTaskId: 3 } }))).toBe(false);
   });
 
   // 页面开着时生成结果靠轮询回填，store 里没有 unsaved 键：按「生成类节点 + 成功 + 外链」认定。
@@ -166,6 +173,26 @@ describe('useUnsavedLocalBadge', () => {
     setNodes([genNode({ content: LOCAL })]);
     renderBadge();
     expect(screen.queryByText('未保存到本地')).toBeNull();
+  });
+
+  // I-2：上次下载失败（unsaved + genTaskId A），不点重试直接重新生成并成功拿到本地地址。
+  // 角标必须消失、重试按钮不可用，否则重试会拿任务 A 的图把新结果换掉。
+  it('先失败后又重新生成成功：角标消失，没有可点的重试按钮', async () => {
+    setNodes([genNode({ settings: { unsaved: true, genTaskId: 42, history: [REMOTE] } })]);
+    const post = vi.spyOn(api, 'post');
+    renderBadge();
+    expect(screen.getByText('未保存到本地')).toBeInTheDocument();
+
+    // 模拟重新生成成功回填：内容换成本地地址，即使 unsaved/genTaskId 没被清也不能再挂角标。
+    act(() => {
+      useCanvasStore.getState().updateNode('g1', { content: LOCAL });
+      useCanvasStore.getState().updateNodeSettings('g1', { history: [REMOTE, LOCAL] });
+    });
+
+    await waitFor(() => expect(screen.queryByText('未保存到本地')).toBeNull());
+    expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+    expect(post).not.toHaveBeenCalled();
+    expect(useCanvasStore.getState().nodes[0].content).toBe(LOCAL);
   });
 
   it('重试成功：提示「已保存到本地」，角标消失', async () => {

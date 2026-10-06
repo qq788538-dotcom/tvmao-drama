@@ -11,8 +11,10 @@ import {
   onCanvasOwnerLost,
   resetCanvasPersistence,
   resetCanvasPersistenceForTest,
+  retireCanvasPersistence,
   scheduleNodePatch,
   setCanvasOwnerToken,
+  waitForCanvasMutationsIdle,
 } from './canvasMutations';
 
 describe('canvasMutations', () => {
@@ -255,6 +257,73 @@ describe('canvasMutations', () => {
 
     expect(oldOnError).not.toHaveBeenCalled();
     expect(newOnError).not.toHaveBeenCalled();
+  });
+
+  // final-review I-1：sidecar 自动重启 → SidecarGate 卸掉整棵树 → 画布页卸载。
+  describe('页面卸载（sidecar 重启）时不丢修改', () => {
+    it('retire 会把 debounce 中的 patch 立即入队，reset 之后照常发出', async () => {
+      const patchNode = vi.fn(async () => ({ version: 2 }));
+      const onVersion = vi.fn();
+      configureCanvasPersistence({ projectID: 42, patchNode, onVersion });
+      setCanvasOwnerToken('owner-token');
+      scheduleNodePatch('n1', { settings: { prompt: '刚打的字' } });
+
+      retireCanvasPersistence();
+      expect(getCanvasOwnerToken()).toBe('');
+      await vi.advanceTimersByTimeAsync(1500);
+      await waitForCanvasMutationsIdle();
+
+      expect(patchNode).toHaveBeenCalledTimes(1);
+      expect(patchNode).toHaveBeenCalledWith(42, 'owner-token', 'n1', { settings: { prompt: '刚打的字' } });
+      // 旧会话的回调不再触发
+      expect(onVersion).not.toHaveBeenCalled();
+    });
+
+    it('reset 不作废已入队、还在排队的 mutation（拦截器会等到新端口再发）', async () => {
+      setCanvasOwnerToken('owner-token');
+      const order: string[] = [];
+      let releaseFirst!: () => void;
+      void enqueueCanvasMutation(async () => {
+        order.push('first');
+        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+      });
+      void enqueueCanvasMutation(async () => { order.push('second'); });
+      await Promise.resolve();
+
+      resetCanvasPersistence();
+      // 新会话的 mutation 排在旧任务后面
+      setCanvasOwnerToken('owner-token');
+      void enqueueCanvasMutation(async () => { order.push('third'); });
+      releaseFirst();
+      await waitForCanvasMutationsIdle();
+
+      expect(order).toEqual(['first', 'second', 'third']);
+    });
+
+    it('waitForCanvasMutationsIdle 等到队列排空才 resolve', async () => {
+      setCanvasOwnerToken('owner-token');
+      let release!: () => void;
+      void enqueueCanvasMutation(() => new Promise<void>((resolve) => { release = resolve; }));
+      let idle = false;
+      void waitForCanvasMutationsIdle().then(() => { idle = true; });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(idle).toBe(false);
+
+      release();
+      await vi.waitFor(() => expect(idle).toBe(true));
+    });
+
+    it('waitForCanvasMutationsIdle 超时放行，不让页面卡在加载', async () => {
+      setCanvasOwnerToken('owner-token');
+      void enqueueCanvasMutation(() => new Promise<void>(() => {}));
+      let idle = false;
+      void waitForCanvasMutationsIdle(1000).then(() => { idle = true; });
+      await vi.advanceTimersByTimeAsync(999);
+      expect(idle).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(idle).toBe(true);
+    });
   });
 
   it('subscribes and unsubscribes owner-lost listeners', () => {

@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { App as AntApp, Button, ConfigProvider, Layout, Menu } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/shared/queryClient';
+import { applySettingsQueryDefaults } from './invalidate';
 import { settingsTheme } from './theme';
 import { GeneralPage } from './pages/GeneralPage';
 import { ModelCenterPage } from './pages/ModelCenterPage';
@@ -36,10 +38,12 @@ const PAGES: Record<SectionKey, () => ReactNode> = {
   'multi-angle': () => <MultiAnglePage />,
   light: () => <LightControlPage />,
   script: () => <ScriptConfigPage />,
-  diag: () => <DiagPage />,
+  diag: () => <DiagPage embedded />,
 };
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+// 用全局 queryClient（final-review I-3）：设置改完能让画布侧缓存失效，sidecar 重启换会话时
+// 也会被 adoptSidecarSession 一起清掉（M-3）。设置页自己的查询沿用原来的默认行为。
+applySettingsQueryDefaults(queryClient);
 
 function menuItems() {
   const groups = [...new Set(SECTIONS.map((s) => s.group))];

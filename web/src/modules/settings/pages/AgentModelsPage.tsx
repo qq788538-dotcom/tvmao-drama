@@ -1,6 +1,7 @@
 import { App as AntApp, Card, Select, Space, Table, Tag, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { errorText, getAgentModels, restoreAgentModel, switchAgentModel, type AgentModelItem, type AgentModelsView } from '../api';
+import { invalidateAfterSettingsChange } from '../invalidate';
 import { RestoreDefaultButton } from '../components/RestoreDefaultButton';
 import { candidateOptions, roleLabel } from './agentRoles';
 
@@ -10,7 +11,7 @@ export function AgentModelsPage() {
   const { data, isLoading } = useQuery({ queryKey: ['settings-agent-models'], queryFn: getAgentModels });
   const onDone = (v: AgentModelsView, msg: string) => {
     qc.setQueryData(['settings-agent-models'], v);
-    qc.invalidateQueries({ queryKey: ['settings-models'] }); // 模型页“被使用”标记
+    invalidateAfterSettingsChange(qc); // 模型页“被使用”标记、画布侧依赖模型的缓存
     message.success(msg);
   };
   const sw = useMutation({

@@ -10,7 +10,11 @@ import {
   type CheckResult,
 } from './checks';
 
-export function DiagPage() {
+/**
+ * embedded：嵌在设置页「环境诊断」分区里时为 true——不再显示自己的返回链接和大标题，
+ * 也不占满 100vh（设置页已有侧栏、返回按钮和滚动容器，否则会重复并出现双滚动条）。
+ */
+export function DiagPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [info, setInfo] = useState<ServerInfo | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [results, setResults] = useState<CheckResult[]>([]);
@@ -21,7 +25,7 @@ export function DiagPage() {
     getServerInfo().then(setInfo, (e) => setStartError(String(e)));
   }, []);
 
-  // sidecar 没起来：显示原因和提示，而不是白屏（壳不会自动重启 sidecar，重试无意义）。
+  // sidecar 没起来：显示原因和提示，而不是白屏（壳会自动重启 sidecar，多次失败后才会走到这里）。
   if (startError) {
     return (
       <div style={{ padding: 24 }}>
@@ -62,9 +66,15 @@ export function DiagPage() {
   const failed = results.filter((r) => !r.ok).length;
 
   return (
-    <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', height: '100vh', overflow: 'auto', boxSizing: 'border-box' }}>
-      <Link to="/">← 返回画布</Link>
-      <h2>喵剧AI · 环境诊断</h2>
+    <div
+      style={
+        embedded
+          ? { fontFamily: 'system-ui, sans-serif' }
+          : { padding: 24, fontFamily: 'system-ui, sans-serif', height: '100vh', overflow: 'auto', boxSizing: 'border-box' }
+      }
+    >
+      {!embedded && <Link to="/">← 返回画布</Link>}
+      {!embedded && <h2>喵剧AI · 环境诊断</h2>}
       <p>本地服务端口：{info.port}</p>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         <button disabled={busy} onClick={runBasic}>
