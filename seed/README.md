@@ -5,7 +5,7 @@
 
 | 文件 | 行数 | 说明 |
 |---|---|---|
-| `model_configs.jsonl` | 30 | 模型中心（text 4 / image 8 / video 16 / audio 2；2026-10-06 删除 17 个：工作流专用与停用的 id 2、3、5、6、7、14、40、45，以及 cm-seedance 系列 id 21–26、32–34）。保留原始 `id`，`agent_tools.source_model_id` 引用它 |
+| `model_configs.jsonl` | 29 | 模型中心（text 4 / image 7 / video 16 / audio 2；2026-10-06 删除 18 个：工作流专用与停用的 id 2、3、5、6、7、8、14、40、45，以及 cm-seedance 系列 id 21–26、32–34）。保留原始 `id`，`agent_tools.source_model_id` 引用它 |
 | `settings.jsonl` | 6 | 只含 `base_domain`、`canvas_light_control`、`canvas_multi_angle`、`canvas_postprocess_config`、`canvas_script_config`、`gen_image_prompt_presets` |
 | `agent_backbone_models.jsonl` | 4 | Agent 使用的大模型（planner / utility / subagent_audio / subagent_video） |
 | `agent_tools.jsonl` | 4 | Agent 工具目录 |
