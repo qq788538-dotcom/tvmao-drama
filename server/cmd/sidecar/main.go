@@ -64,6 +64,7 @@ func main() {
 func run() error {
 	dataDir := flag.String("data-dir", "", "数据目录（必填）")
 	origins := flag.String("origins", defaultOrigins, "允许的 Origin，逗号分隔")
+	pythonHome := flag.String("python-home", "", "内置 Python 目录（缺省按 sidecar 位置查找）")
 	flag.Parse()
 	if *dataDir == "" {
 		return errors.New("缺少 --data-dir")
@@ -141,6 +142,14 @@ func run() error {
 		return fmt.Errorf("装配 Agent: %w", err)
 	}
 	a.deps.Agent, a.deps.Skills, a.deps.AdminAgent = agentW.Agent, agentW.Skills, agentW.AdminAgent
+
+	// P6 脚本节点：找不到内置 Python 时只记警告（任务执行时报错），不阻断启动。
+	canvasScript, err := wireCanvasScript(ctx, conn, *dataDir, *pythonHome)
+	if err != nil {
+		ln.Close()
+		return fmt.Errorf("装配脚本节点: %w", err)
+	}
+	a.deps.CanvasScript = canvasScript
 	// 生成结果回写画布后经 Agent Hub 推 canvas_changed（P1c 留的注入点）。
 	a.gen.CanvasGen.SetChangeNotifier(agentW.Hub)
 

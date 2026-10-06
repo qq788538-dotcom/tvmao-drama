@@ -51,6 +51,9 @@ type Deps struct {
 	Agent      *AgentHandler
 	Skills     *SkillsHandler
 	AdminAgent *AdminAgentHandler
+
+	// CanvasScript 脚本节点接口（P6）；nil 时不注册，便于只测其他路由。
+	CanvasScript *CanvasScriptHandler
 }
 
 // MustWire 在启动期校验业务 handler 都已装配，缺一个就 panic。路由按字段注册，漏装配不会编译失败，
@@ -210,6 +213,13 @@ func NewRouter(d Deps) nethttp.Handler {
 				r.Get("/admin/agent/backbone-models", d.AdminAgent.List)
 				r.Put("/admin/agent/backbone-models/{id}", d.AdminAgent.Update)
 				r.Post("/admin/agent/backbone-models/{id}/reset", d.AdminAgent.Reset)
+			}
+
+			// ── P6：脚本节点 ──
+			if d.CanvasScript != nil {
+				r.Get("/canvas-script/styles", d.CanvasScript.Styles)
+				r.Post("/canvas-script-tasks", d.CanvasScript.Submit)
+				r.Get("/canvas-script-tasks/{taskID}", d.CanvasScript.Status)
 			}
 		})
 	})
