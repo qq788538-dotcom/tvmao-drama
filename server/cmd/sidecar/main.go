@@ -10,6 +10,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,8 +19,10 @@ import (
 	"net"
 	nethttp "net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/james/huabu_studio/apps/api/internal/db"
 	apphttp "github.com/james/huabu_studio/apps/api/internal/http"
 	"github.com/james/huabu_studio/apps/api/internal/localauth"
 )
@@ -40,6 +43,7 @@ func main() {
 func run() error {
 	dataDir := flag.String("data-dir", "", "数据目录（必填）")
 	origins := flag.String("origins", defaultOrigins, "允许的 Origin，逗号分隔")
+	pythonHome := flag.String("python-home", "", "内置 Python 目录（缺省按 sidecar 位置查找）")
 	flag.Parse()
 	if *dataDir == "" {
 		return errors.New("缺少 --data-dir")
@@ -54,14 +58,29 @@ func run() error {
 		return err
 	}
 
+	conn, err := db.Open(filepath.Join(*dataDir, "data.db"))
+	if err != nil {
+		return fmt.Errorf("打开数据库: %w", err)
+	}
+	if err := db.Migrate(conn); err != nil {
+		return fmt.Errorf("数据库迁移: %w", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	canvasScript, err := wireCanvasScript(ctx, conn, *dataDir, *pythonHome)
+	if err != nil {
+		return err
+	}
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return fmt.Errorf("监听端口: %w", err)
 	}
 	handler := apphttp.NewRouter(apphttp.Deps{
-		Auth:    localauth.Config{Token: token, AllowedOrigins: splitOrigins(*origins)},
-		DataDir: *dataDir,
-		Version: version,
+		Auth:         localauth.Config{Token: token, AllowedOrigins: splitOrigins(*origins)},
+		DataDir:      *dataDir,
+		Version:      version,
+		CanvasScript: canvasScript,
 	})
 
 	// 壳退出（含崩溃、被强杀）时 stdin 管道关闭，这里读到 EOF 就跟着退出。
