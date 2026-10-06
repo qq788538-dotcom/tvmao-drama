@@ -4,7 +4,7 @@ import { useConfigEditor } from '../useConfigEditor';
 import { deepClone, updateAt } from '../draft';
 import { ModelSelect } from '../components/ModelSelect';
 import { RestoreDefaultButton } from '../components/RestoreDefaultButton';
-import { postprocessErrors, upscaleMode, type PostprocessConfig } from './candidates';
+import { postprocessErrors, postprocessPayload, upscaleMode, type PostprocessConfig } from './candidates';
 
 export function PostprocessPage() {
   const { message } = AntApp.useApp();
@@ -19,7 +19,7 @@ export function PostprocessPage() {
   const onSave = () => {
     const errs = postprocessErrors(draft);
     if (errs.length) return message.error(errs[0]);
-    save.mutate(draft);
+    save.mutate(postprocessPayload(data?.value ?? draft, draft));
   };
   return (
     <Card
@@ -33,8 +33,8 @@ export function PostprocessPage() {
         <Form.Item label="去字幕">
           <Space direction="vertical" style={{ width: '100%' }}>
             {(draft.subtitleRemovalModels ?? []).map((b, i) => (
-              <Space key={i} wrap>
-                <ModelSelect type="video" value={b.modelId} onChange={(v) => set(['subtitleRemovalModels', i, 'modelId'], v)} />
+              <Space key={b.modelId} wrap>
+                <Typography.Text code>{b.modelId}</Typography.Text>
                 <Input style={{ width: 140 }} placeholder="显示名" value={b.label} onChange={(e) => set(['subtitleRemovalModels', i, 'label'], e.target.value)} />
                 <Input style={{ width: 220 }} placeholder="说明" value={b.subtitle ?? ''} onChange={(e) => set(['subtitleRemovalModels', i, 'subtitle'], e.target.value)} />
                 {b.isTimeLimited && <Tag>限时（只读）</Tag>}
