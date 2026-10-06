@@ -2038,6 +2038,8 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tokio",
  "uuid",
+ "webview2-com",
+ "windows",
 ]
 
 [[package]]
