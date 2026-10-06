@@ -1,10 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { DiagPage } from './diag/DiagPage';
+import 'antd/dist/reset.css';
+import { SettingsRoot } from './modules/settings/SettingsRoot';
 
-// P0 阶段入口只有诊断页；P3 迁移画布后，诊断页移到「设置 → 环境诊断」。
+// P4 分支临时入口：直接进设置页（环境诊断在 设置 → 环境诊断）。
+// P3a 合并后以 P3a 的入口为准，设置页挂在 /settings（见 P4 计划 Task 15）。
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <DiagPage />
+    <SettingsRoot />
   </React.StrictMode>,
 );
