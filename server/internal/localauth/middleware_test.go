@@ -119,3 +119,102 @@ func TestBareOptionsRequiresToken(t *testing.T) {
 		t.Fatalf("code = %d, want 401", got)
 	}
 }
+
+const testMediaToken = "fedcba9876543210fedcba9876543210"
+
+func doWith(t *testing.T, cfg Config, method, target string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	h := Middleware(cfg)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	req := httptest.NewRequest(method, target, nil)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func mediaCfg() Config {
+	return Config{Token: testToken, MediaToken: testMediaToken, AllowedOrigins: []string{"tauri://localhost"}}
+}
+
+// P0 遗留：TrimPrefix 不校验前缀，"Basic xxx" 会挡住 ?token= 回退。
+func TestNonBearerAuthorizationFallsBackToQuery(t *testing.T) {
+	rec := do(t, "GET", "/x?token="+testToken, map[string]string{"Authorization": "Basic Zm9vOmJhcg=="})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d, want 200", rec.Code)
+	}
+}
+
+func TestAuthorizationWithoutBearerPrefixRejected(t *testing.T) {
+	rec := do(t, "GET", "/x", map[string]string{"Authorization": testToken})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("code = %d, want 401", rec.Code)
+	}
+}
+
+// 媒体 URL 会出现在 DOM、日志和 Agent 提示词里：它带的 token 只能读媒体，不能调接口。
+func TestMediaTokenOnlyOpensMediaReads(t *testing.T) {
+	cfg := mediaCfg()
+	cases := []struct {
+		method, target string
+		headers        map[string]string
+		want           int
+	}{
+		{"GET", "/media/u1/a.png?token=" + testMediaToken, nil, http.StatusOK},
+		{"HEAD", "/media/u1/a.png?token=" + testMediaToken, nil, http.StatusOK},
+		{"GET", "/api/v1/ping?token=" + testMediaToken, nil, http.StatusUnauthorized},
+		{"POST", "/media/u1/a.png?token=" + testMediaToken, nil, http.StatusUnauthorized},
+		{"GET", "/api/v1/projects", map[string]string{"Authorization": "Bearer " + testMediaToken}, http.StatusUnauthorized},
+		{"GET", "/mediax/a.png?token=" + testMediaToken, nil, http.StatusUnauthorized},
+		{"GET", "/media/u1/a.png?token=" + testToken, nil, http.StatusOK}, // 接口 token 也能读媒体
+	}
+	for _, c := range cases {
+		if got := doWith(t, cfg, c.method, c.target, c.headers).Code; got != c.want {
+			t.Errorf("%s %s: code = %d, want %d", c.method, c.target, got, c.want)
+		}
+	}
+}
+
+func TestEmptyMediaTokenNeverMatches(t *testing.T) {
+	cfg := Config{Token: testToken, AllowedOrigins: []string{"tauri://localhost"}}
+	if got := doWith(t, cfg, "GET", "/media/u1/a.png?token=", nil).Code; got != http.StatusUnauthorized {
+		t.Fatalf("code = %d, want 401", got)
+	}
+}
+
+// 沙箱 iframe、file:// 页面发出的请求 Origin 是字面量 "null"。
+func TestOriginNullRejected(t *testing.T) {
+	rec := do(t, "GET", "/x", map[string]string{"Authorization": "Bearer " + testToken, "Origin": "null"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("code = %d, want 403", rec.Code)
+	}
+}
+
+func TestWrongTokenWithAllowedOriginRejected(t *testing.T) {
+	rec := do(t, "GET", "/x", map[string]string{"Authorization": "Bearer wrong", "Origin": "tauri://localhost"})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("code = %d, want 401", rec.Code)
+	}
+	if rec.Header().Get("Access-Control-Allow-Origin") != "tauri://localhost" {
+		t.Fatal("白名单来源的 401 也要带 CORS 头，前端才能读到状态码")
+	}
+}
+
+func TestPreflightForeignOriginRejectedEvenWithToken(t *testing.T) {
+	rec := do(t, "OPTIONS", "/x", map[string]string{
+		"Origin":                        "https://evil.example",
+		"Access-Control-Request-Method": "POST",
+		"Authorization":                 "Bearer " + testToken,
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("code = %d, want 403", rec.Code)
+	}
+}
+
+func TestPreflightSetsMaxAge(t *testing.T) {
+	rec := do(t, "OPTIONS", "/x", map[string]string{"Origin": "tauri://localhost", "Access-Control-Request-Method": "PATCH"})
+	if rec.Code != http.StatusNoContent || rec.Header().Get("Access-Control-Max-Age") != "600" {
+		t.Fatalf("code=%d max-age=%q", rec.Code, rec.Header().Get("Access-Control-Max-Age"))
+	}
+}
