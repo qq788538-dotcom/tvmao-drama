@@ -272,6 +272,33 @@ it("captures the current camera preview from the properties tab and shows it in 
   expect(screen.getByText("机位01-截图01")).toBeInTheDocument();
 });
 
+it("sets crossorigin on sidecar capture thumbnails but not data URLs", () => {
+  const sidecarUrl = "http://127.0.0.1:54321/media/u1/shot.png?token=abc";
+  seedCameraCapture();
+  useDirectorStore.setState((state) => ({
+    ...state,
+    project: {
+      ...state.project,
+      cameras: state.project.cameras.map((camera) =>
+        camera.id === "cam_1"
+          ? {
+              ...camera,
+              captures: [
+                ...(camera.captures ?? []),
+                { id: "cam_1-capture-02", index: 2, name: "机位01-截图02", dataUrl: sidecarUrl },
+              ],
+            }
+          : camera
+      ),
+    },
+  }));
+  render(<CameraPanel />);
+  fireEvent.click(screen.getByRole("button", { name: "摄像机截图" }));
+
+  expect(screen.getByAltText("机位01-截图02 缩略图")).toHaveAttribute("crossorigin", "anonymous");
+  expect(screen.getByAltText("机位01-截图01 缩略图")).not.toHaveAttribute("crossorigin");
+});
+
 it("keeps the camera capture section visible at the bottom of the properties tab", () => {
   render(<CameraPanel />);
 

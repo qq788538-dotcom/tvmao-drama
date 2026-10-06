@@ -296,6 +296,17 @@ func TestE2EMediaCORSAndLocalOwnerToken(t *testing.T) {
 		t.Fatalf("media CORS: code=%d ACAO=%q", mresp.StatusCode, mresp.Header.Get("Access-Control-Allow-Origin"))
 	}
 
+	// 无 Origin 的请求同样必须回 Vary: Origin，避免缓存投毒。
+	nreq, _ := http.NewRequest(http.MethodGet, mediaURL, nil)
+	nresp, err := http.DefaultClient.Do(nreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nresp.Body.Close()
+	if nresp.StatusCode != http.StatusOK || !strings.Contains(strings.Join(nresp.Header.Values("Vary"), ","), "Origin") {
+		t.Fatalf("media no-Origin Vary: code=%d Vary=%v", nresp.StatusCode, nresp.Header.Values("Vary"))
+	}
+
 	resp, b = e.callJSON(t, http.MethodPost, fmt.Sprintf("/api/v1/projects/%d/canvas/nodes", proj.ID),
 		`{"ownerToken":"local","node":{"id":"n1","type":"text","content":"hi"}}`)
 	if resp.StatusCode != http.StatusOK {

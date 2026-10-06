@@ -3,6 +3,7 @@ package localauth
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -216,5 +217,17 @@ func TestPreflightSetsMaxAge(t *testing.T) {
 	rec := do(t, "OPTIONS", "/x", map[string]string{"Origin": "tauri://localhost", "Access-Control-Request-Method": "PATCH"})
 	if rec.Code != http.StatusNoContent || rec.Header().Get("Access-Control-Max-Age") != "600" {
 		t.Fatalf("code=%d max-age=%q", rec.Code, rec.Header().Get("Access-Control-Max-Age"))
+	}
+}
+
+// 无 Origin 的请求（如不带 crossOrigin 的 <img>）也必须回 Vary: Origin，
+// 否则缓存会把无 ACAO 的响应复用给之后带 Origin 的 CORS 请求。
+func TestNoOriginStillVaryOrigin(t *testing.T) {
+	rec := do(t, "GET", "/x", map[string]string{"Authorization": "Bearer " + testToken})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Values("Vary"); !strings.Contains(strings.Join(got, ","), "Origin") {
+		t.Fatalf("Vary = %v, want contains Origin", got)
 	}
 }
