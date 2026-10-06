@@ -1,8 +1,29 @@
 // 前端与本地 sidecar 之间的唯一入口：端口和 token 只从这里取。
 // sidecar 的端口每次启动都不同，所以**任何地方都不要把拼好的地址存起来**
 // ——存进画布的话，重启后全部失效（spec S3）。
-import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { listen as tauriListen, type UnlistenFn } from '@tauri-apps/api/event';
+
+/** 不在 Tauri 壳里（纯浏览器调试）：没有 sidecar 可连。 */
+export class NotTauriError extends Error {
+  constructor() {
+    super('请在桌面应用中运行');
+    this.name = 'NotTauriError';
+  }
+}
+
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+function invoke<T>(...a: [cmd: string, args?: Record<string, unknown>]): Promise<T> {
+  return isTauri() ? tauriInvoke<T>(...a) : Promise.reject(new NotTauriError());
+}
+
+function listen<T>(name: string, cb: (e: { payload: T }) => void): Promise<UnlistenFn> {
+  // 纯浏览器没有事件通道：返回空的 unlisten，不 reject
+  return isTauri() ? tauriListen<T>(name, cb) : Promise.resolve(() => undefined);
+}
 
 export interface ServerInfo {
   port: number;

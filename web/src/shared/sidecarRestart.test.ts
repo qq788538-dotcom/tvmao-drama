@@ -29,6 +29,7 @@ describe('sidecar 重启后 REST 请求换新会话', () => {
   let seen: InternalAxiosRequestConfig[] = [];
 
   beforeEach(() => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {}; // 模拟 Tauri 环境
     invoke.mockReset();
     handlers = [];
     resetServerInfoForTest();

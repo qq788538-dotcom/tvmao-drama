@@ -6,6 +6,7 @@
 import { Fragment, useEffect, useReducer, useState, type ReactNode } from 'react';
 import {
   DataDirSwitchError,
+  NotTauriError,
   getDataDir,
   getServerInfo,
   getSidecarStatus,
@@ -46,7 +47,7 @@ export function SidecarGate({ children }: { children: (info: ServerInfo) => Reac
     const epoch = state.epoch;
     getServerInfo().then(
       (info) => dispatch({ type: 'info', epoch, info }),
-      (e) => dispatch({ type: 'error', epoch, reason: String(e) }),
+      (e) => dispatch({ type: 'error', epoch, reason: e instanceof NotTauriError ? e.message : String(e) }),
     );
   }, [state.epoch, state.view.kind]);
 
@@ -81,14 +82,16 @@ export function SidecarGate({ children }: { children: (info: ServerInfo) => Reac
   };
 
   if (state.view.kind === 'starting') {
+    const themed = 'bg-background text-foreground';
+    const style = { padding: 24, minHeight: '100vh' } as const;
     if (state.view.migrating) {
-      return <div style={{ padding: 24 }}>正在迁移数据目录，请勿关闭应用…（数据多时需要几分钟）</div>;
+      return <div className={themed} style={style}>正在迁移数据目录，请勿关闭应用…（数据多时需要几分钟）</div>;
     }
-    return <div style={{ padding: 24 }}>正在启动本地服务…</div>;
+    return <div className={themed} style={style}>正在启动本地服务…</div>;
   }
   if (state.view.kind === 'failed') {
     return (
-      <div style={{ padding: 24 }}>
+      <div className="bg-background text-foreground" style={{ padding: 24, minHeight: '100vh' }}>
         <h2>本地服务未启动</h2>
         <pre style={{ whiteSpace: 'pre-wrap', color: '#f88', userSelect: 'text' }}>{state.view.reason}</pre>
         <button onClick={retry}>重试</button>
