@@ -32,7 +32,13 @@ const TimeLayout = "2006-01-02 15:04:05"
 func Time(t time.Time) string { return t.UTC().Format(TimeLayout) }
 
 // Open 打开（不存在则创建）path 处的数据库。path 是普通文件路径，可以含空格。
+//
+// 路径不能含 "?"，也不能以 "file:" 开头：驱动按 DSN 解析，会在第一个 "?" 处切开，
+// 把后半截当参数，库被静默建到别处且所有 pragma 失效；"file:" 前缀同理。这里提前明确报错。
 func Open(path string) (*sql.DB, error) {
+	if strings.Contains(path, "?") || strings.HasPrefix(path, "file:") {
+		return nil, fmt.Errorf("数据库路径不能包含 \"?\"，也不能以 \"file:\" 开头：%s", path)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("创建数据库目录: %w", err)
 	}

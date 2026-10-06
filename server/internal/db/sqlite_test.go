@@ -230,3 +230,19 @@ func TestOpenFailsOnUnwritableDir(t *testing.T) {
 		t.Fatal("在不可用的目录下打开数据库应当报错")
 	}
 }
+
+// 用户可以把数据目录改到任意文件夹（spec S2）。路径里的 ? 会被驱动当成参数分隔符，
+// 库会被静默建到别处且所有 pragma 失效——必须明确报错，而不是静默成功。
+func TestOpenRejectsPathsTheDriverWouldMisparse(t *testing.T) {
+	base := t.TempDir()
+	for _, p := range []string{
+		filepath.Join(base, "a?b", "data.db"),
+		"file:" + filepath.Join(base, "data.db"),
+	} {
+		conn, err := db.Open(p)
+		if err == nil {
+			conn.Close()
+			t.Fatalf("Open(%q) 应当报错", p)
+		}
+	}
+}
