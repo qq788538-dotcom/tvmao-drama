@@ -33,6 +33,7 @@ import {
 const info = { port: 54321, token: 'a+b/c=' };
 
 beforeEach(() => {
+  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {}; // 模拟 Tauri 环境
   invoke.mockReset();
   handlers = [];
   resetServerInfoForTest();
