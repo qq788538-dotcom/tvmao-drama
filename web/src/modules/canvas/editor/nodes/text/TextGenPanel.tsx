@@ -23,7 +23,7 @@ export function TextGenPanel({ nodeId }: { nodeId: string }) {
 
   if (!node) return null;
 
-  // 与 ChatPanel 的模型下拉同一口径：/models 里 type==='text' 的行。
+  // 模型下拉的口径：/models 里 type==='text' 的行。
   // VL（视觉）模型也配成 text 类型——是否吃图由模型的 requestTemplate 决定。
   const textModels = (modelsQuery.data ?? []).filter((m) => m.type === 'text');
   const selectedModelId = (node.settings?.modelId as string | undefined) ?? textModels[0]?.modelId ?? '';

@@ -159,8 +159,7 @@ export interface Frame {
   members?: PresenceMemberFramePayload[];
 }
 
-/** 线格式，**不做校验**——运行时校验在 transientChannel 的
- *  parseTransientDragPositions / presenceStore 的 parsePresenceMembers。 */
+/** 线格式。桌面端前端不再消费瞬态帧（协作已删除，spec X2），类型保留只为与 Agent WebSocket 线格式对齐。 */
 export interface TransientPositionFramePayload {
   id: string;
   x: number;
@@ -174,10 +173,8 @@ export interface PresenceMemberFramePayload {
 
 /**
  * `canvas_changed` 帧里的 op 载荷，与后端 `canvasstate.CanvasOpSummary` 一一对应
- * （snake_case 线格式）。**这里只描述线上形状，不做校验**：字段可信度由
- * `parseRemoteCanvasOp`（editor/remoteOpFrame.ts）在运行时把关，翻译成 store 的
- * `RemoteCanvasOp` 后才进画布——kind 是会增长的枚举，认不出来就退回整拉，
- * 不能让一个新 kind 把老客户端搞崩。
+ * （snake_case 线格式）。**这里只描述线上形状**：桌面端个人编辑页不建页面级
+ * WebSocket，也不做远端 op 合并（spec X2），类型保留只为与线格式对齐。
  */
 export interface CanvasOpFramePayload {
   kind?: string;
