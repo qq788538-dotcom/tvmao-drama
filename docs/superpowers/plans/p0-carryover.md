@@ -14,10 +14,11 @@
 
 ## 带入 P3（前端迁移，诊断页移入“设置 → 环境诊断”）
 
-- `checks.ts`：媒体名未 `encodeURIComponent`；`runBasic` 无 catch；剪贴板写入被拒未处理；WebSocket 未处理 `onclose`。
-- `diag.go`：`dst.Close()` 错误被忽略、拷贝失败留半截文件；超 500MB 返回 400 而非 413；500 响应回显 `err.Error()`；注释“只覆盖不堆积”只对同扩展名成立。
-- 诊断路由和 WebSocket 回显路由届时替换或收进设置页。
-- CSP：若 `index.html` 加入内联 `<style>`，Tauri 可能注入 style nonce 使 `'unsafe-inline'` 失效，React 的 `style=` 会被拦——引入 CSS 时复查。
+- ~~`checks.ts`：媒体名未 `encodeURIComponent`；`runBasic` 无 catch；剪贴板写入被拒未处理；WebSocket 未处理 `onclose`。~~ P3a Task 5 已修。
+- ~~P3 接入参考仓 API 客户端时核对 Allow-Headers 是否够用。~~ P3a 核实：参考仓客户端只发 `Authorization`、`Content-Type`，现有 `Authorization, Content-Type, Range` 够用。
+- ~~CSP：若 `index.html` 加入内联 `<style>`，Tauri 可能注入 style nonce 使 `'unsafe-inline'` 失效。~~ P3a Task 3 已在 `tauri.conf.json` 设 `dangerousDisableAssetCspModification: ["style-src"]`。
+- `diag.go`：`dst.Close()` 错误被忽略、拷贝失败留半截文件；超 500MB 返回 400 而非 413；500 响应回显 `err.Error()`；注释“只覆盖不堆积”只对同扩展名成立。（Go 侧，转 P4 搬诊断页时一并处理）
+- 诊断路由和 WebSocket 回显路由届时替换或收进设置页。（P3a 暂挂隐藏路由 `/diag`；转 P4/P5）
 
 ## 带入 P5（Agent）
 
