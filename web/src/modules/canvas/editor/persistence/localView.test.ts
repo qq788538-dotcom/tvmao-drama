@@ -1,0 +1,70 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  canvasViewKey,
+  loadLocalView,
+  saveLocalView,
+} from './localView';
+
+describe('localView', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('formats canvas view storage keys by project ID', () => {
+    expect(canvasViewKey(14)).toBe('tvmao:canvas:view:14');
+  });
+
+  it('falls back when storage is missing or JSON is invalid', () => {
+    expect(loadLocalView(14)).toEqual({ x: 0, y: 0, zoom: 1 });
+
+    window.localStorage.setItem(canvasViewKey(14), '{bad json');
+
+    expect(loadLocalView(14)).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+
+  it('falls back when required fields are missing or non-finite', () => {
+    window.localStorage.setItem(canvasViewKey(14), JSON.stringify({ x: 1, y: 2 }));
+    expect(loadLocalView(14)).toEqual({ x: 0, y: 0, zoom: 1 });
+
+    window.localStorage.setItem(canvasViewKey(14), '{"x":1e999,"y":2,"zoom":1}');
+    expect(loadLocalView(14)).toEqual({ x: 0, y: 0, zoom: 1 });
+
+    window.localStorage.setItem(canvasViewKey(14), '{"x":1,"y":-1e999,"zoom":1}');
+    expect(loadLocalView(14)).toEqual({ x: 0, y: 0, zoom: 1 });
+
+    window.localStorage.setItem(canvasViewKey(14), '{"x":1,"y":2,"zoom":1e999}');
+    expect(loadLocalView(14)).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+
+  it('clamps zoom while preserving valid x and y', () => {
+    window.localStorage.setItem(canvasViewKey(14), JSON.stringify({ x: 8, y: -9, zoom: 0.1 }));
+    expect(loadLocalView(14)).toEqual({ x: 8, y: -9, zoom: 0.2 });
+
+    window.localStorage.setItem(canvasViewKey(14), JSON.stringify({ x: 8, y: -9, zoom: 3 }));
+    expect(loadLocalView(14)).toEqual({ x: 8, y: -9, zoom: 2.5 });
+  });
+
+  it('saves view state as JSON', () => {
+    saveLocalView(14, { x: 1, y: 2, zoom: 1.5 });
+
+    expect(window.localStorage.getItem(canvasViewKey(14))).toBe(JSON.stringify({
+      x: 1,
+      y: 2,
+      zoom: 1.5,
+    }));
+  });
+
+  it('handles storage exceptions when loading and saving', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    expect(loadLocalView(14)).toEqual({ x: 0, y: 0, zoom: 1 });
+
+    vi.restoreAllMocks();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    expect(() => saveLocalView(14, { x: 1, y: 2, zoom: 1 })).not.toThrow();
+  });
+});

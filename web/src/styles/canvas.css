@@ -1,0 +1,486 @@
+/* Inter is TapNow's default sans family. Loaded once globally so node
+   prompt textareas, panel labels, and the right-click menu all share the
+   same family without per-component import. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.canvas-root {
+  position: fixed;
+  inset: 0;
+  background: #000000;
+  color: #f5f5f5;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* portal 到 document.body 的画布弹层继承不到 .canvas-root 的 color（portal 只改
+   DOM 挂载点），这里补同值，保证弹层内文字与画布节点内观感一致。改 .canvas-root
+   的 color 时必须同步这里。 */
+.canvas-portal-surface {
+  color: #f5f5f5;
+}
+
+/* Chat panel overrides the canvas-wide no-select so users can copy
+   assistant replies. Also applies to any markdown content inside. */
+.chat-panel, .chat-panel * {
+  user-select: text;
+}
+
+/* Agent node's output area also needs to be selectable. */
+.agent-output, .agent-output * {
+  user-select: text;
+}
+
+.canvas-pulse {
+  animation: canvas-pulse 1.2s ease-in-out infinite;
+}
+
+.canvas-menu-enter {
+  animation: canvas-menu-enter 0.14s ease-out;
+  transform-origin: top left;
+}
+
+/* Context menu item label/hint reveal: default centers the label, hover
+   slides it up and fades the hint in. Plain CSS because our preflight: false
+   setup drops Tailwind's transform variable defaults, breaking translate-y. */
+.context-menu-text-inner {
+  transform: translateY(11px);
+}
+.canvas-menu-enter button:hover .context-menu-text-inner {
+  transform: translateY(2px);
+}
+
+.connection-delete {
+  opacity: 0.25;
+}
+
+.connection-hit:hover + .connection-delete,
+.connection-group:hover .connection-delete,
+.connection-delete:hover {
+  opacity: 1;
+}
+
+/* 连线「电流」层：亮条沿路径滑向下游。位移一个完整周期 = dasharray 之和
+   (14+78=92)，不相等的话每轮循环衔接处会跳变。发光用 drop-shadow 糊出光晕，
+   不用加粗描边——描边会盖住底下的实线。
+   参数按「轻快灵活」调过一轮：光条比主线细(2<2.5)、更短更疏、光晕收淡、
+   周期 0.9s——多条连线同时亮时是小火花滑过，不是粗光柱在爬。 */
+.connection-flow {
+  animation: connection-flow 0.9s linear infinite;
+  filter: drop-shadow(0 0 2px rgba(96, 165, 250, 0.6));
+  opacity: 0.85;
+  pointer-events: none;
+}
+@keyframes connection-flow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -92;
+  }
+}
+
+@keyframes canvas-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes canvas-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* --- Node connector styles (palette aligned to TapNow primary cyan) --- */
+.connector {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0.9rem;
+  height: 0.9rem;
+  background-color: #2b2b2b;
+  border: 1px solid #7a7a7a;
+  color: #cfcece;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: crosshair;
+  transition: all 0.2s;
+  z-index: 30;
+  opacity: 0;
+  pointer-events: auto;
+}
+.node-wrapper:hover .connector {
+  opacity: 1;
+}
+.connector:hover,
+.connector.active {
+  background-color: #fafafa;
+  border-color: #fff;
+  transform: translateY(-50%) scale(1.2);
+  opacity: 1;
+  color: #0f0f0f;
+}
+.connector-right {
+  right: -0.45rem;
+}
+
+.input-point {
+  position: absolute;
+  transform: translateY(-50%);
+  left: -0.25rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: #4a4a4a;
+  border-radius: 50%;
+  border: 1px solid #1c1c1c;
+  transition: all 0.2s;
+  z-index: 20;
+  cursor: crosshair;
+  pointer-events: auto;
+}
+.node-wrapper:hover .input-point {
+  background-color: #cfcece;
+}
+.input-point.connected {
+  background-color: #1fa2dc;
+  box-shadow: 0 0 6px #1fa2dc;
+}
+.input-point.active {
+  background-color: #1fa2dc;
+  border-color: #fff;
+  transform: translateY(-50%) scale(1.3);
+  box-shadow: 0 0 8px #1fa2dc;
+}
+
+/* Highlight node when it's the connection drop target */
+.node-wrapper.connect-target {
+  outline: 3px solid #22c55e !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.25), 0 12px 32px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* Custom scrollbar for node content */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* 全局滚动条 —— 跨机器/跨平台一致的细暗色条。
+   症状:同样 Mac+Chrome,有的机器干净、有的机器(及 Windows)出现亮白滚动条带白边。
+   根因不在浏览器,而在「滚动条是否占位」的系统行为:macOS「显示滚动条」设为
+   "自动"时是 overlay(0 宽悬浮、不可见);设为"始终"或接了鼠标时、以及所有 Windows,
+   都用经典滚动条——原生亮灰 track 在暗底上就是那条「白边」,还占布局宽度。
+   解法:显式给 ::-webkit-scrollbar 上暗色样式后,Chrome 在所有机器上都渲染这条统一
+   的细暗条(透明 track 消除白边),不再取决于系统设置。canvas 节点的 .custom-scrollbar
+   选择器更具体,保留其 4px 细条不被覆盖。 */
+* {
+  scrollbar-width: thin; /* Firefox / 标准属性 */
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  /* border + background-clip 让暗色 thumb 两侧留出透明内边距,看起来更细、不贴边 */
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+  background-clip: padding-box;
+}
+/* 刻意无条的横向滚动区(如视频编辑缩略图条):标准属性已 none,补 webkit 隐藏。 */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Chat markdown rendering — minimal rules so assistant messages look
+   reasonable without pulling in github-markdown-css. Colors assume the
+   parent is a dark bubble (zinc-800). */
+/* contentEditable placeholder for MentionInput */
+.mention-input[data-empty='true']::before {
+  content: attr(data-placeholder);
+  color: rgb(115 115 115 / 0.8);
+  pointer-events: none;
+  display: block;
+}
+
+.markdown-body p { margin: 0 0 0.5em 0; }
+.markdown-body p:last-child { margin-bottom: 0; }
+.markdown-body img,
+.markdown-body video {
+  max-width: 220px;
+  max-height: 160px;
+  width: auto;
+  height: auto;
+  object-fit: cover;
+  border-radius: 6px;
+  margin: 0.4em 0;
+  display: inline-block;
+  cursor: zoom-in;
+  transition: opacity 120ms ease;
+}
+.markdown-body img:hover,
+.markdown-body video:hover { opacity: 0.9; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+  font-weight: 600; margin: 0.8em 0 0.4em; line-height: 1.3;
+}
+.markdown-body h1 { font-size: 1.25em; }
+.markdown-body h2 { font-size: 1.15em; }
+.markdown-body h3 { font-size: 1.05em; }
+.markdown-body ul, .markdown-body ol { margin: 0 0 0.5em 1.2em; }
+.markdown-body li { margin-bottom: 0.2em; }
+/* 代码块/行内代码对所有 markdown 渲染面统一（Agent 气泡、文本节点）：
+   - 配色 #363636（用户指定）——旧的 #0f0f0f 近黑，在气泡/节点底色上突兀；
+   - pre 默认 white-space:pre 不折行，气泡和节点宽度都有限，中文长段会被截在
+     右边界外只能横向滚——改成折行，内容完整可见。 */
+.markdown-body code {
+  background: #363636;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+.markdown-body pre {
+  background: #363636;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 10px;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0.5em 0;
+}
+.markdown-body pre code { background: transparent; padding: 0; }
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+}
+.markdown-body th, .markdown-body td {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 4px 8px;
+}
+.markdown-body th { background: rgba(255,255,255,0.05); }
+.markdown-body tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+.markdown-body a { color: #1fa2dc; text-decoration: underline; }
+.markdown-body blockquote {
+  border-left: 3px solid #4a4a4a;
+  padding-left: 10px;
+  color: #cfcece;
+  margin: 0.5em 0;
+}
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  margin: 0.8em 0;
+}
+
+/* ===== 文本节点 Tiptap 编辑器 ===== */
+/* 占位符：Placeholder 扩展只在空文档首段挂 data-placeholder 属性，展示得自己画。 */
+.tiptap-text-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: rgb(115 115 115 / 0.8);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+/* 让点击内容下方空白也能命中编辑器（配合外层 onClick focus('end')）。 */
+.tiptap-text-editor {
+  min-height: 100%;
+}
+
+/* ===== 生成节点 @ 引用编辑器（PromptMentionEditor）=====
+   前缀 cv- 与项目管理的 .mention-* 区分——两套 css 都全局加载，撞名会互相污染。 */
+.cv-mention-editor {
+  outline: none;
+}
+/* 预设 chip 视觉内嵌：chip 叠在编辑器首行行首时，容器 text-indent 给首行让位；
+   text-indent 会被行块（contenteditable 把每行包成 div，**包括第一行**——
+   多行内容重建时首行也是 div）继承。只归零非第一个行块：第一行继承缩进给
+   chip 让位，后续行顶行首（对标参考产品）。曾因无差别归零所有行块，导致
+   「已有提示词再选预设」时首行不让位、chip 压字。 */
+.cv-mention-editor > div:not(:first-child) {
+  text-indent: 0;
+}
+.cv-mention-placeholder {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  color: #71717a;
+  font-size: 14px;
+  pointer-events: none;
+  user-select: none;
+}
+/* chip：内联药丸，图片带缩略图，视频/音频用类型符号；按类型着色
+   （图片蓝 / 视频紫 / 音频绿）。 */
+.cv-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 3px;
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  vertical-align: middle;
+  user-select: none;
+  white-space: nowrap;
+}
+.cv-mention-chip[data-kind='image'] {
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.1);
+}
+.cv-mention-chip[data-kind='video'] {
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  background: rgba(168, 85, 247, 0.1);
+}
+.cv-mention-chip[data-kind='audio'] {
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.1);
+}
+.cv-mention-chip-img {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+.cv-mention-chip-ic {
+  font-size: 10px;
+}
+/* @ 菜单——fixed 定位到光标下方（画布有 zoom/pan transform，client 坐标不受影响）。 */
+.cv-mention-menu-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+.cv-mention-menu {
+  position: fixed;
+  z-index: 2001;
+  min-width: 170px;
+  max-height: 256px;
+  overflow-y: auto;
+  padding: 4px;
+  margin: 0;
+  list-style: none;
+  background: #1f1f1f;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+.cv-mention-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #e4e4e7;
+  cursor: pointer;
+}
+.cv-mention-menu-item:hover,
+.cv-mention-menu-item-active {
+  background: #2f2f2f;
+}
+.cv-mention-opt-img {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+.cv-mention-opt-ic {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: #2a2a2a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #a1a1aa;
+  flex-shrink: 0;
+}
+.cv-mention-opt-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 缩略图行的类型序号角标（图1/视1/音1），与 chip 序号对照。 */
+.cv-ref-badge {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 9px;
+  line-height: 14px;
+  pointer-events: none;
+}
+
+/* 脚本节点模块的最小 border 基线。本项目 preflight:false（后台 AntD 与历史
+   样式依赖 UA 默认），代价是 Tailwind 的 border-* 工具类只产出宽度/颜色、
+   没有 border-style:solid 基线——`border border-white/10` 一条线都画不出来。
+   全局补 preflight 影响面不可控，这里用 :where() 把 reset 压到零优先级并
+   收敛在 .script-borders 作用域内：工具类(0-1-0)永远能赢，作用域外零影响。 */
+:where(.script-borders, .script-borders *, .script-borders *::before, .script-borders *::after) {
+  border-width: 0;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 脚本资产 chip 的类型配色（复用 cv-mention-chip 基础样式）：角色蓝 / 场景绿 /
+   物品橙；断链红——与分镜表断链红点同语义。 */
+.cv-mention-chip[data-kind='character'] {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+}
+.cv-mention-chip[data-kind='scene'] {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #86efac;
+}
+.cv-mention-chip[data-kind='prop'] {
+  background: rgba(249, 115, 22, 0.15);
+  border-color: rgba(249, 115, 22, 0.4);
+  color: #fdba74;
+}
+.cv-mention-chip[data-broken='1'] {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
