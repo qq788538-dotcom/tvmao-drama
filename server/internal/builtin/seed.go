@@ -118,7 +118,7 @@ func Load() (*Seed, error) {
 
 // secretKeyRe 匹配密钥类配置名。种子导出时已去掉 Key（seed/README.md），这里再挡一道：
 // 万一重新导出时带进了密钥，构建期的测试就会失败，密钥不会被编译进安装包。
-var secretKeyRe = regexp.MustCompile(`(?i)(_key$|token|secret|password)`)
+var secretKeyRe = regexp.MustCompile(`(?i)(_key$|secret|password|(^|[_-])token$|^token$)`)
 
 var seedModelTypes = map[string]bool{"text": true, "image": true, "video": true, "audio": true}
 
@@ -239,8 +239,8 @@ func decodeStrict(line []byte, v any) error {
 	if err := dec.Decode(v); err != nil {
 		return err
 	}
-	if dec.More() {
-		return errors.New("一行只能有一个 JSON 对象")
+	if _, err := dec.Token(); err != io.EOF {
+		return errors.New("一行只能有一个 JSON 对象，后面有多余内容")
 	}
 	return nil
 }

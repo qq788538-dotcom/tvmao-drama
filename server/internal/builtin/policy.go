@@ -44,9 +44,14 @@ func (e *ValidationError) Error() string { return e.Path + "：" + e.Msg }
 // checkFunc 校验把路径 p 设为 v 是否合法。doc 是写入前的整份文档，用来查同级结构（如 uiSchema 的 options）。
 type checkFunc func(doc any, p Path, v any, cat Catalog) error
 
+// pruneFunc 在合并（overlay）时先把用户保存的值对齐到新版结构，再交给 check：
+// 例如剔除已下线的模型。返回 ok=false 表示整条覆盖作废。
+type pruneFunc func(base any, p Path, user any, cat Catalog) (any, bool)
+
 type rule struct {
 	pattern Path
 	check   checkFunc
+	prune   pruneFunc
 }
 
 type policy struct {
@@ -57,12 +62,13 @@ type policy struct {
 type ruleDef struct {
 	pattern string
 	check   checkFunc
+	prune   pruneFunc
 }
 
 func newPolicy(kind valueKind, defs ...ruleDef) policy {
 	pl := policy{kind: kind}
 	for _, d := range defs {
-		pl.rules = append(pl.rules, rule{pattern: mustParsePath(d.pattern), check: d.check})
+		pl.rules = append(pl.rules, rule{pattern: mustParsePath(d.pattern), check: d.check, prune: d.prune})
 	}
 	return pl
 }
@@ -86,43 +92,43 @@ func (pl policy) Patterns() []string {
 }
 
 var modelPolicy = newPolicy(kindJSON,
-	ruleDef{"name", checkName},
-	ruleDef{"enabled", checkBool},
-	ruleDef{"hidden", checkBool},
-	ruleDef{"sort_order", checkInt(-1_000_000, 1_000_000)},
-	ruleDef{"ui_schema.*.default", checkUIDefault},
+	ruleDef{"name", checkName, nil},
+	ruleDef{"enabled", checkBool, nil},
+	ruleDef{"hidden", checkBool, nil},
+	ruleDef{"sort_order", checkInt(-1_000_000, 1_000_000), nil},
+	ruleDef{"ui_schema.*.default", checkUIDefault, nil},
 	// 0 = 用默认并发 200（models.DefaultGenConcurrency）。drama 模块桌面端不用，不开放。
-	ruleDef{"gen_control.concurrency", checkInt(0, 200)},
-	ruleDef{"gen_control.modules.canvas.maxRetries", checkInt(0, 10)},
-	ruleDef{"gen_control.modules.canvas.retryIntervalSec", checkInt(0, 600)},
+	ruleDef{"gen_control.concurrency", checkInt(0, 200), nil},
+	ruleDef{"gen_control.modules.canvas.maxRetries", checkInt(0, 10), nil},
+	ruleDef{"gen_control.modules.canvas.retryIntervalSec", checkInt(0, 600), nil},
 )
 
 var settingPolicies = map[string]policy{
-	SettingBaseDomain: newPolicy(kindText, ruleDef{"$", checkBaseDomain}),
+	SettingBaseDomain: newPolicy(kindText, ruleDef{"$", checkBaseDomain, nil}),
 	SettingCanvasLightControl: newPolicy(kindJSON,
-		ruleDef{"models", checkModelList("image")},
-		ruleDef{"template", checkTemplate("{light}")},
-		ruleDef{"presets[*].prompt", checkPrompt(true, 4000)},
+		ruleDef{"models", checkModelList("image"), pruneModelList("image")},
+		ruleDef{"template", checkTemplate("{light}"), nil},
+		ruleDef{"presets[*].prompt", checkPrompt(true, 4000), nil},
 	),
 	SettingCanvasMultiAngle: newPolicy(kindJSON,
-		ruleDef{"models", checkModelList("image")},
-		ruleDef{"template", checkTemplate("{angle}")},
-		ruleDef{"presets[*].prompt", checkPrompt(true, 4000)},
+		ruleDef{"models", checkModelList("image"), pruneModelList("image")},
+		ruleDef{"template", checkTemplate("{angle}"), nil},
+		ruleDef{"presets[*].prompt", checkPrompt(true, 4000), nil},
 	),
 	SettingGenImagePresets: newPolicy(kindJSON,
-		ruleDef{"models", checkModelList("image")},
+		ruleDef{"models", checkModelList("image"), pruneModelList("image")},
 		// 参考仓后台要求预设正文非空（gen_image_preset_handlers.go）；档位片段允许为空（“无效果”档位）。
-		ruleDef{"presets[*].value.prompt", checkPrompt(false, 8000)},
-		ruleDef{"presets[*].value.params[*].options[*].prompt", checkPrompt(true, 2000)},
+		ruleDef{"presets[*].value.prompt", checkPrompt(false, 8000), nil},
+		ruleDef{"presets[*].value.params[*].options[*].prompt", checkPrompt(true, 2000), nil},
 	),
 	SettingCanvasPostprocess: newPolicy(kindJSON,
-		ruleDef{"subtitleRemovalModels", checkDesubList},
-		ruleDef{"upscaleModel", checkModelRef("video", true)},
+		ruleDef{"subtitleRemovalModels", checkDesubList, pruneToBaseEntries},
+		ruleDef{"upscaleModel", checkModelRef("video", true), nil},
 	),
 	SettingCanvasScript: newPolicy(kindJSON,
-		ruleDef{"modelCandidates", checkScriptCandidates},
-		ruleDef{"concurrency", checkInt(1, 20)},
-		ruleDef{"maxRetries", checkInt(0, 10)},
+		ruleDef{"modelCandidates", checkScriptCandidates, pruneToBaseEntries},
+		ruleDef{"concurrency", checkInt(1, 20), nil},
+		ruleDef{"maxRetries", checkInt(0, 10), nil},
 	),
 }
 
@@ -211,7 +217,8 @@ func checkBaseDomain(_ any, _ Path, v any, _ Catalog) error {
 		return errors.New("必须是 http:// 或 https:// 开头的地址")
 	}
 	// 上游地址 = base_domain + 模型的 base_path（以 / 开头），这里多一个 / 就会拼出 //v1/…。
-	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+	// ForceQuery / 原串里的 ? # 单独查：结尾的 "?" "#" 解析后 RawQuery、Fragment 都是空串。
+	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery || u.User != nil || strings.ContainsAny(s, "?#") {
 		return errors.New("只填协议、主机和端口，不要带路径、参数或结尾的 /")
 	}
 	return nil
@@ -259,6 +266,57 @@ func checkModelList(typ string) checkFunc {
 		}
 		return nil
 	}
+}
+
+// pruneModelList：用户的模型列表里只剔除已下线（或类型不对）的项，其余原样保留；
+// 全部被剔除时整条作废（空列表等于关掉功能，不是用户本意）。
+func pruneModelList(typ string) pruneFunc {
+	return func(_ any, _ Path, user any, cat Catalog) (any, bool) {
+		arr, ok := user.([]any)
+		if !ok {
+			return nil, false
+		}
+		out := make([]any, 0, len(arr))
+		for _, e := range arr {
+			if s, ok := e.(string); ok && requireModel(cat, s, typ) == nil {
+				out = append(out, e)
+			}
+		}
+		if len(out) == 0 && len(arr) > 0 {
+			return nil, false
+		}
+		return out, true
+	}
+}
+
+// pruneToBaseEntries：条目集合以新版种子为准——按 modelId 取用户对应条目的内容，
+// 新版新增的条目用内置值，新版下线的条目随之消失。
+func pruneToBaseEntries(base any, p Path, user any, _ Catalog) (any, bool) {
+	bv, _ := getPath(base, p)
+	baseArr, ok := bv.([]any)
+	if !ok {
+		return nil, false
+	}
+	userArr, ok := user.([]any)
+	if !ok {
+		return nil, false
+	}
+	byID := map[any]any{}
+	for _, e := range userArr {
+		if m, ok := e.(map[string]any); ok {
+			byID[m["modelId"]] = e
+		}
+	}
+	out := make([]any, len(baseArr))
+	for i, e := range baseArr {
+		out[i] = e
+		if m, ok := e.(map[string]any); ok {
+			if u, found := byID[m["modelId"]]; found {
+				out[i] = u
+			}
+		}
+	}
+	return out, true
 }
 
 func checkTemplate(placeholder string) checkFunc {
@@ -316,9 +374,29 @@ func objectList(v any, allowed ...string) ([]map[string]any, error) {
 	return out, nil
 }
 
-func checkDesubList(_ any, _ Path, v any, cat Catalog) error {
+// sameEntries 要求 v 与写入前的列表条目一一对应（个数、顺序、idKey 都相同）：
+// 这类列表只允许改已有条目的展示与开关字段，不能增删、换模型或调换顺序。
+func sameEntries(doc any, p Path, items []map[string]any, idKey string) error {
+	curV, _ := getPath(doc, p)
+	cur, _ := curV.([]any)
+	if len(items) != len(cur) {
+		return fmt.Errorf("不能增删条目（应为 %d 项）", len(cur))
+	}
+	for i, e := range cur {
+		m, _ := e.(map[string]any)
+		if items[i][idKey] != m[idKey] {
+			return fmt.Errorf("第 %d 项的 %s 不能修改或调换顺序", i+1, idKey)
+		}
+	}
+	return nil
+}
+
+func checkDesubList(doc any, p Path, v any, cat Catalog) error {
 	items, err := objectList(v, "modelId", "label", "subtitle", "isTimeLimited")
 	if err != nil {
+		return err
+	}
+	if err := sameEntries(doc, p, items, "modelId"); err != nil {
 		return err
 	}
 	seen := map[string]bool{}
@@ -348,9 +426,12 @@ func checkDesubList(_ any, _ Path, v any, cat Catalog) error {
 	return nil
 }
 
-func checkScriptCandidates(_ any, _ Path, v any, cat Catalog) error {
+func checkScriptCandidates(doc any, p Path, v any, cat Catalog) error {
 	items, err := objectList(v, "modelId", "displayName")
 	if err != nil {
+		return err
+	}
+	if err := sameEntries(doc, p, items, "modelId"); err != nil {
 		return err
 	}
 	seen := map[string]bool{}
@@ -425,40 +506,59 @@ func overlay(pl policy, base, user any, overrides []string, cat Catalog) (any, [
 	}
 	var kept, dropped []string
 	for _, k := range overrides {
-		if applyOne(pl, &doc, user, k, cat) {
+		switch applyOne(pl, &doc, user, k, cat) {
+		case applied:
 			kept = append(kept, k)
-		} else {
+		case sameAsSeed:
+			// 用户值与新版种子相同：回到“跟随内置”，以后种子再改时才会跟着变。
+		default:
 			dropped = append(dropped, k)
 		}
 	}
 	return doc, kept, dropped
 }
 
-func applyOne(pl policy, doc *any, user any, k string, cat Catalog) bool {
+type applyResult int
+
+const (
+	rejected applyResult = iota
+	applied
+	sameAsSeed
+)
+
+func applyOne(pl policy, doc *any, user any, k string, cat Catalog) applyResult {
 	p, err := ParsePath(k)
 	if err != nil {
-		return false
+		return rejected
 	}
 	r, ok := pl.find(p)
 	if !ok {
-		return false
+		return rejected
 	}
 	v, ok := getPath(user, p)
 	if !ok {
-		return false
+		return rejected
 	}
 	if v, err = deepCopy(v); err != nil {
-		return false
+		return rejected
+	}
+	if r.prune != nil {
+		if v, ok = r.prune(*doc, p, v, cat); !ok {
+			return rejected
+		}
 	}
 	if r.check(*doc, p, v, cat) != nil {
-		return false
+		return rejected
+	}
+	if bv, found := getPath(*doc, p); found && jsonEqual(bv, v) {
+		return sameAsSeed
 	}
 	nd, err := setPath(*doc, p, v)
 	if err != nil {
-		return false
+		return rejected
 	}
 	*doc = nd
-	return true
+	return applied
 }
 
 // ---- 行 ↔ 文档 ----

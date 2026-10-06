@@ -33,6 +33,12 @@ func applySeed(ctx context.Context, conn *sql.DB, s *Seed) error {
 		return err
 	}
 	defer tx.Rollback()
+	// 拿到写锁后再确认一次：并发启动的另一个进程可能已经合并完了。
+	if h, ok, err := readSeedHash(ctx, tx, DatasetModelCenter); err != nil {
+		return err
+	} else if ok && h == s.Hash {
+		return nil
+	}
 	if err := applyModels(ctx, tx, s); err != nil {
 		return fmt.Errorf("合并内置模型: %w", err)
 	}

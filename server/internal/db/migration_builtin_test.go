@@ -1,6 +1,7 @@
 package db_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -31,8 +32,8 @@ func TestUserOverridesDefaultsToEmptyArray(t *testing.T) {
 // user_overrides 是 JSON 列，只能以 TEXT 落库；传 []byte 会被存成 BLOB，必须被 CHECK 拒绝。
 func TestUserOverridesRejectsBlob(t *testing.T) {
 	conn := dbtest.Open(t)
-	if _, err := conn.Exec(`INSERT INTO settings ("key", value, user_overrides) VALUES ('k', 'v', ?)`, []byte(`[]`)); err == nil {
-		t.Fatal("BLOB 应当被 CHECK 约束拒绝")
+	if _, err := conn.Exec(`INSERT INTO settings ("key", value, user_overrides) VALUES ('k', 'v', ?)`, []byte(`[]`)); err == nil || !strings.Contains(err.Error(), "CHECK constraint") {
+		t.Fatalf("BLOB 应当被 CHECK 约束拒绝，得到 %v", err)
 	}
 }
 

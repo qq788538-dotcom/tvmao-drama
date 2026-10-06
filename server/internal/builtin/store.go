@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 )
 
 // 本文件是本包唯一直接写 SQL 的地方。所有函数都接收 querier（*sql.DB 或 *sql.Tx）：
@@ -82,6 +83,17 @@ func decodeOverrides(s string) ([]string, error) {
 	return o, nil
 }
 
+// decodeOverridesLenient 读库里的覆盖记录：坏数据（手改库、诊断工具写错）只记一条警告并当作空，
+// 该行回到“跟随内置”，不能因为它让 sidecar 起不来。
+func decodeOverridesLenient(s, what string) []string {
+	o, err := decodeOverrides(s)
+	if err != nil {
+		log.Printf("内置数据：%s 的 user_overrides 无法解析（%v），当作没有用户修改", what, err)
+		return nil
+	}
+	return o
+}
+
 // nullStr 把 *string 转成 SQL 参数：nil → NULL，否则 string（TEXT 落库，不能传 []byte）。
 func nullStr(p *string) any {
 	if p == nil {
@@ -111,10 +123,7 @@ func scanModelRow(sc interface{ Scan(...any) error }) (modelRow, error) {
 	}
 	r.Parts.UISchema, r.Parts.GenControl = strPtr(ui), strPtr(gc)
 	r.PollingTemplate, r.BillingConfig = strPtr(poll), strPtr(bill)
-	var err error
-	if r.Overrides, err = decodeOverrides(ov); err != nil {
-		return modelRow{}, fmt.Errorf("模型 %s: %w", r.ModelID, err)
-	}
+	r.Overrides = decodeOverridesLenient(ov, "模型 "+r.ModelID)
 	return r, nil
 }
 
@@ -209,9 +218,7 @@ func loadSettingRow(ctx context.Context, q querier, key string) (settingRow, boo
 	if err != nil {
 		return settingRow{}, false, err
 	}
-	if r.Overrides, err = decodeOverrides(ov); err != nil {
-		return settingRow{}, false, fmt.Errorf("配置 %s: %w", key, err)
-	}
+	r.Overrides = decodeOverridesLenient(ov, "配置 "+key)
 	return r, true, nil
 }
 
