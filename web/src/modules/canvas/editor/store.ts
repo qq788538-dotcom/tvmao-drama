@@ -246,10 +246,10 @@ interface CanvasState {
   /**
    * 整快照落地。默认语义是「换一张画布」：选中、undo/redo 栈全清。
    *
-   * `preserveUiState` 用于**同一张画布**的整拉兜底（团队并发编辑的 version 缺口
-   * 自愈）——那不是换画布，是把本地对齐到服务端最新状态。清掉选中会把用户正开着
+   * `preserveUiState` 用于**同一张画布**的整拉兜底（目前已没有调用方传 true，
+   * 保留作为同画布重拉的预留语义）——那不是换画布，是把本地对齐到服务端最新状态。清掉选中会把用户正开着
    * 的参数面板收起来、清掉 undo 栈会让他刚做的几步撤不回去，而这两样跟「服务端
-   * 有新数据」毫无关系。选中集会按新节点列表剪枝（队友删掉的节点不能还留在选中里）。
+   * 有新数据」毫无关系。选中集会按新节点列表剪枝（服务端已不存在的节点不能还留在选中里）。
    *
    * undo 栈跨整拉保留是有意的：撤销撤的一直是「我自己做过的那几步」。
    */
@@ -388,7 +388,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       set({ ...base, selectedIds: new Set<string>(), undoStack: [], redoStack: [] });
       return;
     }
-    // 保留模式：选中集按新节点剪枝——队友删掉的节点若还留在 selectedIds 里，
+    // 保留模式：选中集按新节点剪枝——服务端已不存在的节点若还留在 selectedIds 里，
     // 后续任何「对选中批量操作」都会带上一个已经不存在的 id。
     const alive = new Set(nodes.map((n) => n.id));
     const selectedIds = new Set(
