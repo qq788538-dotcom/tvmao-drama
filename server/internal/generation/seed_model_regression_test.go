@@ -44,10 +44,10 @@ func loadSeedModel(t *testing.T, modelID string) *models.ModelConfig {
 	return nil
 }
 
-// C1：gpt-image-2 / 2.1 的内置模板把 {{images}} 插进 payload，但 edits 模式走 multipart，
+// C1：gpt-image-2 的内置模板把 {{images}} 插进 payload，但 edits 模式走 multipart，
 // payload 里的 image 字段根本不会发出去，不能因此被判成本机地址拦掉。
 func TestPrepareExecutionSeedGPTImage2EditsWithLocalImage(t *testing.T) {
-	for _, id := range []string{"gpt-image-2", "gpt-image-2.1"} {
+	for _, id := range []string{"gpt-image-2"} {
 		t.Run(id, func(t *testing.T) {
 			m := loadSeedModel(t, id)
 			if m.ImageRequestMode != models.ImageRequestModeOpenAIImageEdits {
