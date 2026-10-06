@@ -55,13 +55,23 @@ func (h *DirectorModelHandler) modelJSON(m directormodels.Model, withCreatedAt b
 	return out
 }
 
+// directorModelMaxRequestBytes = 30MB 文件上限 + 2MB multipart 边界/头开销。
+const directorModelMaxRequestBytes = directormodels.MaxFileSizeBytes + 2<<20
+
 func (h *DirectorModelHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	userID := userIDFromContext(r.Context())
+
+	// 读表单之前先封顶：30MB 文件 + multipart 开销。ParseMultipartForm 超过内存
+	// 阈值会落临时文件，io.ReadAll 只读到上限，因此内存占用有界。
+	r.Body = http.MaxBytesReader(w, r.Body, directorModelMaxRequestBytes)
 
 	filename, contentType, body, err := readUploadForm(r)
 	if err != nil {
 		var ue *uploadError
 		if errors.As(err, &ue) {
+			if ue.Status == http.StatusRequestEntityTooLarge {
+				ue.Message = "模型文件不能超过 30MB"
+			}
 			writeError(w, ue.Status, ue.Message)
 			return
 		}

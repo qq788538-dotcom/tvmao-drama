@@ -206,3 +206,17 @@ func TestDirectorModelDelete_OtherUser404(t *testing.T) {
 		t.Fatal("别人的模型不应被删")
 	}
 }
+
+// 请求体上限：超过 30MB+multipart 开销必须在读表单阶段就 413，而不是读完整个请求再 400。
+func TestDirectorModelUpload_OversizeBodyRejects413(t *testing.T) {
+	storage := &directorTrackingStorage{}
+	h := NewDirectorModelHandler(&directormodels.Service{Repo: directorFakeRepo{}}, storage, nil,
+		&directorFakeUserRepo{quota: 1 << 40}, directorFakeSigner{}, nil)
+	rec := doDirectorUpload(t, h, "big.glb", make([]byte, 33<<20))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("超大请求体应 413, got %d body=%s", rec.Code, rec.Body)
+	}
+	if storage.putCalled {
+		t.Error("超限不应写对象")
+	}
+}
