@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/james/huabu_studio/apps/api/internal/assets"
+	"github.com/james/huabu_studio/apps/api/internal/mediaprobe"
 )
 
 // uniqueUploadFilename 给上传文件名加随机前缀，避免同用户同名不同内容文件互相覆盖
@@ -34,15 +35,16 @@ type AssetHandler struct {
 	repo    assets.Repository
 	users   storageUserRepo
 	signer  *MediaSigner
-	// probe 可选（nil = 不探测时长）。参考仓用系统 ffprobe 取权威时长防按秒计费被篡改的元数据骗；
-	// 桌面端不计费（spec X3），用户机器上也没有 ffprobe，所以默认不探测；探测失败也只是不记时长。
+	// probe 探测上传视频的时长（nil = 不探测）。默认 mediaprobe.ProbeDurationMsPortable：有 ffprobe 就数真实帧，
+	// 没有就读 MP4 容器时长（桌面端不计费，spec X3）。记下 duration_ms 后，后处理就不用再下载探测；
+	// 探测失败只是不记时长。
 	probe func(ctx context.Context, data []byte) (int64, error)
 	// maxUploadBytes 是单个文件的上限，默认 assetMaxUploadBytes；测试可调小。
 	maxUploadBytes int64
 }
 
 func NewAssetHandler(storage assets.Storage, repo assets.Repository, users storageUserRepo, signer *MediaSigner) *AssetHandler {
-	return &AssetHandler{storage: storage, repo: repo, users: users, signer: signer, maxUploadBytes: assetMaxUploadBytes}
+	return &AssetHandler{storage: storage, repo: repo, users: users, signer: signer, maxUploadBytes: assetMaxUploadBytes, probe: mediaprobe.ProbeDurationMsPortable}
 }
 
 // uploadResult 是一次上传的结果。Deduped=true 表示命中同用户同项目的相同内容，

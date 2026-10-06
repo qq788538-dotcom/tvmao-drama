@@ -51,7 +51,10 @@ func TestSetLargeValue(t *testing.T) {
 	if err := repo.Set("big", string(big)); err != nil {
 		t.Fatal(err)
 	}
-	v, _ := repo.Get("big")
+	v, err := repo.Get("big")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(v) != len(big) {
 		t.Fatalf("len=%d want %d", len(v), len(big))
 	}

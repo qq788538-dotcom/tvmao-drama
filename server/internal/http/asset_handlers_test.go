@@ -95,8 +95,24 @@ func TestUpload_ProbeFailureStillStoresWithoutDuration(t *testing.T) {
 	}
 }
 
-func TestUpload_NoProbeConfiguredStoresVideo(t *testing.T) {
-	h := newTestAssetHandler(t) // NewAssetHandler 默认不探测
+// 默认探测器是纯 Go 可用的 Portable：没有 ffprobe 也能给上传的 mp4 记下 duration_ms，
+// 后处理就不必再下载探测。
+func TestUpload_DefaultProbeRecordsMP4DurationWithoutFFprobe(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	var gotDuration int64
+	h := newTestAssetHandler(t)
+	h.repo.(*fakeAssetRepo).onInsert = func(rec assets.AssetRecord) { gotDuration = rec.DurationMs }
+	if rec := doUpload(t, h, "clip.mp4", "video/mp4", postprocessMP4(6100)); rec.Code != http.StatusCreated {
+		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
+	}
+	if gotDuration != 6100 {
+		t.Fatalf("duration_ms = %d, want 6100", gotDuration)
+	}
+}
+
+func TestUpload_DefaultProbeUnparseableVideoStillStores(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	h := newTestAssetHandler(t) // 默认探测器读不出时长：照常上传，只是不记时长
 	if rec := doUpload(t, h, "clip.mp4", "video/mp4", []byte("v")); rec.Code != http.StatusCreated {
 		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
 	}

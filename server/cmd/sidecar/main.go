@@ -132,6 +132,8 @@ func run() error {
 	// 生成后台：先把上个进程的租约判过期并续跑在途任务，再起队列/投递/巡检循环（spec S7）。
 	// 在 READY 之前调用；退出时随 ctx 取消停下，没跑完的任务由下次启动续跑。
 	a.gen.Gen.StartBackground(ctx)
+	// Seedance 合规对账：未配置时 ReconcileAll 自身 no-op；随根 ctx 退出。
+	go a.seedance.RunWorker(ctx)
 
 	go func() {
 		waitForShutdown(stdin)
