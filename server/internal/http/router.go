@@ -16,6 +16,8 @@ type Deps struct {
 	Auth    localauth.Config
 	DataDir string
 	Version string
+	// CanvasScript 脚本节点接口（P6）；nil 时不注册，便于只测其他路由。
+	CanvasScript *CanvasScriptHandler
 }
 
 func NewRouter(d Deps) nethttp.Handler {
@@ -32,6 +34,11 @@ func NewRouter(d Deps) nethttp.Handler {
 	diag := &diagHandler{dir: d.DataDir}
 	r.Post("/api/v1/diag/upload", diag.upload)
 	r.Get("/api/v1/diag/media/{name}", diag.media)
+	if d.CanvasScript != nil {
+		r.Get("/api/v1/canvas-script/styles", d.CanvasScript.Styles)
+		r.Post("/api/v1/canvas-script-tasks", d.CanvasScript.Submit)
+		r.Get("/api/v1/canvas-script-tasks/{taskID}", d.CanvasScript.Status)
+	}
 	return r
 }
 
