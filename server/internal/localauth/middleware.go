@@ -27,6 +27,9 @@ func Middleware(cfg Config) func(http.Handler) http.Handler {
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// 无论请求带不带 Origin 都回 Vary: Origin：响应是否带 ACAO 取决于 Origin，
+			// 否则不带 Origin 的 <img> 会让缓存存下无 ACAO 的响应，复用给之后的 CORS 请求。
+			w.Header().Add("Vary", "Origin")
 			// 带 Origin 的请求来自浏览器上下文；不在白名单的一律挡掉，哪怕 token 对。
 			if origin := r.Header.Get("Origin"); origin != "" {
 				if !allowed[origin] {
@@ -35,7 +38,6 @@ func Middleware(cfg Config) func(http.Handler) http.Handler {
 				}
 				h := w.Header()
 				h.Set("Access-Control-Allow-Origin", origin)
-				h.Set("Vary", "Origin")
 				h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range")
 				h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 				h.Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")

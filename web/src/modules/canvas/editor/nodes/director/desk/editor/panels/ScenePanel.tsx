@@ -9,6 +9,7 @@ import {
   InspectorSection,
 } from "./InspectorControls";
 import { useDirectorStore } from "../store/directorStore";
+import { mediaCrossOrigin } from "../../../../../utils/mediaCrossOrigin";
 
 const PANORAMA_RADIUS_MIN = 10;
 const PANORAMA_RADIUS_MAX = 300;
@@ -172,7 +173,7 @@ export function ScenePanel() {
             >
               <Trash2 aria-hidden="true" size={14} strokeWidth={1.9} />
             </button>
-            <img className="panorama-thumbnail-image" alt={`${panoramaAsset.fileName} 全景图缩略图`} src={panoramaAsset.url} />
+            <img className="panorama-thumbnail-image" alt={`${panoramaAsset.fileName} 全景图缩略图`} src={panoramaAsset.url} crossOrigin={mediaCrossOrigin(panoramaAsset.url)} />
             <span className="panorama-thumbnail-name">{panoramaAsset.fileName}</span>
           </div>
         ) : (

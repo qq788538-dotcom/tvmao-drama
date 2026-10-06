@@ -15,6 +15,7 @@ import { postDirectorDeskCapturesToHost } from "../io/hostBridge";
 import { getDirectorObjectFocusTarget, isCameraFocusableObject } from "../schema/cameraTarget";
 import type { DirectorCameraCapture } from "../schema/directorProject";
 import { useDirectorStore } from "../store/directorStore";
+import { mediaCrossOrigin } from "../../../../../utils/mediaCrossOrigin";
 
 const VIEWER_ZOOM_MIN = 0.25;
 const VIEWER_ZOOM_MAX = 5;
@@ -281,7 +282,7 @@ export function CameraPanel() {
                 onMouseEnter={() => setHoveredCaptureId(capture.id)}
                 onMouseLeave={() => setHoveredCaptureId((current) => (current === capture.id ? null : current))}
               >
-                <img className="camera-capture-thumb" alt={`${capture.name} 缩略图`} src={capture.dataUrl} />
+                <img className="camera-capture-thumb" alt={`${capture.name} 缩略图`} src={capture.dataUrl} crossOrigin={mediaCrossOrigin(capture.dataUrl)} />
                 <div
                   aria-label={`${capture.name} 缩略图操作`}
                   className={`camera-capture-actions${captureActive ? " is-visible" : ""}`}
@@ -465,6 +466,7 @@ export function CameraPanel() {
             className={viewerImageClassName}
             alt={`${viewerCapture.name} 查看大图`}
             src={viewerCapture.dataUrl}
+            crossOrigin={mediaCrossOrigin(viewerCapture.dataUrl)}
             style={{ transform: `translate(${viewerOffset.x}px, ${viewerOffset.y}px) scale(${viewerScale})` }}
             onClick={(event) => event.stopPropagation()}
             onWheel={handleViewerWheel}
