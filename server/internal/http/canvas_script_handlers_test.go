@@ -51,6 +51,7 @@ func newCanvasScriptRouter(t *testing.T) (nethttp.Handler, *canvasscript.Service
 	}
 	h := NewCanvasScriptHandler(svc)
 	r := chi.NewRouter()
+	r.Use(LocalIdentity)
 	r.Get("/api/v1/canvas-script/styles", h.Styles)
 	r.Post("/api/v1/canvas-script-tasks", h.Submit)
 	r.Get("/api/v1/canvas-script-tasks/{taskID}", h.Status)

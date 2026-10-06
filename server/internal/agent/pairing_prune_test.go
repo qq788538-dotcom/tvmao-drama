@@ -1,9 +1,10 @@
 // apps/api/internal/agent/pairing_prune_test.go
 //
 // 钉死「thread 不许变砖」的三道防线：
-//   1. 回放侧配对修剪（pruneUnpairedToolMessages）——兜住一切来源的孤儿配对；
-//   2. 压缩切点校正——不把 assistant(tool_use)/tool 配对从中间切断；
-//   3. 持久化入口合法化——非法 tool arguments 不再让整条 assistant 落成 []。
+//  1. 回放侧配对修剪（pruneUnpairedToolMessages）——兜住一切来源的孤儿配对；
+//  2. 压缩切点校正——不把 assistant(tool_use)/tool 配对从中间切断；
+//  3. 持久化入口合法化——非法 tool arguments 不再让整条 assistant 落成 []。
+//
 // 三者对应的历史事故：回放出孤儿 tool 消息 → 严格 backbone 400 → 该 thread
 // 之后每次 Run 都失败，永远无法自愈。
 package agent
@@ -251,7 +252,7 @@ type displayNameRegistry struct {
 func (d *displayNameRegistry) DisplayName(name string) string { return d.names[name] }
 
 // tool_use 块要带上面向用户的显示名快照——查得到的填名字，查不到的留空
-//（前端回退内部名），绝不因查不到而报错。
+// （前端回退内部名），绝不因查不到而报错。
 func TestAssistantToBlocks_DisplayName(t *testing.T) {
 	m := &schema.Message{
 		Role: schema.Assistant,

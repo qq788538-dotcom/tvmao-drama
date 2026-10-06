@@ -65,7 +65,6 @@ func TestBuildUserMessage_MentionsWithoutURL(t *testing.T) {
 	}
 }
 
-
 // 大文本附件（file=上传文件 / text=画布文字节点）不内联不挂媒体 part：转成
 // 带 artifact_id + 字数 + 工具名的引用行，且没有 URL 也必须生效（文字节点
 // mention 本来就无 URL——这条曾被「URL 为空直接 continue」挡在门外）。

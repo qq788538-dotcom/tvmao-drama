@@ -29,21 +29,21 @@ func TestDBRegistry_LoadsFromRepo(t *testing.T) {
 	// DBRegistry 总会注入内置工具（meta + analyze_image + analyze_video）——
 	// 在断言用户工具数量前把它们过滤掉。
 	builtins := map[string]bool{
-		AnalyzeImageToolName:          true,
-		AnalyzeVideoToolName:          true,
-		AnalyzeAudioToolName:          true,
-		CreateTextNodeToolName:        true,
-		LoadSkillToolName:             true,
-		CreateGenNodeToolName:         true,
-		ReadCanvasToolName:            true,
-		CreateNodeToolName:            true,
-		UpdateNodeToolName:            true,
-		DeleteNodeToolName:            true,
-		ConnectNodesToolName:          true,
-		RemoveConnectionToolName:      true,
-		ListCanvasModelsToolName:      true,
-		DescribeCanvasNodeToolName:    true,
-		ReadAttachmentToolName:        true,
+		AnalyzeImageToolName:       true,
+		AnalyzeVideoToolName:       true,
+		AnalyzeAudioToolName:       true,
+		CreateTextNodeToolName:     true,
+		LoadSkillToolName:          true,
+		CreateGenNodeToolName:      true,
+		ReadCanvasToolName:         true,
+		CreateNodeToolName:         true,
+		UpdateNodeToolName:         true,
+		DeleteNodeToolName:         true,
+		ConnectNodesToolName:       true,
+		RemoveConnectionToolName:   true,
+		ListCanvasModelsToolName:   true,
+		DescribeCanvasNodeToolName: true,
+		ReadAttachmentToolName:     true,
 	}
 	var userTools []Tool
 	for _, tl := range tools {

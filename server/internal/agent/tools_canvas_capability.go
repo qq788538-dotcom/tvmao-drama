@@ -122,8 +122,8 @@ type describeField struct {
 	Desc    string `json:"desc"`
 	Current any    `json:"current,omitempty"`
 	// Allowed 非空时，写入必须取其中之一（来自所选模型的 uiSchema）。
-	Allowed []any `json:"allowed,omitempty"`
-	Default any   `json:"default,omitempty"`
+	Allowed []any  `json:"allowed,omitempty"`
+	Default any    `json:"default,omitempty"`
 	Note    string `json:"note,omitempty"`
 }
 

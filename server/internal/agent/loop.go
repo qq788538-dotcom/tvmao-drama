@@ -424,7 +424,7 @@ func (a *Agent) sendFatal(threadID, actionID, code, msg string) {
 // 回退到已废弃的 ChatModel.BindTools（原地改对象）。两者都没有时就原样返回 planner
 // ——这对用 no-tool stub 的测试很有用。
 // 第二个返回值报告是否真的绑上了工具——调用方据此决定要不要显式带 tool_choice
-//（无工具的请求带 tool_choice 会被部分上游拒绝，测试 stub 也走 false 分支）。
+// （无工具的请求带 tool_choice 会被部分上游拒绝，测试 stub 也走 false 分支）。
 func (a *Agent) bindToolsWithList(ctx context.Context, tools []Tool) (model.BaseChatModel, bool, error) {
 	infos := toolInfosFromList(ctx, tools)
 	if len(infos) == 0 {

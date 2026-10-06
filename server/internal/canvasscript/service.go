@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -148,7 +149,8 @@ type Service struct {
 	keys       keyResolver
 	skills     skillRunner
 	inflight   atomic.Int32
-	instanceID string // 本进程随机 id，写入 owner_instance 便于排查
+	running    sync.WaitGroup // 在跑的 execute goroutine；RunWorker 退出前等它们收尾
+	instanceID string         // 本进程随机 id，写入 owner_instance 便于排查
 }
 
 func NewService(db *sql.DB, settings settingsStore, models modelCatalog, keys keyResolver, skills skillRunner) *Service {
@@ -324,6 +326,7 @@ func (s *Service) RunWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			s.running.Wait()
 			return
 		case <-tick.C:
 			s.claimAndRun(ctx)
@@ -342,7 +345,9 @@ func (s *Service) claimAndRun(ctx context.Context) {
 			return
 		}
 		s.inflight.Add(1)
+		s.running.Add(1)
 		go func(task *Task) {
+			defer s.running.Done()
 			defer s.inflight.Add(-1)
 			s.execute(ctx, task, cfg)
 		}(t)

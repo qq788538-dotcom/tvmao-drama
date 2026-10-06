@@ -20,21 +20,21 @@ const skillMaxIterations = 40
 
 // wireCanvasScript 装配脚本节点（P6）：释放内置 Skill、找内置 Python、启动回收与 worker。
 // 找不到 Python 不阻止启动，只打印警告；任务执行时以“内置 Python 运行时缺失”失败。
-func wireCanvasScript(ctx context.Context, conn *sql.DB, dataDir, pythonHome string) (*apphttp.CanvasScriptHandler, error) {
+func wireCanvasScript(ctx context.Context, conn *sql.DB, dataDir, pythonHome string) (*apphttp.CanvasScriptHandler, []<-chan struct{}, error) {
 	runtimeDir := filepath.Join(dataDir, "runtime")
 	skillsDir, err := skillbundle.Extract(filepath.Join(runtimeDir, "skills"))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	catalog, err := skillruntime.NewCatalog(skillsDir)
 	if err != nil {
-		return nil, fmt.Errorf("加载内置 Skill: %w", err)
+		return nil, nil, fmt.Errorf("加载内置 Skill: %w", err)
 	}
 	workspace, err := skillruntime.NewRunWorkspace(filepath.Join(runtimeDir, "skill-runs"))
 	if err != nil {
-		return nil, fmt.Errorf("创建 Skill Run 工作区: %w", err)
+		return nil, nil, fmt.Errorf("创建 Skill Run 工作区: %w", err)
 	}
-	go skillruntime.NewWorkspaceCleaner(workspace.Root()).Run(ctx)
+	cleanerDone := goDone(func() { skillruntime.NewWorkspaceCleaner(workspace.Root()).Run(ctx) })
 
 	python, err := skillruntime.LocatePython(pythonHome)
 	if err != nil {
@@ -48,8 +48,8 @@ func wireCanvasScript(ctx context.Context, conn *sql.DB, dataDir, pythonHome str
 	settingsRepo := settings.NewSQLiteRepository(conn)
 	svc := canvasscript.NewService(conn, settingsRepo, models.NewSQLiteRepository(conn), settingsUpstreamKey{settings: settingsRepo}, rt)
 	if err := svc.RecoverOnStartup(ctx); err != nil {
-		return nil, fmt.Errorf("回收上次未完成的脚本任务: %w", err)
+		return nil, nil, fmt.Errorf("回收上次未完成的脚本任务: %w", err)
 	}
-	go svc.RunWorker(ctx)
-	return apphttp.NewCanvasScriptHandler(svc), nil
+	workerDone := goDone(func() { svc.RunWorker(ctx) })
+	return apphttp.NewCanvasScriptHandler(svc), []<-chan struct{}{cleanerDone, workerDone}, nil
 }

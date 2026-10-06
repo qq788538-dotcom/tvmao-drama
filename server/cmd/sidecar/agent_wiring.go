@@ -31,7 +31,8 @@ type agentWiringDeps struct {
 }
 
 type agentWiring struct {
-	Hub        *agent.Hub // 交给 P1c 的 canvasgen.SetChangeNotifier，承载 canvas_changed
+	Workers    []<-chan struct{} // 后台 goroutine 的退出信号，main 关库前等待
+	Hub        *agent.Hub        // 交给 P1c 的 canvasgen.SetChangeNotifier，承载 canvas_changed
 	Registry   *agent.DBRegistry
 	Agent      *apphttp.AgentHandler
 	Skills     *apphttp.SkillsHandler
@@ -98,12 +99,13 @@ func wireAgent(ctx context.Context, d agentWiringDeps) (*agentWiring, error) {
 	if err := registry.RefreshFromDB(); err != nil {
 		log.Printf("agent 工具目录初次加载: %v", err)
 	}
-	registry.StartPeriodicRefresh(ctx, 10*time.Second)
+	refreshDone := registry.StartPeriodicRefresh(ctx, 10*time.Second)
 
 	runner := &agentRunnerImpl{deps: deps, agentRepo: repo, skillsRepo: skillsRepo, tools: registry, signer: signer, media: resolver}
 	agentHandler := apphttp.NewAgentHandler(hub, repo, runner, signer)
 	agentHandler.BaseCtx = ctx // sidecar 退出时取消，进行中的 Run 跟着停
 	return &agentWiring{
+		Workers:  []<-chan struct{}{refreshDone},
 		Hub:      hub,
 		Registry: registry,
 		Agent:    agentHandler,

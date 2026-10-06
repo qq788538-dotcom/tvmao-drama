@@ -93,7 +93,7 @@ type ContentBlock struct {
 	// Auto 只用在 skill block 上：true = 这个技能是关键词自动挂的，不是用户在
 	// SkillPopover 里点的。前端据此把 chip 标成"自动"，否则用户会困惑气泡上
 	// 凭空多出来的标签是哪来的。omitempty 保证存量消息的 JSON 逐字不变。
-	Auto        bool            `json:"auto,omitempty"`
+	Auto bool `json:"auto,omitempty"`
 	// CharCount 只用在 file / text_ref block（大文本附件引用）上：历史回放时
 	// 重新渲染引用行需要字数。omitempty 保证存量消息 JSON 逐字不变。
 	CharCount int64 `json:"char_count,omitempty"`

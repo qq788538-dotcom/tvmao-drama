@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -335,5 +336,54 @@ func TestBuiltinSeedImportedOnStartup(t *testing.T) {
 	}
 	if models != 47 || settings != 6 {
 		t.Fatalf("models=%d settings=%d, want 47/6", models, settings)
+	}
+}
+
+func TestGoDoneClosesAfterFunc(t *testing.T) {
+	release := make(chan struct{})
+	d := goDone(func() { <-release })
+	if waitDone(30*time.Millisecond, d) {
+		t.Fatal("f 未结束时不应 done")
+	}
+	close(release)
+	if !waitDone(time.Second, d) {
+		t.Fatal("f 结束后应 done")
+	}
+}
+
+// 停 HTTP、Drain、worker 三者并行：总耗时约等于最慢的一个，而不是相加。
+func TestShutdownAndWaitRunsInParallel(t *testing.T) {
+	step := 150 * time.Millisecond
+	worker := goDone(func() { time.Sleep(step) })
+	start := time.Now()
+	ok := shutdownAndWait(2*time.Second,
+		func(context.Context) error { time.Sleep(step); return nil },
+		func() { time.Sleep(step) },
+		worker)
+	if !ok {
+		t.Fatal("应在期限内全部结束")
+	}
+	if el := time.Since(start); el > 2*step+50*time.Millisecond {
+		t.Fatalf("应并行等待，耗时 %v", el)
+	}
+}
+
+// 任何一项卡住时，整体不超过 timeout，且 stopHTTP 拿到的 ctx 带同一个截止时间。
+func TestShutdownAndWaitBoundedByTimeout(t *testing.T) {
+	block := make(chan struct{})
+	defer close(block)
+	var gotDeadline bool
+	start := time.Now()
+	ok := shutdownAndWait(200*time.Millisecond,
+		func(ctx context.Context) error { _, gotDeadline = ctx.Deadline(); <-ctx.Done(); return ctx.Err() },
+		func() { <-block })
+	if ok {
+		t.Fatal("drain 卡住时应返回 false")
+	}
+	if el := time.Since(start); el > 400*time.Millisecond {
+		t.Fatalf("总等待应受 timeout 约束，耗时 %v", el)
+	}
+	if !gotDeadline {
+		t.Fatal("stopHTTP 的 ctx 应带截止时间")
 	}
 }

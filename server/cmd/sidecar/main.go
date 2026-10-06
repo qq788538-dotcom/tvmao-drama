@@ -150,12 +150,13 @@ func run() error {
 	a.deps.Agent, a.deps.Skills, a.deps.AdminAgent = agentW.Agent, agentW.Skills, agentW.AdminAgent
 
 	// P6 脚本节点：找不到内置 Python 时只记警告（任务执行时报错），不阻断启动。
-	canvasScript, err := wireCanvasScript(ctx, conn, *dataDir, *pythonHome)
+	canvasScript, scriptWorkers, err := wireCanvasScript(ctx, conn, *dataDir, *pythonHome)
 	if err != nil {
 		ln.Close()
 		return fmt.Errorf("装配脚本节点: %w", err)
 	}
 	a.deps.CanvasScript = canvasScript
+	bgWorkers := append(append([]<-chan struct{}{}, agentW.Workers...), scriptWorkers...)
 	// 生成结果回写画布后经 Agent Hub 推 canvas_changed（P1c 留的注入点）。
 	a.gen.CanvasGen.SetChangeNotifier(agentW.Hub)
 
@@ -174,7 +175,8 @@ func run() error {
 	// 在 READY 之前调用；退出时随 ctx 取消停下，没跑完的任务由下次启动续跑。
 	a.gen.Gen.StartBackground(ctx)
 	// Seedance 合规对账：未配置时 ReconcileAll 自身 no-op；随根 ctx 退出。
-	go a.seedance.RunWorker(ctx)
+	workers = append(workers, goDone(func() { a.seedance.RunWorker(ctx) }))
+	workers = append(workers, bgWorkers...)
 
 	go func() {
 		waitForShutdown(stdin)
@@ -196,38 +198,53 @@ func run() error {
 	go func() { serveErr <- srv.Serve(ln) }()
 	fmt.Printf("READY %d\n", port)
 
+	drainGen := func() { a.gen.Gen.Drain(genDrainTimeout) }
 	select {
 	case err := <-serveErr:
 		cancel()
-		waitDone(shutdownTimeout, workers...)
+		shutdownAndWait(shutdownTimeout, nil, drainGen, workers...)
 		return err
 	case <-ctx.Done():
 	}
-	// 关闭顺序：ctx 已取消（worker 不再开始新一轮）→ 生成管线 Drain（停止领取、等在途任务收口，P1c M1）
-	// 与停 HTTP 并行 → 等 worker 退出 → 等 Drain 结束 → 关数据库（defer）。
+	// 关闭顺序：ctx 已取消（worker 不再开始新一轮）→ 停 HTTP、生成管线 Drain（停止领取、等在途任务收口，
+	// P1c M1）、等后台 worker 退出，三者并行，共用一个 shutdownTimeout 截止时间 → 关数据库（defer）。
 	// 必须等 worker 和 Drain 结束再关库：sql.DB.Close 不会等事务以外的后续语句，剩下的步骤只会拿到
-	// "sql: database is closed"。Drain 自带 2 秒上限，整体仍受 shutdownTimeout 约束。
-	deadline := time.Now().Add(shutdownTimeout)
-	drained := make(chan struct{})
-	go func() {
-		a.gen.Gen.Drain(genDrainTimeout)
-		close(drained)
-	}()
-	sctx, scancel := context.WithDeadline(context.Background(), deadline)
-	defer scancel()
-	if err := srv.Shutdown(sctx); err != nil {
-		log.Printf("关闭 HTTP 服务: %v", err)
-	}
-	if !waitDone(time.Until(deadline), workers...) {
-		log.Print("等待后台任务退出超时，直接关闭数据库")
-	}
-	select {
-	case <-drained:
-	case <-time.After(time.Until(deadline)):
-		log.Print("等待生成任务收口超时，直接关闭数据库（未完成的任务下次启动续跑）")
+	// "sql: database is closed"。
+	if !shutdownAndWait(shutdownTimeout, srv.Shutdown, drainGen, workers...) {
+		log.Print("等待后台任务/生成任务收口超时，直接关闭数据库（未完成的任务下次启动续跑）")
 	}
 	log.Print("sidecar 已关闭")
 	return nil
+}
+
+// shutdownAndWait 是唯一的关闭等待流程：停 HTTP（stopHTTP 可为 nil）、drain（可为 nil）与 workers
+// 并行进行，全部共用 timeout 这一个截止时间。全部在期限内结束返回 true。
+func shutdownAndWait(timeout time.Duration, stopHTTP func(context.Context) error, drain func(), workers ...<-chan struct{}) bool {
+	deadline := time.Now().Add(timeout)
+	sctx, scancel := context.WithDeadline(context.Background(), deadline)
+	defer scancel()
+	waits := append([]<-chan struct{}{}, workers...)
+	if stopHTTP != nil {
+		waits = append(waits, goDone(func() {
+			if err := stopHTTP(sctx); err != nil {
+				log.Printf("关闭 HTTP 服务: %v", err)
+			}
+		}))
+	}
+	if drain != nil {
+		waits = append(waits, goDone(drain))
+	}
+	return waitDone(time.Until(deadline), waits...)
+}
+
+// goDone 在新 goroutine 里跑 f，返回 f 结束后关闭的通道，供 waitDone 等待。
+func goDone(f func()) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f()
+	}()
+	return done
 }
 
 // waitDone 等 chans 全部关闭，最多等 timeout；全部关闭返回 true。

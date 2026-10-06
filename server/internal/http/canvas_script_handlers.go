@@ -12,10 +12,6 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/canvasscript"
 )
 
-// canvasScriptUserID 桌面端固定本地用户（P1a 迁移预置 users.id=1）。
-// 合并 P1b 的本地身份中间件后可改用 userIDFromContext，行为不变。
-const canvasScriptUserID int64 = 1
-
 // CanvasScriptHandler 脚本节点“剧本生成分镜”的用户侧接口：风格列表、提交、轮询。
 // 后台“脚本设置”（读写 canvas_script_config）归 P4，直接调用 Service.LoadConfig / SaveConfig。
 type CanvasScriptHandler struct {
@@ -69,7 +65,7 @@ func (h *CanvasScriptHandler) Submit(w nethttp.ResponseWriter, r *nethttp.Reques
 		canvasScriptError(w, nethttp.StatusBadRequest, "projectId/nodeId/style/model required")
 		return
 	}
-	taskID, err := h.svc.Submit(r.Context(), canvasScriptUserID, body.ProjectID, body.NodeID, body.Style, body.Script, body.DurationSec, body.Model, nil)
+	taskID, err := h.svc.Submit(r.Context(), userIDFromContext(r.Context()), body.ProjectID, body.NodeID, body.Style, body.Script, body.DurationSec, body.Model, nil)
 	if err != nil {
 		var ue *canvasscript.UserError
 		if errors.As(err, &ue) {
@@ -89,7 +85,7 @@ func (h *CanvasScriptHandler) Status(w nethttp.ResponseWriter, r *nethttp.Reques
 		canvasScriptError(w, nethttp.StatusBadRequest, "invalid taskID")
 		return
 	}
-	t, err := h.svc.Get(r.Context(), canvasScriptUserID, taskID)
+	t, err := h.svc.Get(r.Context(), userIDFromContext(r.Context()), taskID)
 	if err != nil {
 		if errors.Is(err, canvasscript.ErrTaskNotFound) {
 			canvasScriptError(w, nethttp.StatusNotFound, "任务不存在")

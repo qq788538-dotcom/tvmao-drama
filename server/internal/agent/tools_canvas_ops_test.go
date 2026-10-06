@@ -24,7 +24,7 @@ func TestReadCanvasTool_CompactSnapshot(t *testing.T) {
 		t.Fatalf("InvokableRun: %v", err)
 	}
 	var got struct {
-		Nodes []readCanvasNode `json:"nodes"`
+		Nodes       []readCanvasNode `json:"nodes"`
 		Connections []readCanvasConn `json:"connections"`
 	}
 	if err := json.Unmarshal([]byte(out), &got); err != nil {

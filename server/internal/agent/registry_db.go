@@ -230,8 +230,10 @@ func (r *DBRegistry) MarkChanged() { go func() { _ = r.RefreshFromDB() }() }
 
 // StartPeriodicRefresh 在一个 goroutine 里运行，每隔 interval 刷新一次。
 // 传入一个会在 shutdown 时取消的 ctx。
-func (r *DBRegistry) StartPeriodicRefresh(ctx context.Context, interval time.Duration) {
+func (r *DBRegistry) StartPeriodicRefresh(ctx context.Context, interval time.Duration) <-chan struct{} {
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		t := time.NewTicker(interval)
 		defer t.Stop()
 		for {
@@ -243,4 +245,5 @@ func (r *DBRegistry) StartPeriodicRefresh(ctx context.Context, interval time.Dur
 			}
 		}
 	}()
+	return done
 }

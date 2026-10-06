@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/james/huabu_studio/apps/api/internal/db"
 )
@@ -28,7 +29,7 @@ func TestWireCanvasScriptExtractsSkillsAndRecoversRunningTasks(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	h, err := wireCanvasScript(ctx, conn, dataDir, "")
+	h, _, err := wireCanvasScript(ctx, conn, dataDir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,4 +49,31 @@ func TestWireCanvasScriptExtractsSkillsAndRecoversRunningTasks(t *testing.T) {
 	if status != "pending" {
 		t.Fatalf("上个进程遗留的 running 应回到 pending，got %s", status)
 	}
+}
+
+// 关闭 ctx 后，脚本节点 worker / 清理器 / 在跑任务必须全部退出（关库前 waitDone 可等到），
+// 之后关库不会再有 goroutine 写库。
+func TestWireCanvasScriptWorkersExitOnCancel(t *testing.T) {
+	dataDir := t.TempDir()
+	conn, err := db.Open(filepath.Join(dataDir, "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(conn); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	_, workers, err := wireCanvasScript(ctx, conn, dataDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(workers) == 0 {
+		t.Fatal("应返回后台 worker 的退出信号")
+	}
+	cancel()
+	if !waitDone(2*time.Second, workers...) {
+		t.Fatal("cancel 后 worker 未在期限内退出")
+	}
+	conn.Close()
+	time.Sleep(50 * time.Millisecond) // 若仍有 goroutine 写库，此处会在日志里出现 closed
 }
