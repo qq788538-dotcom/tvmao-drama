@@ -127,6 +127,16 @@ func (t *analyzeMediaTool) InvokableRun(ctx context.Context, argsJSON string, _ 
 		return "", fmt.Errorf("%s: missing user_id in context", t.name)
 	}
 
+	// S12 接缝：本机媒体换成上游拿得到的形式；视频/音频目前给不出，直接把原因告诉 planner，
+	// 不去冻结、不调上游（调了只会拿到一个看不懂的 400）。
+	if t.deps.Media != nil {
+		resolved, rerr := t.deps.Media.ResolveForLLM(ctx, t.kind, args.URL)
+		if rerr != nil {
+			return "", fmt.Errorf("%s: %w", t.name, rerr)
+		}
+		args.URL = resolved
+	}
+
 	// build 同时回 backbone 的计费配置。匹配不到 model_configs 时 buildModelForUser
 	// 已经 error → 工具调用失败（符合「匹配不到拒绝」，不允许免费白嫖）。
 	cm, mb, err := t.build(ctx, userID, t.deps)

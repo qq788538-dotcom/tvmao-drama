@@ -58,6 +58,9 @@ type Agent struct {
 	// Signer 把写进 content_blocks 的 URL 做 canonicalize，让 DB 行能熬过 24h 的
 	// signed-URL TTL。为 nil 时回退到原样存 URL（旧行为——会留下永久失效隐患）。
 	Signer URLSigner
+	// MediaResolver 把发给 planner 的 image_url 换成上游拿得到的地址（S12 接缝）。
+	// nil = 不改写（参考仓行为）。只影响出网请求，不影响落库内容。
+	MediaResolver LLMMediaResolver
 
 	// PlannerContextWindow 是 planner backbone 的总 context-window 预算（单位 token）。
 	// 每次 Run 开头由 CompressIfNeeded 使用。为 0 时关闭自动压缩。
@@ -588,6 +591,7 @@ func (a *Agent) streamOnce(ctx context.Context, llm model.BaseChatModel, msgs []
 		freezeDone = true
 	}
 
+	msgs = a.resolveMediaForLLM(ctx, msgs)
 	stream, err := llm.Stream(ctx, msgs, llmOpts...)
 	if err != nil {
 		// freeze 已成立但 Stream 没起来 → 退款（资金安全：freeze 后每条出口必配对）。
