@@ -9,6 +9,7 @@
 //   doubao-seedance-2-5-260628-extend;切片自动异步提交 Seedance 合规校验;
 // - 确认只铺节点,不扣积分——生成由用户在 gen-video 节点上手动点
 //   (批量入口绝不自动扣积分的铁律)。
+import { redactSecrets } from '@/shared/redact';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as AntApp } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -76,7 +77,7 @@ export function VideoContinuationBar({ nodeId, url }: { nodeId: string; url: str
       })
       .catch((e) => {
         if (!alive) return;
-        message.error(e?.message || '视频加载失败,无法续写');
+        message.error(e?.message ? redactSecrets(String(e.message)) : '视频加载失败,无法续写');
         useCanvasStore.getState().setContinuationNode(null);
       });
     return () => {

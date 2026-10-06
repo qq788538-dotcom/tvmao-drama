@@ -25,7 +25,24 @@ function isNotFound(err: unknown): boolean {
  * 其它错误（sidecar 没起来、网络、500）原样抛出，由调用方显示错误页——不能因为
  * 一次暂时性失败就去新建一个空项目。
  */
-export async function resolveStartupProject(deps: StartupDeps = defaultDeps): Promise<number> {
+export function resolveStartupProject(deps: StartupDeps = defaultDeps): Promise<number> {
+  // 去重：开发模式下 StrictMode 会让 StartupRedirect 的 effect「挂载 → 卸载 → 挂载」，
+  // 两次调用各自查到空列表、各自新建，库里就多出一个「未命名项目」。进行中的请求共用
+  // 同一个 promise；结束（成功或失败）后清掉，「重试」会重新解析。
+  if (!inFlight) {
+    const pending = doResolve(deps);
+    inFlight = pending;
+    const clear = () => {
+      if (inFlight === pending) inFlight = null;
+    };
+    pending.then(clear, clear);
+  }
+  return inFlight;
+}
+
+let inFlight: Promise<number> | null = null;
+
+async function doResolve(deps: StartupDeps): Promise<number> {
   const last = loadLastProjectId();
   if (last !== null) {
     try {

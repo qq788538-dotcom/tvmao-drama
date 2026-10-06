@@ -17,9 +17,13 @@ import { startApp } from '@/desktop/startApp';
 // dayjs，需单独把 dayjs 全局 locale 设成中文（与参考仓 main.tsx 一致）。
 dayjs.locale('zh-cn');
 
-// 以下三项原样沿用参考仓 main.tsx：测试钩子、清理过期的抽帧缓存、拦截触控板手势。
-(window as any).__CANVAS_STORE_FOR_TEST__ = useCanvasStore.getState();
+// 以下三项沿用参考仓 main.tsx：测试钩子、清理过期的抽帧缓存、拦截触控板手势。
+// 测试钩子只在开发 / 测试构建里挂：生产包里 import.meta.env.DEV 被静态替换成 false，
+// 整段连同字符串一起被摇掉，页面上的任意脚本都拿不到画布 store。
+if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
+  (window as any).__CANVAS_STORE_FOR_TEST__ = useCanvasStore.getState();
+}
 import('@/shared/frameCache').then((m) => m.purgeExpired()).catch(() => {});
 installGestureGuards();
 
-void startApp(document.getElementById('root')!);
+startApp(document.getElementById('root')!);

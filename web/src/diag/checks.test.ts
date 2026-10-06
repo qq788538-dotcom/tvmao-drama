@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { connectionChecks, diagMediaPath } from './checks';
+import { connectionChecks, diagMediaPath, formatReport } from './checks';
 
 describe('diagMediaPath', () => {
   it('文件名做 URL 编码（空格、中文、#、?）', () => {
@@ -31,5 +31,46 @@ describe('connectionChecks WebSocket 回显', () => {
     expect(ws.ok).toBe(false);
     expect(ws.detail).toContain('1008');
     expect(ws.ms).toBeLessThan(4000);
+  });
+});
+
+describe('诊断结果脱敏（I2）', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('检查抛出的错误里带 token 的 URL：detail 和 formatReport 都不含 token 明文', async () => {
+    const secret = 'SECRET-TOKEN-123';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error(`Error fetching http://127.0.0.1:1/api/v1/ping?token=${secret}: 500`);
+      }),
+    );
+    class FailingSocket {
+      onopen: (() => void) | null = null;
+      onmessage: ((ev: { data: unknown }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: ((ev: { code: number }) => void) | null = null;
+      constructor() {
+        setTimeout(() => this.onerror?.(), 0);
+      }
+      send() {}
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', FailingSocket);
+
+    const results = await connectionChecks({ port: 1, token: secret });
+    const ping = results[0];
+    expect(ping.ok).toBe(false);
+    expect(ping.detail).toContain('token=***');
+    expect(ping.detail).not.toContain(secret);
+    expect(formatReport(results)).not.toContain(secret);
+  });
+
+  it('formatReport 对外部传入的结果（如上传失败的 String(e)）同样脱敏', () => {
+    const report = formatReport([
+      { name: '上传测试视频', ok: false, detail: 'Error: GET /x?a=1&token=abc 404', ms: 0 },
+    ]);
+    expect(report).toContain('&token=***');
+    expect(report).not.toContain('token=abc');
   });
 });

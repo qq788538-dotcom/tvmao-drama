@@ -215,4 +215,60 @@ describe('AgentClient', () => {
       vi.useRealTimers();
     }
   });
+
+  describe('自动重连时重新取 sidecar 地址和 token（sidecar 重启后端口、token 都会变）', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('有 resolveEndpoint 时，重连用它返回的新地址和新 token，不沿用构造时的旧值', async () => {
+      const resolveEndpoint = vi.fn(async () => ({ url: 'ws://127.0.0.1:2/api/v1/agent/ws', token: 'new' }));
+      const client = new AgentClient({
+        url: 'ws://127.0.0.1:1/api/v1/agent/ws',
+        token: 'old',
+        projectId: 7,
+        resolveEndpoint,
+      });
+      client.connect();
+      expect(FakeWS.instances[0].url).toBe('ws://127.0.0.1:1/api/v1/agent/ws?project_id=7&token=old');
+
+      FakeWS.instances[0].onclose?.(new CloseEvent('close'));
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(resolveEndpoint).toHaveBeenCalledTimes(1);
+      expect(FakeWS.instances).toHaveLength(2);
+      expect(FakeWS.instances[1].url).toBe('ws://127.0.0.1:2/api/v1/agent/ws?project_id=7&token=new');
+      client.close();
+    });
+
+    it('resolveEndpoint 失败（sidecar 还在重启）：不建连接，按退避继续重试', async () => {
+      const resolveEndpoint = vi
+        .fn<() => Promise<{ url: string; token: string }>>()
+        .mockRejectedValueOnce(new Error('starting'))
+        .mockResolvedValue({ url: 'ws://127.0.0.1:3/ws', token: 'n' });
+      const client = new AgentClient({ url: 'ws://127.0.0.1:1/ws', token: 'o', resolveEndpoint });
+      client.connect();
+      FakeWS.instances[0].onclose?.(new CloseEvent('close'));
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(FakeWS.instances).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(FakeWS.instances).toHaveLength(2);
+      expect(FakeWS.instances[1].url).toBe('ws://127.0.0.1:3/ws?token=n');
+      client.close();
+    });
+
+    it('取地址期间被 close()：不再建连接', async () => {
+      let release!: (v: { url: string; token: string }) => void;
+      const resolveEndpoint = vi.fn(() => new Promise<{ url: string; token: string }>((r) => { release = r; }));
+      const client = new AgentClient({ url: 'ws://a/ws', token: 'o', resolveEndpoint });
+      client.connect();
+      FakeWS.instances[0].onclose?.(new CloseEvent('close'));
+      await vi.advanceTimersByTimeAsync(1000);
+      client.close();
+      release({ url: 'ws://b/ws', token: 'n' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(FakeWS.instances).toHaveLength(1);
+    });
+  });
 });

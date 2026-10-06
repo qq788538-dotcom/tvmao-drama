@@ -4,6 +4,11 @@ export interface AgentClientOptions {
   url: string;
   token: string;
   projectId?: number;
+  /**
+   * 桌面端：自动重连前重新取 WS 地址（不带 token）和 token。sidecar 重启后端口和
+   * token 都会变，沿用构造时的旧值只会一直连不上。失败（sidecar 还在重启）时按退避重试。
+   */
+  resolveEndpoint?: () => Promise<{ url: string; token: string }>;
 }
 
 type FrameHandler = (f: Frame) => void;
@@ -85,7 +90,22 @@ export class AgentClient {
     this.reconnectAttempts += 1;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
-      if (!this.intentionalClose) this.connect();
+      if (this.intentionalClose) return;
+      const resolve = this.opts.resolveEndpoint;
+      if (!resolve) {
+        this.connect();
+        return;
+      }
+      resolve().then(
+        ({ url, token }) => {
+          if (this.intentionalClose) return;
+          this.opts = { ...this.opts, url, token };
+          this.connect();
+        },
+        () => {
+          if (!this.intentionalClose) this.scheduleReconnect();
+        },
+      );
     }, delay);
   }
 

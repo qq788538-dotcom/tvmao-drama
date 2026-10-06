@@ -1,10 +1,11 @@
 import axios, { AxiosInstance } from 'axios';
 import { isApiWriteAllowed } from './apiGuards';
-import { sidecarApiBaseUrl, sidecarToken } from './sidecarSession';
+import { buildHttpUrl } from './server';
+import { currentSidecarSession } from './sidecarSession';
 
 // 桌面端：所有 REST 请求直连本机 sidecar（spec D3）。地址和 token 来自本次启动的
-// 会话（./sidecarSession，main.tsx 在渲染任何页面之前写入）。端口每次启动都不同，
-// 所以 baseURL 在每个请求里现读，不在模块加载时固化。
+// 会话（./sidecarSession → server.ts 的 getServerInfo）。端口每次启动、每次 sidecar
+// 重启都不同，所以 baseURL 和 token 在每个请求里现取，不在模块加载时固化。
 //
 // 与参考仓的差异：没有登录（spec X4），所以没有 localStorage 里的登录 token、没有
 // 「401 → 清会话跳 /login」、没有团队身份自愈。401 只可能是 token 对不上（sidecar
@@ -13,9 +14,12 @@ export const api: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-api.interceptors.request.use((config) => {
-  config.baseURL = sidecarApiBaseUrl();
-  const token = sidecarToken();
+api.interceptors.request.use(async (config) => {
+  // 每个请求现取会话（getServerInfo 有缓存，sidecar 重启事件会清掉它）：P8 的壳会自动
+  // 重启 sidecar，端口和 token 都会变。sidecar 正在重启时这里会等到它就绪或失败。
+  const session = await currentSidecarSession();
+  config.baseURL = session ? buildHttpUrl(session, '/api/v1') : '/api/v1';
+  const token = session?.token ?? '';
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }

@@ -39,7 +39,41 @@ export function sidecarWsUrl(path: string): string {
   return session ? `ws://127.0.0.1:${session.port}${path}` : path;
 }
 
+// 会话来源：startApp 设成 server.ts 的 getServerInfo。它有缓存，壳广播 sidecar 状态
+// 事件（P8 自动重启）时缓存被清掉，下一次调用会拿到新的端口和 token。
+let loader: (() => Promise<ServerInfo>) | null = null;
+
+export function setSidecarSessionLoader(fn: (() => Promise<ServerInfo>) | null): void {
+  loader = fn;
+}
+
+/**
+ * 现取最新的会话，供 REST 拦截器和 Agent WS 重连用：sidecar 重启后端口和 token 都会变，
+ * 不能沿用启动时存下的那份。没设来源（单元测试、纯浏览器调试）时返回同步会话；
+ * 来源失败（重启失败）时退回最后一次的会话，让请求照常失败、交给调用方报错。
+ * 只读不写：同步会话由 startApp 在 sidecar 就绪时统一更新（连同清 query 缓存、重挂页面）。
+ */
+export async function currentSidecarSession(): Promise<ServerInfo | null> {
+  if (!loader) return session;
+  try {
+    return await loader();
+  } catch {
+    return session;
+  }
+}
+
 /** 仅供测试清状态。 */
 export function resetSidecarSessionForTest(): void {
   session = null;
+  loader = null;
+}
+
+/**
+ * Agent WS 重连用：现取会话，返回不带 token 的地址和 token（AgentClient 自己拼查询串，
+ * 与 buildWsUrl 的格式一致）。没有会话时抛错，让 AgentClient 按退避重试。
+ */
+export async function resolveSidecarWsEndpoint(path: string): Promise<{ url: string; token: string }> {
+  const info = await currentSidecarSession();
+  if (!info) throw new Error('本地服务会话未建立');
+  return { url: `ws://127.0.0.1:${info.port}${path}`, token: info.token };
 }

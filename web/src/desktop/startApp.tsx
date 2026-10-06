@@ -7,7 +7,8 @@ import zhCN from 'antd/locale/zh_CN';
 import { App } from '@/App';
 import { queryClient } from '@/shared/queryClient';
 import { getServerInfo, type ServerInfo } from '@/shared/server';
-import { setSidecarSession } from '@/shared/sidecarSession';
+import { SidecarGate } from '@/shared/SidecarGate';
+import { getSidecarSession, setSidecarSession, setSidecarSessionLoader } from '@/shared/sidecarSession';
 import { darkTheme } from './theme';
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -22,44 +23,45 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function SidecarConnecting() {
-  return <div style={{ padding: 24, color: '#cfcece' }}>正在连接本地服务…</div>;
+/**
+ * 采用 SidecarGate 交来的会话：写进同步会话（AgentClient 构造、页面里的 sidecarToken()
+ * 读它），接上「每个请求现取」的来源，并在会话变了（sidecar 重启，端口 / token 换了）时
+ * 清掉 react-query 缓存——旧快照里的媒体 URL 带着旧 token，留着会整批 401。
+ * 返回会话代号：会话变了就 +1，作为页面树的 key，让整棵树重新挂载、重新拉数据。
+ * 在渲染期间调用，所以必须幂等（StrictMode 会渲染两次）：同一份会话重复调用不产生副作用。
+ */
+let sessionEpoch = 0;
+export function adoptSidecarSession(info: ServerInfo): number {
+  const prev = getSidecarSession();
+  if (!prev || prev.port !== info.port || prev.token !== info.token) {
+    if (prev) queryClient.clear();
+    setSidecarSession(info);
+    sessionEpoch += 1;
+  }
+  setSidecarSessionLoader(getServerInfo);
+  return sessionEpoch;
 }
 
-// sidecar 没起来：显示原因，而不是白屏（壳不会自动重启 sidecar，P8 才做重启）。
-export function SidecarFailed({ error }: { error: string }) {
+function SessionScope({ info }: { info: ServerInfo }) {
+  const epoch = adoptSidecarSession(info);
   return (
-    <div style={{ padding: 24, color: '#f5f5f5' }}>
-      <h2>本地服务未启动</h2>
-      <pre style={{ whiteSpace: 'pre-wrap', color: '#f88' }}>{error}</pre>
-      <p>请退出并重新打开应用。</p>
-    </div>
+    <BrowserRouter key={epoch}>
+      <App />
+    </BrowserRouter>
   );
 }
 
 /**
- * 启动流程：先拿到本次 sidecar 的端口和 token 并写进会话，之后才渲染任何页面——
- * axios 拦截器和 AgentClient 都是同步读会话的。
+ * 启动流程：SidecarGate 拿到本次 sidecar 的端口和 token 之后才渲染任何页面——
+ * axios 拦截器和 AgentClient 都要用到会话。P8 的壳会在 sidecar 崩溃后自动重启它并广播
+ * 状态事件：Gate 先切回「正在启动」（卸掉整棵页面树），就绪后用新会话重新挂载。
+ * 地址栏里的路由不变，所以用户会回到原来的画布，快照和媒体 URL 用新 token 重新拉。
  */
-export async function startApp(
-  container: HTMLElement,
-  loadServerInfo: () => Promise<ServerInfo> = getServerInfo,
-): Promise<ReactDOM.Root> {
+export function startApp(container: HTMLElement): ReactDOM.Root {
   const root = ReactDOM.createRoot(container);
-  root.render(<Shell><SidecarConnecting /></Shell>);
-  let info: ServerInfo;
-  try {
-    info = await loadServerInfo();
-  } catch (err) {
-    root.render(<Shell><SidecarFailed error={String(err)} /></Shell>);
-    return root;
-  }
-  setSidecarSession(info);
   root.render(
     <Shell>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <SidecarGate>{(info) => <SessionScope info={info} />}</SidecarGate>
     </Shell>,
   );
   return root;

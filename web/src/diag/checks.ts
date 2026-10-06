@@ -8,6 +8,7 @@ import {
   buildWsUrl,
   type ServerInfo,
 } from '@/shared/server';
+import { redactSecrets } from '@/shared/redact';
 
 export interface CheckResult {
   name: string;
@@ -19,10 +20,11 @@ export interface CheckResult {
 async function run(name: string, fn: () => Promise<string>): Promise<CheckResult> {
   const start = performance.now();
   try {
-    const detail = await fn();
+    const detail = redactSecrets(await fn());
     return { name, ok: true, detail, ms: Math.round(performance.now() - start) };
   } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
+    // 错误文字可能带完整的媒体 / WS 地址（含 token），报告是给人复制转发的，统一脱敏。
+    const detail = redactSecrets(e instanceof Error ? e.message : String(e));
     return { name, ok: false, detail, ms: Math.round(performance.now() - start) };
   }
 }
@@ -200,5 +202,6 @@ export async function mediaChecks(info: ServerInfo, name: string): Promise<Check
 export function formatReport(results: CheckResult[]): string {
   const lines = [`UA: ${navigator.userAgent}`];
   for (const r of results) lines.push(`${r.ok ? 'PASS' : 'FAIL'} ${r.name} — ${r.detail} (${r.ms}ms)`);
-  return lines.join('\n');
+  // 调用方也会塞进自己构造的结果（如上传失败的 String(e)），出口处再统一脱敏一次。
+  return redactSecrets(lines.join('\n'));
 }

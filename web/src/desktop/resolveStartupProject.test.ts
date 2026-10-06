@@ -95,4 +95,37 @@ describe('resolveStartupProject', () => {
     await expect(resolveStartupProject(deps)).rejects.toBeInstanceOf(AxiosError);
     expect(deps.createProject).not.toHaveBeenCalled();
   });
+
+  it('并发调用（StrictMode 下 effect 跑两次）共用同一个进行中的请求，只建一个「未命名项目」', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const deps = makeDeps({
+      listProjectsPage: vi.fn(async () => {
+        await gate;
+        return { items: [] as Project[], total: 0 };
+      }),
+    });
+
+    const a = resolveStartupProject(deps);
+    const b = resolveStartupProject(deps);
+    release();
+
+    expect(await a).toBe(99);
+    expect(await b).toBe(99);
+    expect(deps.listProjectsPage).toHaveBeenCalledTimes(1);
+    expect(deps.createProject).toHaveBeenCalledTimes(1);
+  });
+
+  it('上一次请求结束（成功或失败）后再调用会重新解析：重试不会拿到旧结果', async () => {
+    const failing = makeDeps({
+      listProjectsPage: vi.fn(async () => {
+        throw httpError(500);
+      }),
+    });
+    await expect(resolveStartupProject(failing)).rejects.toBeInstanceOf(AxiosError);
+
+    const ok = makeDeps();
+    expect(await resolveStartupProject(ok)).toBe(99);
+    expect(ok.listProjectsPage).toHaveBeenCalledTimes(1);
+  });
 });

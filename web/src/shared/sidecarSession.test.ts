@@ -26,3 +26,22 @@ describe('sidecarSession', () => {
     expect(sidecarWsUrl('/api/v1/agent/ws')).toBe('ws://127.0.0.1:51234/api/v1/agent/ws');
   });
 });
+
+describe('resolveSidecarWsEndpoint', () => {
+  afterEach(() => resetSidecarSessionForTest());
+
+  it('现取会话：来源返回新端口和 token 时用新的', async () => {
+    const { resolveSidecarWsEndpoint, setSidecarSessionLoader } = await import('./sidecarSession');
+    setSidecarSession({ port: 1, token: 'old' });
+    setSidecarSessionLoader(async () => ({ port: 2, token: 'new' }));
+    expect(await resolveSidecarWsEndpoint('/api/v1/agent/ws')).toEqual({
+      url: 'ws://127.0.0.1:2/api/v1/agent/ws',
+      token: 'new',
+    });
+  });
+
+  it('没有会话时抛错（AgentClient 会按退避重试）', async () => {
+    const { resolveSidecarWsEndpoint } = await import('./sidecarSession');
+    await expect(resolveSidecarWsEndpoint('/ws')).rejects.toThrow();
+  });
+});
