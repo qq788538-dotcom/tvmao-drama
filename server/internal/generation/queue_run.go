@@ -33,6 +33,9 @@ func (s *Service) RunQueueWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			if ctx.Err() != nil {
+				return
+			}
 			s.pumpQueueOnce()
 		}
 	}

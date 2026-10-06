@@ -302,3 +302,42 @@ func TestE2EMediaCORSAndLocalOwnerToken(t *testing.T) {
 		t.Fatalf("ownerToken=local upsert: %d %s", resp.StatusCode, b)
 	}
 }
+
+// M1：手动编辑画布成功后必须经 attachCanvasNotifier 推 canvas_changed；未注入时不广播。
+func TestManualCanvasEditNotifiesAfterAttach(t *testing.T) {
+	e := newE2E(t)
+	resp, b := e.callJSON(t, http.MethodPost, "/api/v1/projects", `{"name":"p"}`)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create project: %d %s", resp.StatusCode, b)
+	}
+	var proj struct {
+		ID int64 `json:"id"`
+	}
+	json.Unmarshal(b, &proj)
+	resp, b = e.callJSON(t, http.MethodPost, fmt.Sprintf("/api/v1/projects/%d/canvas/owner/claim", proj.ID), "")
+	var claim struct {
+		OwnerToken string `json:"ownerToken"`
+	}
+	json.Unmarshal(b, &claim)
+	if resp.StatusCode != http.StatusOK || claim.OwnerToken == "" {
+		t.Fatalf("claim: %d %s", resp.StatusCode, b)
+	}
+	upsert := func(id string) {
+		t.Helper()
+		resp, b := e.callJSON(t, http.MethodPost, fmt.Sprintf("/api/v1/projects/%d/canvas/nodes", proj.ID),
+			fmt.Sprintf(`{"ownerToken":%q,"node":{"id":%q,"type":"text","content":"x"}}`, claim.OwnerToken, id))
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("upsert: %d %s", resp.StatusCode, b)
+		}
+	}
+	n := &countingNotifier{}
+	upsert("n0") // 未注入：不广播
+	if n.n.Load() != 0 {
+		t.Fatal("未注入不应通知")
+	}
+	attachCanvasNotifier(e.app, n)
+	upsert("n1")
+	if got := n.n.Load(); got != 1 {
+		t.Fatalf("手动编辑成功后应通知 1 次, got %d", got)
+	}
+}

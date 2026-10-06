@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
 )
@@ -107,5 +108,23 @@ func TestStartBackgroundExpiresLeasesThenRecovers(t *testing.T) {
 		if repo.calls[i] != w {
 			t.Fatalf("calls=%v want 前缀 %v（必须先过期旧租约，再续 poll，再接管，再兜底）", repo.calls, want)
 		}
+	}
+}
+
+// StartBackground 返回的通道在三个循环都随 ctx 退出后关闭，main 关库前据此等待。
+func TestStartBackgroundDoneClosesAfterCancel(t *testing.T) {
+	svc := &Service{repo: &startupSpyRepo{}, leaseStaleSec: 90}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := svc.StartBackground(ctx)
+	select {
+	case <-done:
+		t.Fatal("ctx 未取消时不应关闭")
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("ctx 取消后三个循环应退出")
 	}
 }

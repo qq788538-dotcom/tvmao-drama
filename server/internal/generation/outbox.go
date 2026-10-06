@@ -173,12 +173,14 @@ func (s *Service) RunOutboxWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			s.pumpOutboxOnce()
+			s.pumpOutboxOnce(ctx)
 		}
 	}
 }
 
-func (s *Service) pumpOutboxOnce() {
+// pumpOutboxOnce 投递一批到期行。ctx 取消后不再开始新的行，在途行用同一个 ctx 投递；
+// 被取消打断的行不记失败（不消耗重试次数），租约过期后下次启动接管重投。
+func (s *Service) pumpOutboxOnce(ctx context.Context) {
 	repo, ok := s.repo.(*SQLiteRepository)
 	if !ok {
 		return // 测试 fake 环境无 outbox
@@ -189,6 +191,9 @@ func (s *Service) pumpOutboxOnce() {
 		return
 	}
 	for _, row := range batch {
+		if ctx.Err() != nil {
+			return
+		}
 		var p outboxPayload
 		if err := json.Unmarshal(row.Payload, &p); err != nil {
 			// payload 损坏是持续性故障:直接按失败路径走向 dead,不无限重试。
@@ -202,7 +207,7 @@ func (s *Service) pumpOutboxOnce() {
 				p.OutputURLs, p.AssetIDs = urls, ids
 			}
 		}
-		err := dispatchSink(context.Background(), row.Sink, SinkResult{
+		err := dispatchSink(ctx, row.Sink, SinkResult{
 			TaskID:       row.TaskID,
 			ModelID:      p.ModelID,
 			OutputURLs:   p.OutputURLs,
@@ -211,6 +216,10 @@ func (s *Service) pumpOutboxOnce() {
 			Text:         p.Text,
 			Err:          p.Err,
 		})
+		if err != nil && ctx.Err() != nil {
+			log.Printf("[gen-outbox] 行 %d 投递被关闭打断，留待下次启动接管: %v", row.ID, err)
+			return
+		}
 		if err != nil {
 			log.Printf("[gen-outbox] 行 %d task=%d 投递失败(第 %d 次): %v", row.ID, row.TaskID, row.Attempt, err)
 			_, _ = repo.failOutbox(row.ID, row.DeliveryVersion, row.Attempt, err.Error())
