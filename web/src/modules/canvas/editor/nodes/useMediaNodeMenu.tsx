@@ -13,6 +13,13 @@ import { NodeContextMenu, type NodeMenuItem } from './NodeContextMenu';
 import { standardNodeMenuItems } from './standardNodeMenuItems';
 import { SaveToLibraryModal } from './SaveToLibraryModal';
 import { SEEDANCE_REQUIREMENTS, checkSeedanceDuration } from './seedanceRules';
+import {
+  fileManagerLabel,
+  isLocalMediaUrl,
+  revealErrorMessage,
+  revealInFileManager,
+} from '@/desktop/localMedia';
+import { useUnsavedLocalBadge } from '@/desktop/unsavedLocal';
 
 type Kind = 'image' | 'video' | 'audio';
 
@@ -119,6 +126,7 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
   const canAct = !!url;
   const duration = useMediaDuration(url, kind);
   const durationCheck = checkSeedanceDuration(kind, duration);
+  const unsavedBadge = useUnsavedLocalBadge(nodeId);
 
   const statusQuery = useQuery({
     queryKey: ['seedance-status', url],
@@ -153,6 +161,18 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
       message.error(e?.response?.data?.error || e.message || '提交校验失败');
     }
   }, [url, kind, message, queryClient]);
+
+  // 桌面端（spec S3）：本机文件在系统文件管理器里定位出来。内容还是上游外链（生成结果
+  // 没保存到本地）时没有本机文件可定位，直接置灰。
+  const canReveal = isLocalMediaUrl(url);
+  const reveal = async () => {
+    if (!url) return;
+    try {
+      await revealInFileManager(url);
+    } catch (e) {
+      message.error(revealErrorMessage(e));
+    }
+  };
 
   const handleSave = async (folderId: number, name: string) => {
     if (!url) return;
@@ -206,6 +226,16 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
       disabled: !canAct,
       hint: canAct ? undefined : '还没有内容可保存',
     },
+    {
+      key: 'reveal',
+      label: fileManagerLabel(),
+      onPick: () => {
+        setMenuPos(null);
+        void reveal();
+      },
+      disabled: !canReveal,
+      hint: !url ? '还没有内容' : canReveal ? undefined : '还没有保存到本地，无法在文件夹中显示',
+    },
     // 删除固定放最后一项——节点右上角的悬浮 X 因误点风险已移除，右键菜单是
     // 唯一的鼠标删除入口（键盘 Delete/Backspace 仍在）。
     {
@@ -220,9 +250,9 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
     },
   ];
 
-  // 状态角标。没校验过的不显示任何东西——绝大多数素材都属于这一类，全都挂标记
+  // 合规状态角标。没校验过的不显示任何东西——绝大多数素材都属于这一类，全都挂标记
   // 只会变成噪音。
-  const badge = !state ? null : state.status === 'active' ? (
+  const seedanceBadge = !state ? null : state.status === 'active' ? (
     <span
       className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-600/90 text-white text-[11px] leading-none font-medium"
       title="已通过 Seedance 2.0 合规校验"
@@ -249,6 +279,14 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
       校验中
     </span>
   );
+
+  // 「未保存到本地」（spec S5）和合规角标互不相干，同时出现时并排显示，未保存排前面。
+  const badge = unsavedBadge || seedanceBadge ? (
+    <>
+      {unsavedBadge}
+      {seedanceBadge}
+    </>
+  ) : null;
 
   const overlay = (
     <>
