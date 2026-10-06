@@ -50,7 +50,7 @@ export async function connectionChecks(info: ServerInfo): Promise<CheckResult[]>
   out.push(
     await run('WebSocket 回显', () => {
       return new Promise<string>((resolve, reject) => {
-        const ws = new WebSocket(buildWsUrl(info, '/api/v1/agent/ws'));
+        const ws = new WebSocket(buildWsUrl(info, '/api/v1/diag/ws'));
         const timer = setTimeout(() => {
           ws.close();
           reject(new Error('5 秒内未收到回显'));
