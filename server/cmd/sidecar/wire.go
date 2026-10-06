@@ -40,8 +40,8 @@ type app struct {
 
 // wire 是唯一的装配点（对应参考仓 cmd/server/main.go 里画布相关的那部分）。
 // 生成任务清理（taskProjectCleanup）接 generation 仓库：删项目时清掉该项目的终态任务历史。
-// 画布变更广播（canvas_changed）目前没有 Hub（/agent/ws 仍是 P0 回显占位），Notifier 传 nil：
-// 回写照常、不广播；P5 的 Agent Hub 落地后在这里注入。
+// 画布变更广播（canvas_changed）依赖 P5 的 Agent Hub，Hub 在 run() 里 wireAgent 之后才存在：
+// 这里构造的 handler 与生成回写都先不带 Notifier，由 run() 用 SetChangeNotifier 补注入。
 // 生成后台循环不在这里启动，由 run() 在 HTTP 就绪前用可取消的 ctx 调 a.gen.Gen.StartBackground。
 func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dataDir, version string) (*app, error) {
 	signer := apphttp.NewMediaSigner(storage)

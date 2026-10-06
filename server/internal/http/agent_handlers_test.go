@@ -322,3 +322,26 @@ type listRepo struct {
 }
 
 func (r *listRepo) ListThreadsByProject(int64) ([]agent.Thread, error) { return r.threads, nil }
+
+// 关闭：Done 之后拒绝新 Run，并等已登记的 Run 退出后才关闭通道（关库前不再有 Agent 写入）。
+func TestAgentHandlerDoneWaitsForRunsAndRejectsNew(t *testing.T) {
+	h := &AgentHandler{}
+	if !h.startRun() {
+		t.Fatal("关闭前应能登记 Run")
+	}
+	done := h.Done()
+	if h.startRun() {
+		t.Fatal("Done 之后不应再接受新 Run")
+	}
+	select {
+	case <-done:
+		t.Fatal("Run 未退出时 Done 不应关闭")
+	case <-time.After(50 * time.Millisecond):
+	}
+	h.runs.Done()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Run 退出后 Done 应关闭")
+	}
+}

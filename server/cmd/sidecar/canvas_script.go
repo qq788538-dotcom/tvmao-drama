@@ -34,7 +34,9 @@ func wireCanvasScript(ctx context.Context, conn *sql.DB, dataDir, pythonHome str
 	if err != nil {
 		return nil, nil, fmt.Errorf("创建 Skill Run 工作区: %w", err)
 	}
-	cleanerDone := goDone(func() { skillruntime.NewWorkspaceCleaner(workspace.Root()).Run(ctx) })
+	// wctx 让失败路径能单独停掉已启动的清理器，不依赖调用方取消根 ctx。
+	wctx, wcancel := context.WithCancel(ctx)
+	cleanerDone := goDone(func() { skillruntime.NewWorkspaceCleaner(workspace.Root()).Run(wctx) })
 
 	python, err := skillruntime.LocatePython(pythonHome)
 	if err != nil {
@@ -48,8 +50,11 @@ func wireCanvasScript(ctx context.Context, conn *sql.DB, dataDir, pythonHome str
 	settingsRepo := settings.NewSQLiteRepository(conn)
 	svc := canvasscript.NewService(conn, settingsRepo, models.NewSQLiteRepository(conn), settingsUpstreamKey{settings: settingsRepo}, rt)
 	if err := svc.RecoverOnStartup(ctx); err != nil {
+		wcancel()
+		<-cleanerDone
 		return nil, nil, fmt.Errorf("回收上次未完成的脚本任务: %w", err)
 	}
 	workerDone := goDone(func() { svc.RunWorker(ctx) })
+	_ = wcancel // wctx 随根 ctx 结束；成功路径不需要单独取消
 	return apphttp.NewCanvasScriptHandler(svc), []<-chan struct{}{cleanerDone, workerDone}, nil
 }

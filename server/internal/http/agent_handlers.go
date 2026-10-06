@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -28,6 +29,33 @@ type AgentHandler struct {
 	// BaseCtx 是每个 Run 的父 ctx（sidecar 的应用级 ctx）。退出时取消它，进行中的
 	// Run 随之停下。nil = context.Background()。
 	BaseCtx context.Context
+
+	// runs 跟踪进行中的 Run goroutine，供关闭流程在关库前等它们收尾（Done）。
+	runMu   sync.Mutex
+	runs    sync.WaitGroup
+	closing bool
+}
+
+// startRun 登记一个 Run goroutine；已进入关闭流程返回 false（调用方不应再起 Run）。
+func (h *AgentHandler) startRun() bool {
+	h.runMu.Lock()
+	defer h.runMu.Unlock()
+	if h.closing {
+		return false
+	}
+	h.runs.Add(1)
+	return true
+}
+
+// Done 进入关闭状态（之后拒绝新 Run），返回的通道在已登记的 Run 全部退出后关闭。
+// 调用前应已取消 BaseCtx，否则要等 Run 自然结束。
+func (h *AgentHandler) Done() <-chan struct{} {
+	h.runMu.Lock()
+	h.closing = true
+	h.runMu.Unlock()
+	done := make(chan struct{})
+	go func() { h.runs.Wait(); close(done) }()
+	return done
 }
 
 // agentURLSigner 是出口签名需要的最小能力（P1b 的 *MediaSigner 满足）。
@@ -146,10 +174,15 @@ func (h *AgentHandler) WS(w http.ResponseWriter, r *http.Request) {
 			if base == nil {
 				base = context.Background()
 			}
+			if !h.startRun() {
+				agent.SendFatal(sink, threadID, actionID, "shutting_down", "服务正在关闭")
+				continue
+			}
 			rctx, cancel := context.WithTimeout(base, agentRunTimeout)
 			h.Hub.RegisterRun(uid, threadID, actionID, cancel)
 			go func() {
 				defer func() {
+					defer h.runs.Done()
 					cancel()
 					h.Hub.UnregisterRun(uid, threadID, actionID)
 				}()

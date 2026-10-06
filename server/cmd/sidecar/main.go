@@ -31,6 +31,7 @@ import (
 
 	"github.com/james/huabu_studio/apps/api/internal/assets"
 	"github.com/james/huabu_studio/apps/api/internal/builtin"
+	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
 	"github.com/james/huabu_studio/apps/api/internal/db"
 	apphttp "github.com/james/huabu_studio/apps/api/internal/http"
 	"github.com/james/huabu_studio/apps/api/internal/library"
@@ -47,8 +48,8 @@ const defaultOrigins = "tauri://localhost,http://tauri.localhost"
 const (
 	maxTokenLen = 256
 	// shutdownTimeout 是优雅退出的总时长上限（HTTP 收尾 + 等 worker）。壳在 3 秒后强杀，
-	// 超过它的部分没有意义；到点后不再等待，直接关库退出。
-	shutdownTimeout      = 3 * time.Second
+	// 留 0.5 秒给关库（含 WAL checkpoint）；到点后不再等待，直接关库退出。
+	shutdownTimeout      = 2500 * time.Millisecond
 	projectCleanInterval = 30 * time.Second
 	orphanSweepInterval  = 24 * time.Hour
 	// genDrainTimeout 关闭时等在途生成任务收尾的上限。壳只给 3 秒（src-tauri SHUTDOWN_GRACE），
@@ -152,13 +153,16 @@ func run() error {
 	// P6 脚本节点：找不到内置 Python 时只记警告（任务执行时报错），不阻断启动。
 	canvasScript, scriptWorkers, err := wireCanvasScript(ctx, conn, *dataDir, *pythonHome)
 	if err != nil {
+		// Agent 的周期刷新已在跑：取消 ctx 并等它退出，再让 defer 关库。
+		cancel()
+		waitDone(shutdownTimeout, agentW.Workers...)
 		ln.Close()
 		return fmt.Errorf("装配脚本节点: %w", err)
 	}
 	a.deps.CanvasScript = canvasScript
 	bgWorkers := append(append([]<-chan struct{}{}, agentW.Workers...), scriptWorkers...)
 	// 生成结果回写画布后经 Agent Hub 推 canvas_changed（P1c 留的注入点）。
-	a.gen.CanvasGen.SetChangeNotifier(agentW.Hub)
+	attachCanvasNotifier(a, agentW.Hub)
 
 	apphttp.MustWire(a.deps)
 	srv := &nethttp.Server{
@@ -173,7 +177,9 @@ func run() error {
 	}
 	// 生成后台：先把上个进程的租约判过期并续跑在途任务，再起队列/投递/巡检循环（spec S7）。
 	// 在 READY 之前调用；退出时随 ctx 取消停下，没跑完的任务由下次启动续跑。
-	a.gen.Gen.StartBackground(ctx)
+	workers = append(workers, a.gen.Gen.StartBackground(ctx))
+	// 进行中的 Agent Run：ctx 取消后等它们退出（关库后不再写消息）。
+	workers = append(workers, goDone(func() { <-ctx.Done(); <-a.deps.Agent.Done() }))
 	// Seedance 合规对账：未配置时 ReconcileAll 自身 no-op；随根 ctx 退出。
 	workers = append(workers, goDone(func() { a.seedance.RunWorker(ctx) }))
 	workers = append(workers, bgWorkers...)
@@ -215,6 +221,18 @@ func run() error {
 	}
 	log.Print("sidecar 已关闭")
 	return nil
+}
+
+// canvasNotifier 是 Agent Hub 对外的窄接口（与 generation / http 两处的 notifier 接口等价）。
+type canvasNotifier interface {
+	NotifyCanvasChanged(userID, projectID, version int64, sourceMark string, op *canvasstate.CanvasOpSummary)
+}
+
+// attachCanvasNotifier 把画布变更广播接到两条写路径：生成结果回写，以及手动编辑
+// （/canvas/nodes 等）。Hub 晚于这两处 handler 构造，所以用 setter 补注入。
+func attachCanvasNotifier(a *app, n canvasNotifier) {
+	a.gen.CanvasGen.SetChangeNotifier(n)
+	a.deps.CanvasMutation.SetChangeNotifier(n)
 }
 
 // shutdownAndWait 是唯一的关闭等待流程：停 HTTP（stopHTTP 可为 nil）、drain（可为 nil）与 workers

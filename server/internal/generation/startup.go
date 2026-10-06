@@ -3,6 +3,7 @@ package generation
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/james/huabu_studio/apps/api/internal/lifecycle"
@@ -48,8 +49,9 @@ func (r *SQLiteRepository) ExpirePreviousLeases(instance string) (int64, int64, 
 
 // StartBackground 启动生成链路的全部后台工作。调用前必须已 RegisterSink 并完成
 // SetTempDir / SetLeaseConfig。首轮恢复同步执行（毫秒级，只查库；续 poll 自己起 goroutine），
-// 返回后队列 worker 立即可领取被重排的任务。ctx 取消时三个循环退出。
-func (s *Service) StartBackground(ctx context.Context) {
+// 返回后队列 worker 立即可领取被重排的任务。ctx 取消时三个循环退出；返回的通道在三个循环
+// 全部退出后关闭，调用方关库前应等它（outbox 投递会写画布，不等会在关库后拿到 "database is closed"）。
+func (s *Service) StartBackground(ctx context.Context) <-chan struct{} {
 	if le, ok := s.repo.(leaseExpirer); ok {
 		tasks, outbox, err := le.ExpirePreviousLeases(lifecycle.InstanceID())
 		if err != nil {
@@ -59,9 +61,17 @@ func (s *Service) StartBackground(ctx context.Context) {
 		}
 	}
 	s.recoverOnce()
-	go s.runRecoverLoop(ctx)
-	go s.RunQueueWorker(ctx)
-	go s.RunOutboxWorker(ctx)
+	var wg sync.WaitGroup
+	for _, loop := range []func(context.Context){s.runRecoverLoop, s.RunQueueWorker, s.RunOutboxWorker} {
+		wg.Add(1)
+		go func(f func(context.Context)) {
+			defer wg.Done()
+			f(ctx)
+		}(loop)
+	}
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	return done
 }
 
 // recoverOnce 顺序与参考仓 main.go:674-685 一致：续 poll → 接管四路分流 → 排队超时兜底。
@@ -79,6 +89,9 @@ func (s *Service) runRecoverLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			if ctx.Err() != nil {
+				return
+			}
 			s.recoverOnce()
 		}
 	}
