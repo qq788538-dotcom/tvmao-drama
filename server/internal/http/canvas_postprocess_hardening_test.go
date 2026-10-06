@@ -20,74 +20,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/canvasgen"
 )
 
-// ── I1：AdminPut 校验 + 坏配置降级 ─────────────────────────────────────────────
-
-func adminPutReq(body string) *http.Request {
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/canvas/postprocess-config", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	return req.WithContext(withUserID(context.Background(), 1))
-}
-
-func TestPostprocessAdminPut_RejectsBadBodies(t *testing.T) {
-	for name, body := range map[string]string{
-		"去字幕列表是字符串":       `{"subtitleRemovalModels":"x"}`,
-		"白模是数字":           `{"whiteModelModel":123}`,
-		"转高清 modelId 是数字": `{"upscaleModels":[{"modelId":1}]}`,
-		"顶层是数组":           `[1,2]`,
-		"去字幕 modelId 为空":  `{"subtitleRemovalModels":[{"modelId":"  "}]}`,
-		"转高清 modelId 为空":  `{"upscaleModels":[{"modelId":""}]}`,
-		"去字幕 modelId 重复":  `{"subtitleRemovalModels":[{"modelId":"a"},{"modelId":"a"}]}`,
-		"转高清 modelId 重复":  `{"upscaleModels":[{"modelId":"a"},{"modelId":"a"}]}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			s := &desubFakeSettings{vals: map[string]string{canvasgen.SettingCanvasPostprocess: `{"whiteModelModel":"keep"}`}}
-			h := NewCanvasPostprocessHandler(s, nil, nil, nil, nil, nil, postprocessNoopSigner{})
-			rec := httptest.NewRecorder()
-			h.AdminPut(rec, adminPutReq(body))
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body)
-			}
-			if got := s.vals[canvasgen.SettingCanvasPostprocess]; got != `{"whiteModelModel":"keep"}` {
-				t.Fatalf("坏请求不应改写配置: %s", got)
-			}
-		})
-	}
-}
-
-// 合法请求按结构体重新序列化落库：多余字段丢弃、旧版 upscaleModel 折进列表、空列表存 []。
-func TestPostprocessAdminPut_StoresNormalizedStruct(t *testing.T) {
-	s := &desubFakeSettings{}
-	h := NewCanvasPostprocessHandler(s, nil, nil, nil, nil, nil, postprocessNoopSigner{})
-	rec := httptest.NewRecorder()
-	h.AdminPut(rec, adminPutReq(`{"whiteModelModel":" wm ","junk":1,"upscaleModel":"old-up","subtitleRemovalModels":[{"modelId":"d1","label":"甲","isTimeLimited":true}]}`))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body)
-	}
-	stored := s.vals[canvasgen.SettingCanvasPostprocess]
-	if strings.Contains(stored, "junk") {
-		t.Fatalf("多余字段不应落库: %s", stored)
-	}
-	cfg, err := canvasgen.LoadCanvasPostprocessConfig(s.Get)
-	if err != nil {
-		t.Fatalf("落库内容必须能被加载: %v (%s)", err, stored)
-	}
-	if cfg.WhiteModelModel != "wm" || len(cfg.SubtitleRemovalModels) != 1 || !cfg.SubtitleRemovalModels[0].IsTimeLimited {
-		t.Fatalf("cfg=%+v", cfg)
-	}
-	if len(cfg.UpscaleModels) != 1 || cfg.UpscaleModels[0].ModelID != "old-up" {
-		t.Fatalf("旧字段应折进列表: %+v", cfg.UpscaleModels)
-	}
-	var resp map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := resp["junk"]; ok {
-		t.Fatalf("响应应回显规范化后的配置: %v", resp)
-	}
-	if _, ok := resp["subtitleRemovalModels"].([]any); !ok {
-		t.Fatalf("subtitleRemovalModels 应为数组: %v", resp)
-	}
-}
+// ── I1：坏配置降级 ─────────────────────────────────────────────
 
 // 存量坏数据（例如旧版本无校验时写入的）不能让用户端接口全部 500：按“未配置”处理。
 func TestPostprocessCorruptConfigDegrades(t *testing.T) {

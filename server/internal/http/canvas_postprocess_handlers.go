@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -219,82 +218,6 @@ func (h *CanvasPostprocessHandler) resolutionAllowed(modelID, resolution string)
 		}
 	}
 	return false
-}
-
-// AdminGet GET /admin/canvas/postprocess-config：回显整份配置，admin-only。
-// 走 LoadCanvasPostprocessConfig 而非原样回显 settings：存量的旧版单模型 upscaleModel
-// 要折成列表第一行给后台展示，管理员补上显示名保存后就只剩新格式。
-func (h *CanvasPostprocessHandler) AdminGet(w http.ResponseWriter, r *http.Request) {
-	cfg := h.loadConfig()
-	// nil 切片会序列化成 null，后台表单按数组读，统一给空数组。
-	if cfg.SubtitleRemovalModels == nil {
-		cfg.SubtitleRemovalModels = []canvasgen.CanvasDesubBinding{}
-	}
-	if cfg.UpscaleModels == nil {
-		cfg.UpscaleModels = []canvasgen.CanvasUpscaleBinding{}
-	}
-	writeJSON(w, http.StatusOK, cfg)
-}
-
-// AdminPut PUT /admin/canvas/postprocess-config：整份覆盖存 settings。
-// 先按结构体反序列化（类型不对 400），逐项校验后用结构体重新序列化落库——存进去的永远是
-// LoadCanvasPostprocessConfig 能读回的形状，多余字段丢弃（校验口径同 T1 的三个 AdminPut）。
-func (h *CanvasPostprocessHandler) AdminPut(w http.ResponseWriter, r *http.Request) {
-	var body canvasgen.CanvasPostprocessConfig
-	if err := decodeJSON(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
-		return
-	}
-	// 旧版单模型字段折进列表（与加载口径一致），落库只留新格式。
-	if len(body.UpscaleModels) == 0 && strings.TrimSpace(body.UpscaleModel) != "" {
-		body.UpscaleModels = []canvasgen.CanvasUpscaleBinding{{ModelID: body.UpscaleModel}}
-	}
-	body.UpscaleModel = ""
-	if body.SubtitleRemovalModels == nil {
-		body.SubtitleRemovalModels = []canvasgen.CanvasDesubBinding{}
-	}
-	if body.UpscaleModels == nil {
-		body.UpscaleModels = []canvasgen.CanvasUpscaleBinding{}
-	}
-	body.WhiteModelModel = strings.TrimSpace(body.WhiteModelModel)
-	seen := map[string]bool{}
-	for i := range body.SubtitleRemovalModels {
-		d := &body.SubtitleRemovalModels[i]
-		d.ModelID = strings.TrimSpace(d.ModelID)
-		if d.ModelID == "" {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("去字幕第 %d 条：模型 ID 不能为空", i+1))
-			return
-		}
-		if seen[d.ModelID] {
-			writeError(w, http.StatusBadRequest, "去字幕模型重复："+d.ModelID)
-			return
-		}
-		seen[d.ModelID] = true
-	}
-	seen = map[string]bool{}
-	for i := range body.UpscaleModels {
-		u := &body.UpscaleModels[i]
-		u.ModelID = strings.TrimSpace(u.ModelID)
-		if u.ModelID == "" {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("转高清第 %d 条：模型 ID 不能为空", i+1))
-			return
-		}
-		if seen[u.ModelID] {
-			writeError(w, http.StatusBadRequest, "转高清模型重复："+u.ModelID)
-			return
-		}
-		seen[u.ModelID] = true
-	}
-	blob, err := json.Marshal(body)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if err := h.settings.Set(canvasgen.SettingCanvasPostprocess, string(blob)); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, body)
 }
 
 // canvasDesubRequest 是 POST /canvas-tasks/desub 的请求体。

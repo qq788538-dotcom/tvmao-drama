@@ -20,9 +20,9 @@ func doMultiAngle(t *testing.T, h http.HandlerFunc, method, body string) *httpte
 	t.Helper()
 	var req *http.Request
 	if body == "" {
-		req = httptest.NewRequest(method, "/api/v1/admin/canvas/multi-angle", nil)
+		req = httptest.NewRequest(method, "/api/v1/canvas/multi-angle", nil)
 	} else {
-		req = httptest.NewRequest(method, "/api/v1/admin/canvas/multi-angle", strings.NewReader(body))
+		req = httptest.NewRequest(method, "/api/v1/canvas/multi-angle", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 	}
 	rec := httptest.NewRecorder()
@@ -72,31 +72,5 @@ func TestMultiAngleUserGetStripsSecrets(t *testing.T) {
 	}
 	if got.Presets[0].Key != "fisheye" || got.Presets[0].Tilt != 30 || got.Presets[0].Zoom != "closeup" {
 		t.Fatalf("角度数值应下发: %+v", got.Presets[0])
-	}
-}
-
-func TestMultiAngleAdminPutValidation(t *testing.T) {
-	h, _ := multiAngleHandler(t)
-	for name, body := range map[string]string{
-		"key保留字":   `{"models":[],"presets":[{"key":"__multi_angle__","name":"x","rotation":0,"tilt":0,"zoom":"medium"}]}`,
-		"key重复":    `{"models":[],"presets":[{"key":"a","name":"x","rotation":0,"tilt":0,"zoom":"medium"},{"key":"a","name":"y","rotation":0,"tilt":0,"zoom":"medium"}]}`,
-		"zoom非法":   `{"models":[],"presets":[{"key":"a","name":"x","rotation":0,"tilt":0,"zoom":"huge"}]}`,
-		"rotation": `{"models":[],"presets":[{"key":"a","name":"x","rotation":360,"tilt":0,"zoom":"medium"}]}`,
-		"tilt越界":   `{"models":[],"presets":[{"key":"a","name":"x","rotation":0,"tilt":91,"zoom":"medium"}]}`,
-		"name为空":   `{"models":[],"presets":[{"key":"a","name":" ","rotation":0,"tilt":0,"zoom":"medium"}]}`,
-		"空模型ID":    `{"models":[" "],"presets":[]}`,
-	} {
-		if rec := doMultiAngle(t, h.AdminPut, http.MethodPut, body); rec.Code != http.StatusBadRequest {
-			t.Fatalf("%s: 期望 400, got %d %s", name, rec.Code, rec.Body.String())
-		}
-	}
-	// 合法配置(含空 prompt 的纯角度预设)要能写入并回读。
-	rec := doMultiAngle(t, h.AdminPut, http.MethodPut, multiAngleFixture)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("合法配置被拒: %d %s", rec.Code, rec.Body.String())
-	}
-	rec = doMultiAngle(t, h.AdminGet, http.MethodGet, "")
-	if !strings.Contains(rec.Body.String(), "机密附加词") {
-		t.Fatalf("admin 回显应含 prompt: %s", rec.Body.String())
 	}
 }

@@ -722,15 +722,6 @@ func TestCanvasPostprocessConfig_LegacyUpscaleModel(t *testing.T) {
 		t.Fatalf("旧配置应能提交, got %d body=%s", rec.Code, rec.Body)
 	}
 
-	// 后台回显同样折成列表，且不再带旧字段——管理员保存后就只剩新格式。
-	adminRec := httptest.NewRecorder()
-	h.AdminGet(adminRec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/canvas/postprocess-config", nil))
-	if !bytes.Contains(adminRec.Body.Bytes(), []byte(`"upscaleModels":[{"modelId":"upscale-hd","label":""}]`)) {
-		t.Errorf("AdminGet 应把旧字段折成列表, got %s", adminRec.Body)
-	}
-	if bytes.Contains(adminRec.Body.Bytes(), []byte(`"upscaleModel"`)) {
-		t.Errorf("AdminGet 不应再回显旧字段, got %s", adminRec.Body)
-	}
 }
 
 // U2) 未配 upscaleModel → 档位空数组（前端据此显示「未配置转高清模型」）。

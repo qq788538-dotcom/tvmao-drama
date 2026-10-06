@@ -20,9 +20,9 @@ func doLightControl(t *testing.T, h http.HandlerFunc, method, body string) *http
 	t.Helper()
 	var req *http.Request
 	if body == "" {
-		req = httptest.NewRequest(method, "/api/v1/admin/canvas/light-control", nil)
+		req = httptest.NewRequest(method, "/api/v1/canvas/light-control", nil)
 	} else {
-		req = httptest.NewRequest(method, "/api/v1/admin/canvas/light-control", strings.NewReader(body))
+		req = httptest.NewRequest(method, "/api/v1/canvas/light-control", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 	}
 	rec := httptest.NewRecorder()
@@ -84,31 +84,5 @@ func TestLightControlUserGetStripsSecrets(t *testing.T) {
 	}
 	if got.Presets[2].ReferenceImage != "https://cdn/ref.jpg" {
 		t.Fatalf("参考图 URL 应下发: %+v", got.Presets[2])
-	}
-}
-
-func TestLightControlAdminPutValidation(t *testing.T) {
-	h, _ := lightControlHandler(t)
-	for name, body := range map[string]string{
-		"key保留字": `{"models":[],"presets":[{"key":"__light_control__","name":"x"}]}`,
-		"key重复":  `{"models":[],"presets":[{"key":"a","name":"x"},{"key":"a","name":"y"}]}`,
-		"方向非法":   `{"models":[],"presets":[{"key":"a","name":"x","direction":"sideways"}]}`,
-		"亮度越界":   `{"models":[],"presets":[{"key":"a","name":"x","brightness":101}]}`,
-		"颜色非hex": `{"models":[],"presets":[{"key":"a","name":"x","lightColor":"blue"}]}`,
-		"name为空": `{"models":[],"presets":[{"key":"a","name":" "}]}`,
-		"空模型ID":  `{"models":[" "],"presets":[]}`,
-	} {
-		if rec := doLightControl(t, h.AdminPut, http.MethodPut, body); rec.Code != http.StatusBadRequest {
-			t.Fatalf("%s: 期望 400, got %d %s", name, rec.Code, rec.Body.String())
-		}
-	}
-	// 合法配置(含纯参数/纯参考图/空 prompt 各形态)要能写入并回读。
-	rec := doLightControl(t, h.AdminPut, http.MethodPut, lightControlFixture)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("合法配置被拒: %d %s", rec.Code, rec.Body.String())
-	}
-	rec = doLightControl(t, h.AdminGet, http.MethodGet, "")
-	if !strings.Contains(rec.Body.String(), "机密附加词") {
-		t.Fatalf("admin 回显应含 prompt: %s", rec.Body.String())
 	}
 }

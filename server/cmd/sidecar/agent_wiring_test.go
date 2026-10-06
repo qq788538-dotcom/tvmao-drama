@@ -180,15 +180,26 @@ func TestAgentE2E_MissingUpstreamConfigEndsAction(t *testing.T) {
 	}
 }
 
-func TestAgentE2E_SwitchPlannerModel(t *testing.T) {
+// 写接口已取消注册（设置页 /settings/agent-models 覆盖同一能力），只读列表仍在。
+func TestAgentE2E_AdminBackboneWritesNotRegistered(t *testing.T) {
 	e := setupE2E(t, "http://unused", "k")
-	out := e.do(t, "PUT", "/api/v1/admin/agent/backbone-models/1", `{"model_name":"doubao-seed-2-0-lite-260428"}`)
-	if out["model_name"] != "doubao-seed-2-0-lite-260428" {
-		t.Fatalf("切换失败: %v", out)
+	if out := e.do(t, "GET", "/api/v1/admin/agent/backbone-models", ``); out["data"] == nil {
+		t.Fatalf("只读列表应返回 data: %v", out)
 	}
-	out = e.do(t, "POST", "/api/v1/admin/agent/backbone-models/1/reset", ``)
-	if out["model_name"] != "canvas-agent-gpt-5.5" {
-		t.Fatalf("恢复默认失败: %v", out)
+	for _, c := range []struct{ method, path string }{
+		{"PUT", "/api/v1/admin/agent/backbone-models/1"},
+		{"POST", "/api/v1/admin/agent/backbone-models/1/reset"},
+	} {
+		req, _ := nethttp.NewRequest(c.method, e.srv.URL+c.path, strings.NewReader(`{"model_name":"doubao-seed-2-0-lite-260428"}`))
+		req.Header.Set("Authorization", "Bearer "+e2eToken)
+		resp, err := nethttp.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != nethttp.StatusNotFound && resp.StatusCode != nethttp.StatusMethodNotAllowed {
+			t.Errorf("%s %s 不应注册，got %d", c.method, c.path, resp.StatusCode)
+		}
 	}
 }
 

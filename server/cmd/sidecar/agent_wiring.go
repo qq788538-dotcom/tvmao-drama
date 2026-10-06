@@ -105,15 +105,12 @@ func wireAgent(ctx context.Context, d agentWiringDeps) (*agentWiring, error) {
 	agentHandler := apphttp.NewAgentHandler(hub, repo, runner, signer)
 	agentHandler.BaseCtx = ctx // sidecar 退出时取消，进行中的 Run 跟着停
 	return &agentWiring{
-		Workers:  []<-chan struct{}{refreshDone},
-		Hub:      hub,
-		Registry: registry,
-		Agent:    agentHandler,
-		Skills:   apphttp.NewSkillsHandler(skillsRepo, categoriesRepo, agentIconSigner{signer: signer}),
-		AdminAgent: &apphttp.AdminAgentHandler{
-			Repo: backbones, Switcher: agent.NewBackboneSwitcher(d.DB), Models: modelsRepo,
-			Defaults: agentseed.DefaultBackboneModelName,
-		},
+		Workers:    []<-chan struct{}{refreshDone},
+		Hub:        hub,
+		Registry:   registry,
+		Agent:      agentHandler,
+		Skills:     apphttp.NewSkillsHandler(skillsRepo, categoriesRepo, agentIconSigner{signer: signer}),
+		AdminAgent: &apphttp.AdminAgentHandler{Repo: backbones},
 	}, nil
 }
 
