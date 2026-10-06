@@ -1,4 +1,4 @@
-//! Tauri 薄壳：拉起 Go sidecar、完成 token 握手、把端口和 token 交给前端。
+//! Tauri 薄壳：管理 Go sidecar 的生命周期、把端口和 token 交给前端。
 //! 业务逻辑全部在 sidecar 里，这里不放任何业务代码。
 
 pub mod data_dir;
@@ -7,140 +7,94 @@ pub mod native_dialog;
 pub mod sidecar;
 pub mod webview2;
 
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
-use serde::Serialize;
-use tauri::async_runtime::Receiver;
-use tauri::{Manager, RunEvent, State};
-use tauri_plugin_shell::process::{CommandChild, CommandEvent};
-use tauri_plugin_shell::ShellExt;
+use tauri::{Emitter as TauriEmitter, Manager, RunEvent, State};
 
-#[derive(Clone, Serialize)]
-pub struct ServerInfo {
-    port: u16,
-    token: String,
+use lifecycle::{Emitter, ServerInfo, SidecarManager, SidecarStatus, SpecFactory, Timeouts};
+
+/// sidecar 状态变化事件名，与 web/src/shared/server.ts 的 SIDECAR_STATE_EVENT 一致。
+pub const SIDECAR_STATE_EVENT: &str = "sidecar-state";
+
+const RELEASE_ORIGINS: &str = "tauri://localhost,http://tauri.localhost";
+/// Vite 开发服务器，只在 debug 构建放行。
+const DEV_ORIGIN: &str = "http://localhost:5173";
+
+/// 传给 sidecar 的参数。token 不在这里：它只走 stdin（SEC3）。
+pub fn sidecar_args(data_dir: &Path, debug: bool) -> Vec<String> {
+    let mut origins = RELEASE_ORIGINS.to_string();
+    if debug {
+        origins.push(',');
+        origins.push_str(DEV_ORIGIN);
+    }
+    vec![
+        "--data-dir".into(),
+        data_dir.to_string_lossy().into_owned(),
+        "--origins".into(),
+        origins,
+    ]
 }
 
-/// sidecar 的运行状态。`info` 为 Err 时保存启动失败原因，前端据此显示错误页。
-struct Sidecar {
-    info: Mutex<Result<ServerInfo, String>>,
-    child: Mutex<Option<CommandChild>>,
+/// Tauri 把 externalBin 放在主程序同目录（dev：target/debug；macOS：Contents/MacOS；Windows zip：exe 同目录）。
+pub fn locate_sidecar(exe_dir: &Path) -> Result<PathBuf, String> {
+    let path = exe_dir.join(format!("sidecar{}", std::env::consts::EXE_SUFFIX));
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "找不到 sidecar 程序：{}。如果是 Windows 版，请先把 zip 完整解压到一个文件夹，再运行其中的 miaoju.exe。",
+            path.display()
+        ))
+    }
+}
+
+fn sidecar_program() -> Result<PathBuf, String> {
+    let exe = tauri::utils::platform::current_exe().map_err(|e| format!("无法定位主程序：{e}"))?;
+    let dir = exe.parent().ok_or_else(|| "无法定位主程序所在目录".to_string())?;
+    locate_sidecar(dir)
+}
+
+fn default_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path().app_data_dir().map_err(|e| format!("无法确定数据目录：{e}"))
 }
 
 #[tauri::command]
-fn server_info(state: State<'_, Sidecar>) -> Result<ServerInfo, String> {
-    state.info.lock().unwrap().clone()
+async fn server_info(m: State<'_, Arc<SidecarManager>>) -> Result<ServerInfo, String> {
+    m.wait_info().await
 }
 
-/// 解析 sidecar 的就绪行 "READY <port>"。
-pub fn parse_ready(line: &str) -> Option<u16> {
-    line.trim().strip_prefix("READY ")?.trim().parse().ok()
+#[tauri::command]
+fn sidecar_status(m: State<'_, Arc<SidecarManager>>) -> SidecarStatus {
+    m.status()
 }
 
-/// 64 位十六进制随机 token（两个 UUIDv4，来自系统随机源）。
-pub fn new_token() -> String {
-    format!(
-        "{}{}",
-        uuid::Uuid::new_v4().simple(),
-        uuid::Uuid::new_v4().simple()
-    )
+#[tauri::command]
+async fn restart_sidecar(m: State<'_, Arc<SidecarManager>>) -> Result<ServerInfo, String> {
+    m.inner().restart().await
 }
 
-/// 等待 sidecar 就绪的最长时间。
-const READY_TIMEOUT: Duration = Duration::from_secs(20);
-
-/// 等待 "READY <port>"。sidecar 先退出返回其最后一行 stderr，超时返回超时原因。
-async fn wait_ready(rx: &mut Receiver<CommandEvent>, timeout: Duration) -> Result<u16, String> {
-    let mut stderr_tail = String::new();
-    let waited = tokio::time::timeout(timeout, async {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line) => {
-                    if let Some(port) = parse_ready(&String::from_utf8_lossy(&line)) {
-                        return Some(port);
-                    }
-                }
-                CommandEvent::Stderr(line) => {
-                    let text = String::from_utf8_lossy(&line);
-                    eprintln!("[sidecar] {}", text.trim_end());
-                    stderr_tail = text.trim().to_string();
-                }
-                CommandEvent::Terminated(_) | CommandEvent::Error(_) => return None,
-                _ => {}
-            }
-        }
-        None
-    })
-    .await;
-    match waited {
-        Ok(Some(port)) => Ok(port),
-        Ok(None) if stderr_tail.is_empty() => Err("sidecar 未就绪即退出".to_string()),
-        Ok(None) => Err(stderr_tail),
-        Err(_) => Err(format!(
-            "sidecar 启动超时（{} 秒内未就绪）",
-            timeout.as_secs()
-        )),
-    }
+#[tauri::command]
+fn get_data_dir(app: tauri::AppHandle) -> Result<data_dir::DataDirInfo, String> {
+    data_dir::resolve(&default_data_dir(&app)?)
 }
 
-/// 启动 sidecar 并等到 READY。任何一步失败都返回可读的中文原因。
-fn start_sidecar(app: &tauri::AppHandle) -> Result<(ServerInfo, CommandChild), String> {
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法确定数据目录：{e}"))?;
-    std::fs::create_dir_all(&data_dir).map_err(|e| format!("无法创建数据目录：{e}"))?;
-
-    let token = new_token();
-    let (mut rx, mut child) = app
-        .shell()
-        .sidecar("sidecar")
-        .map_err(|e| format!("找不到 sidecar 程序：{e}"))?
-        .args(["--data-dir", &data_dir.to_string_lossy()])
-        .spawn()
-        .map_err(|e| format!("无法启动 sidecar：{e}"))?;
-
-    // token 只走 stdin：参数和环境变量同机其他进程读得到。
-    if let Err(e) = child.write(format!("{token}\n").as_bytes()) {
-        let _ = child.kill();
-        return Err(format!("无法向 sidecar 传递 token：{e}"));
-    }
-
-    let port = match tauri::async_runtime::block_on(wait_ready(&mut rx, READY_TIMEOUT)) {
-        Ok(port) => port,
-        Err(reason) => {
-            // 失败路径显式结束子进程，不依赖 drop 或 stdin EOF。
-            let _ = child.kill();
-            return Err(reason);
-        }
-    };
-
-    // 握手完成后继续把 sidecar 的日志转到壳的 stderr。
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stderr(line) => {
-                    eprintln!("[sidecar] {}", String::from_utf8_lossy(&line).trim_end());
-                }
-                // 握手后 sidecar 退出：只记一行日志，不改状态、不重启。
-                CommandEvent::Terminated(payload) => {
-                    eprintln!(
-                        "[sidecar] 进程已退出，code={:?}，signal={:?}",
-                        payload.code, payload.signal
-                    );
-                }
-                _ => {}
-            }
-        }
-    });
-
-    Ok((ServerInfo { port, token }, child))
+/// 只改“下次启动用哪个数据目录”，不搬数据。P4 迁移完数据后调用，再调 restart_sidecar 生效。
+/// path 为 null 表示恢复默认目录。
+#[tauri::command]
+fn set_data_dir(app: tauri::AppHandle, path: Option<String>) -> Result<data_dir::DataDirInfo, String> {
+    let default = default_data_dir(&app)?;
+    data_dir::write_location(&default, path.as_deref().map(Path::new))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    // E8：建窗口前检测 WebView2，缺失则弹窗并退出。
+    #[cfg(windows)]
+    webview2::ensure_or_exit();
+
+    let built = tauri::Builder::default()
         // 单实例插件必须最先注册：第二次启动时只把已有窗口带到前台（spec S11）。
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
@@ -149,33 +103,60 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            let state = match start_sidecar(app.handle()) {
-                Ok((info, child)) => Sidecar {
-                    info: Mutex::new(Ok(info)),
-                    child: Mutex::new(Some(child)),
-                },
-                // 启动失败不退出进程：让窗口照常打开，由前端显示失败原因。
-                Err(reason) => Sidecar {
-                    info: Mutex::new(Err(format!("本地服务启动失败：{reason}"))),
-                    child: Mutex::new(None),
-                },
-            };
-            app.manage(state);
+            let handle = app.handle().clone();
+
+            let spec_app = handle.clone();
+            let make_spec: SpecFactory = Arc::new(move || {
+                let info = data_dir::resolve(&default_data_dir(&spec_app)?)?;
+                data_dir::prepare(&info)?;
+                Ok(sidecar::LaunchSpec {
+                    program: sidecar_program()?,
+                    args: sidecar_args(&info.current, cfg!(debug_assertions)),
+                })
+            });
+
+            let emit_app = handle.clone();
+            let emit: Emitter = Arc::new(move |status| {
+                let _ = emit_app.emit(SIDECAR_STATE_EVENT, status);
+            });
+
+            let manager = SidecarManager::new(make_spec, emit, Timeouts::default());
+            app.manage(manager.clone());
+            // 异步启动：窗口立即出现，前端显示“正在启动本地服务…”。
+            tauri::async_runtime::spawn(async move {
+                let _ = manager.start().await;
+            });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![server_info])
-        .build(tauri::generate_context!())
-        .expect("构建 Tauri 应用失败")
-        .run(|app, event| {
-            // 正常退出时主动结束 sidecar；崩溃场景由 sidecar 自己靠 stdin EOF 兜底。
-            if let RunEvent::Exit = event {
-                if let Some(child) = app.state::<Sidecar>().child.lock().unwrap().take() {
-                    let _ = child.kill();
-                }
-            }
-        });
+        .invoke_handler(tauri::generate_handler![
+            server_info,
+            sidecar_status,
+            restart_sidecar,
+            get_data_dir,
+            set_data_dir
+        ])
+        .build(tauri::generate_context!());
+
+    let app = match built {
+        Ok(app) => app,
+        Err(e) => {
+            // 兜底：Windows release 没有控制台，必须弹窗，否则用户只看到闪退。
+            native_dialog::show_error("喵剧AI 启动失败", &format!("{e}"));
+            std::process::exit(1);
+        }
+    };
+
+    app.run(|app, event| {
+        if let RunEvent::Exit = event {
+            let manager = app.state::<Arc<SidecarManager>>().inner().clone();
+            // 关 stdin → 等 sidecar 收尾（最多 3 秒）→ 强杀。整体再加上限，避免卡在“启动中”的锁上；
+            // 即便超时，壳退出后 stdin 管道关闭，sidecar 也会自行退出。
+            let _ = tauri::async_runtime::block_on(async move {
+                tokio::time::timeout(Duration::from_secs(6), manager.shutdown()).await
+            });
+        }
+    });
 }
 
 #[cfg(test)]
@@ -183,67 +164,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_ready_accepts_port_line() {
-        assert_eq!(parse_ready("READY 54321"), Some(54321));
-        assert_eq!(parse_ready("READY 54321\r\n"), Some(54321));
+    fn release_args_exclude_dev_origin() {
+        let args = sidecar_args(Path::new("/data"), false);
+        assert_eq!(
+            args,
+            vec!["--data-dir", "/data", "--origins", "tauri://localhost,http://tauri.localhost"]
+        );
     }
 
     #[test]
-    fn parse_ready_ignores_other_lines() {
-        assert_eq!(parse_ready("listening..."), None);
-        assert_eq!(parse_ready("READY"), None);
-        assert_eq!(parse_ready("READY abc"), None);
-        assert_eq!(parse_ready("READY 99999"), None); // 超出 u16
-    }
-
-    use std::time::{Duration, Instant};
-    use tauri::async_runtime::{block_on, channel};
-    use tauri_plugin_shell::process::TerminatedPayload;
-
-    #[test]
-    fn wait_ready_returns_port_on_ready_line() {
-        let (tx, mut rx) = channel(8);
-        block_on(tx.send(CommandEvent::Stdout(b"READY 54321\n".to_vec()))).unwrap();
-        let r = block_on(wait_ready(&mut rx, Duration::from_secs(5)));
-        assert_eq!(r, Ok(54321));
+    fn debug_args_include_dev_origin() {
+        let args = sidecar_args(Path::new("/data"), true);
+        assert_eq!(args[3], "tauri://localhost,http://tauri.localhost,http://localhost:5173");
     }
 
     #[test]
-    fn wait_ready_reports_last_stderr_when_terminated() {
-        let (tx, mut rx) = channel(8);
-        block_on(tx.send(CommandEvent::Stderr(b"boom\n".to_vec()))).unwrap();
-        block_on(tx.send(CommandEvent::Terminated(TerminatedPayload {
-            code: Some(1),
-            signal: None,
-        })))
-        .unwrap();
-        let err = block_on(wait_ready(&mut rx, Duration::from_secs(5))).unwrap_err();
-        assert!(err.contains("boom"), "{err}");
+    fn sidecar_args_keep_cjk_and_spaces() {
+        let args = sidecar_args(Path::new("/Users/张 三/Library/Application Support/com.miaoju.desktop"), false);
+        assert_eq!(args[1], "/Users/张 三/Library/Application Support/com.miaoju.desktop");
     }
 
     #[test]
-    fn wait_ready_reports_exit_when_sender_dropped() {
-        let (tx, mut rx) = channel::<CommandEvent>(8);
-        drop(tx);
-        let err = block_on(wait_ready(&mut rx, Duration::from_secs(5))).unwrap_err();
-        assert_eq!(err, "sidecar 未就绪即退出");
-    }
-
-    #[test]
-    fn wait_ready_times_out_when_silent() {
-        let (_tx, mut rx) = channel::<CommandEvent>(8); // 发送端保持存活
-        let start = Instant::now();
-        let err = block_on(wait_ready(&mut rx, Duration::from_millis(50))).unwrap_err();
-        assert!(err.contains("启动超时"), "{err}");
-        assert!(start.elapsed() < Duration::from_secs(2));
-    }
-
-    #[test]
-    fn new_token_is_long_and_unique() {
-        let a = new_token();
-        let b = new_token();
-        assert_eq!(a.len(), 64);
-        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_ne!(a, b);
+    fn locate_sidecar_reports_unzip_hint() {
+        let dir = std::env::temp_dir().join(format!("miaoju-test-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let err = locate_sidecar(&dir).unwrap_err();
+        assert!(err.contains("找不到 sidecar 程序") && err.contains("完整解压"), "{err}");
+        let name = format!("sidecar{}", std::env::consts::EXE_SUFFIX);
+        std::fs::write(dir.join(&name), b"").unwrap();
+        assert_eq!(locate_sidecar(&dir).unwrap(), dir.join(name));
     }
 }
