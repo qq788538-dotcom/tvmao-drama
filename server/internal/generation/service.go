@@ -133,6 +133,8 @@ type Service struct {
 	pollRetryMax     time.Duration
 	// promptPreset 见 SetPromptPresetResolver。
 	promptPreset func(key string, params map[string]string) (string, bool)
+	// inputSigner 见 SetInputMediaSigner（spec S12 接入点）；nil = 参考仓原逻辑。
+	inputSigner InputMediaSigner
 }
 
 func NewService(
@@ -368,20 +370,9 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 		return nil, err
 	}
 
-	apiKey, err := s.upstreamKey.Resolve(input.UserID)
+	apiKey, baseDomain, err := s.upstreamCredentials(input.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("load upstream api key: %w", err)
-	}
-	if apiKey == "" {
-		return nil, errors.New("upstream api key not configured")
-	}
-
-	baseDomain, err := s.settings.Get("base_domain")
-	if err != nil {
-		return nil, fmt.Errorf("load base_domain: %w", err)
-	}
-	if baseDomain == "" {
-		return nil, errors.New("base_domain not configured")
+		return nil, err
 	}
 
 	requireURLImageBytes := model.ImageRequestMode == models.ImageRequestModeOpenAIImageEdits
@@ -397,6 +388,10 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	payload, err := upstream.InterpolateTemplate(model.RequestTemplate, normalizedInputs)
 	if err != nil {
 		return nil, fmt.Errorf("interpolate template: %w", err)
+	}
+	if err := s.ensureNoLocalMedia(payload); err != nil {
+		removePreparedFiles(preparedImages)
+		return nil, err
 	}
 
 	// 预冻结额只依赖模型配置（按次取固定价，按量取 base + 每单位上限的保守估）。

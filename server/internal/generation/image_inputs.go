@@ -43,6 +43,9 @@ type spooledFile struct {
 type spoolFunc func(ctx context.Context, ref string) (spooledFile, error)
 
 func (s *Service) signInputMediaReferences(ctx context.Context, inputs map[string]any) (map[string]any, error) {
+	if s != nil && s.inputSigner != nil && inputs != nil {
+		return s.inputSigner.SignInputMedia(ctx, cloneInputs(inputs))
+	}
 	if s == nil || s.storage == nil || inputs == nil {
 		return cloneInputs(inputs), nil
 	}
@@ -286,6 +289,9 @@ func (s *Service) fetchInputImage(ctx context.Context, ref string) ([]byte, stri
 		body, mime, _, err := decodeDataURL(ref)
 		return body, mime, err
 	}
+	if body, mime, ok, err := s.readLocalMedia(ctx, ref); ok {
+		return body, mime, err
+	}
 	if !(strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://")) {
 		return nil, "", fmt.Errorf("unsupported image reference")
 	}
@@ -342,6 +348,13 @@ func (s *Service) spoolInputImage(ctx context.Context, ref string) (spooledFile,
 		} else {
 			src = strings.NewReader(payload)
 		}
+	case s.storage != nil && func() bool { k, ok := s.storage.ExtractKey(ref); return ok && k != "" }():
+		rc, _, err := s.openLocalMedia(ctx, ref)
+		if err != nil {
+			return spooledFile{}, err
+		}
+		defer rc.Close()
+		src, mime = sniffReader(rc)
 	case strings.HasPrefix(ref, "http://"), strings.HasPrefix(ref, "https://"):
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, ref, nil)
 		if err != nil {

@@ -67,20 +67,9 @@ func (s *Service) prepareExecution(ctx context.Context, userID int64, modelID st
 		inputs = replaced
 	}
 
-	apiKey, err := s.upstreamKey.Resolve(userID)
+	apiKey, baseDomain, err := s.upstreamCredentials(userID)
 	if err != nil {
-		return nil, fmt.Errorf("load upstream api key: %w", err)
-	}
-	if apiKey == "" {
-		return nil, errors.New("upstream api key not configured")
-	}
-
-	baseDomain, err := s.settings.Get("base_domain")
-	if err != nil {
-		return nil, fmt.Errorf("load base_domain: %w", err)
-	}
-	if baseDomain == "" {
-		return nil, errors.New("base_domain not configured")
+		return nil, err
 	}
 
 	requireURLImageBytes := model.ImageRequestMode == models.ImageRequestModeOpenAIImageEdits
@@ -96,6 +85,11 @@ func (s *Service) prepareExecution(ctx context.Context, userID int64, modelID st
 	payload, err := upstream.InterpolateTemplate(model.RequestTemplate, normalizedInputs)
 	if err != nil {
 		return nil, fmt.Errorf("interpolate template: %w", err)
+	}
+	// S12 未定：插值后的请求里还留着本机地址，上游访问不到，调上游之前失败。
+	if err := s.ensureNoLocalMedia(payload); err != nil {
+		removePreparedFiles(preparedImages)
+		return nil, err
 	}
 
 	return &executionPlan{
