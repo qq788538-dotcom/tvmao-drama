@@ -20,4 +20,4 @@ mkdir -p src-tauri/binaries
 echo "已生成 src-tauri/binaries/sidecar-$TARGET$EXT"
 
 # 内置 Python 与 sidecar 同目标（脚本节点 X6）。
-scripts/fetch-python.sh "$TARGET"
+bash scripts/fetch-python.sh "$TARGET"

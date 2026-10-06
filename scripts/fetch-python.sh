@@ -21,7 +21,7 @@ DEST=src-tauri/resources/python
 STAMP="$DEST/.stamp"
 
 if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$NAME" ]; then
-  echo "内置 Python 已是 $NAME，跳过"
+  echo "内置 Python 已是 ${NAME}，跳过"
   exit 0
 fi
 
