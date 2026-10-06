@@ -208,6 +208,15 @@ func (s *Service) OnGenerationResult(_ context.Context, ref json.RawMessage, res
 		node["status"] = "succeeded"
 		delete(node, "taskId")
 		clearNodeError(node)
+		// spec S5：产物没能保存到本地 → 节点显示「未保存到本地」和重试按钮；重试走
+		// POST /api/v1/tasks/{genTaskId}/repersist，成功后 ApplyRepersist 删掉这两个键。
+		if isUnsavedOutput(url, result.AssetIDs) {
+			settings["unsaved"] = true
+			settings["genTaskId"] = result.TaskID
+		} else {
+			delete(settings, "unsaved")
+			delete(settings, "genTaskId")
+		}
 		// seedance 视频:额外存 22h 上游地址的过期时刻 + 源任务 id,供「限时去字幕」反查。
 		// 裸 upstream url 不写节点(留在 generation_tasks.output.upstreamUrls);节点只存无害的
 		// expire 时间戳(前端判限时项显隐)和 srcGenTaskId(后端反查)。

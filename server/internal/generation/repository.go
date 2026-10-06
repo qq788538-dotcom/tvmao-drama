@@ -765,8 +765,6 @@ func (r *SQLiteRepository) SinkForTask(taskID int64) (json.RawMessage, error) {
 	return json.RawMessage(sink), nil
 }
 
-// ---- RepersistStore(补搬 worker 专用,见 repersist.go)----
-
 // UpdateOutput 整体替换 output JSON；outputKind 非空时同步 output_kind 列。只改仍是 succeeded 的行。
 func (r *SQLiteRepository) UpdateOutput(taskID int64, output json.RawMessage, outputKind string) error {
 	_, err := r.db.Exec(
