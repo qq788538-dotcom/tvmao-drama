@@ -145,6 +145,9 @@ func validateConfigValue(key string, raw []byte, lookup func(string) (*models.Mo
 			}
 		}
 	}
+	if err := checkRequiredSelections(key, v); err != nil {
+		return err
+	}
 	refs, err := extractModelRefs(key, raw)
 	if err != nil {
 		return scValidation("value", "配置不是合法的 JSON")
@@ -183,7 +186,37 @@ func validateConfigValue(key string, raw []byte, lookup func(string) (*models.Mo
 		if err := checkNumber(v, "concurrency", "并发数", 1, 20); err != nil {
 			return err
 		}
-		return checkNumber(v, "maxRetries", "失败重试次数", 0, 10)
+		// 参考仓 maxAttempts() 把 0 当默认值（重试 1 次），所以不允许保存 0，避免“设成 0 仍会重试”。
+		return checkNumber(v, "maxRetries", "失败重试次数", 1, 10)
+	}
+	return nil
+}
+
+// checkRequiredSelections 拦下清空后的模型选择：空 modelId、空候选列表、空 models。
+func checkRequiredSelections(key string, v map[string]any) error {
+	nonEmpty := func(x any) bool { s, _ := x.(string); return strings.TrimSpace(s) != "" }
+	bindings := func(field, label string) error {
+		arr, _ := v[field].([]any)
+		for i, b := range arr {
+			o, _ := b.(map[string]any)
+			if !nonEmpty(o["modelId"]) {
+				return scValidation(fmt.Sprintf("%s[%d].modelId", field, i), label+"第 "+fmt.Sprint(i+1)+" 项没有选择模型")
+			}
+		}
+		return nil
+	}
+	switch key {
+	case "canvas_postprocess_config":
+		return bindings("subtitleRemovalModels", "去字幕选项")
+	case "canvas_script_config":
+		if arr, _ := v["modelCandidates"].([]any); len(arr) == 0 {
+			return scValidation("modelCandidates", "至少保留一个候选模型")
+		}
+		return bindings("modelCandidates", "候选模型")
+	case "canvas_multi_angle", "canvas_light_control":
+		if arr, _ := v["models"].([]any); len(arr) == 0 {
+			return scValidation("models", "至少选择一个模型")
+		}
 	}
 	return nil
 }

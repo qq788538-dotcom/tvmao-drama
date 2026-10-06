@@ -99,7 +99,14 @@ func TestUpstreamSameBaseDomainIsNotAnEdit(t *testing.T) {
 }
 
 func TestMaskAPIKey(t *testing.T) {
-	for in, want := range map[string]string{"": "", "short": "••••••••", "sk-12345678": "sk-••••••••5678"} {
+	for in, want := range map[string]string{
+		"":                "",
+		"short":           "••••••••",
+		"sk-12345678":     "••••••••",        // 11 位：不足 12 位全部遮住
+		"sk-123456789":    "sk-••••••••6789", // 12 位：露后 4 位
+		"sk-1234567890":   "sk-••••••••7890",
+		"abcdefghijklmno": "••••••••lmno", // 不以 sk- 开头时不输出前缀，也不露前几位
+	} {
 		if got := maskAPIKey(in); got != want {
 			t.Errorf("mask(%q)=%q want %q", in, got, want)
 		}

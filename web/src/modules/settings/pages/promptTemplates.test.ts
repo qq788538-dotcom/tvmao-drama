@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeAngle, describeLight, templateError } from './promptTemplates';
+import { describeAngle, describeLight, modelsError, templateError } from './promptTemplates';
 
 describe('promptTemplates', () => {
   it('模板可为空；非空时必须保留占位符', () => {
@@ -12,5 +12,10 @@ describe('promptTemplates', () => {
     expect(describeAngle({ key: 'k', name: 'n', rotation: 90, tilt: -30, zoom: 'closeup', prompt: '' })).toBe('水平 90° · 俯仰 -30° · 特写');
     expect(describeLight({ key: 'k', name: 'n', direction: 'left', brightness: 0, lightColor: '#ff0000', prompt: '' })).toBe('方向 left · 亮度 0 · 颜色 #ff0000');
     expect(describeLight({ key: 'k', name: 'n', prompt: 'x' })).toBe('仅附加提示词');
+  });
+  it('适用模型至少一个', () => {
+    expect(modelsError([])).toBe('至少选择一个适用模型');
+    expect(modelsError(undefined)).toBe('至少选择一个适用模型');
+    expect(modelsError(['gpt-image-2'])).toBeNull();
   });
 });

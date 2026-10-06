@@ -41,7 +41,6 @@ export function ModelSelect({
   return (
     <Select
       mode={multiple ? 'multiple' : undefined}
-      allowClear={!multiple}
       showSearch
       optionFilterProp="label"
       placeholder="选择模型"

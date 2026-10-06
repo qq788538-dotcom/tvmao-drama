@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -30,10 +31,17 @@ const (
 )
 
 // ignorable 是判断“目录为空”时忽略的文件。
-var ignorable = map[string]bool{".DS_Store": true, "Thumbs.db": true, "desktop.ini": true, PointerFileName: true}
+// 指针文件的临时文件（壳写指针时崩溃会留下）同样忽略。
+// Windows 盘符根目录自带的 System Volume Information / $RECYCLE.BIN 也忽略，否则空 U 盘根目录会被判为非空。
+var ignorable = map[string]bool{
+	".DS_Store": true, "Thumbs.db": true, "desktop.ini": true,
+	"System Volume Information": true, "$RECYCLE.BIN": true,
+	PointerFileName: true, PointerFileName + ".tmp": true,
+}
 
-// notCopied 是复制时跳过的顶层条目：数据库单独用 VACUUM INTO 复制，诊断样本不迁移。
-var notCopied = map[string]bool{markerName: true, dbName: true, dbName + "-wal": true, dbName + "-shm": true, dbTmpName: true, "diag": true}
+// notCopied 是复制时跳过的顶层条目：数据库单独用 VACUUM INTO 复制。
+// diag（诊断样本）照常复制，这样 Cleanup 会把它从旧目录删掉，旧目录（通常是默认目录）才能再次被选为迁移目标。
+var notCopied = map[string]bool{markerName: true, dbName: true, dbName + "-wal": true, dbName + "-shm": true, dbTmpName: true}
 
 // ValidateTarget 校验新数据目录，返回规范化后的路径。错误文案直接展示给用户。
 func ValidateTarget(current, target string) (string, error) {
@@ -91,13 +99,16 @@ func Migrate(from, to string) (err error) {
 	if err != nil {
 		return err
 	}
-	if err = os.MkdirAll(target, 0o700); err != nil {
+	if err = mkdirAllDurable(target); err != nil {
 		return fmt.Errorf("创建新数据目录：%w", err)
 	}
 	if err = wipe(target); err != nil {
 		return err
 	}
 	if err = os.WriteFile(filepath.Join(target, markerName), []byte("migrating\n"), 0o600); err != nil {
+		return fmt.Errorf("写入迁移标记：%w", err)
+	}
+	if err = syncDir(target); err != nil {
 		return fmt.Errorf("写入迁移标记：%w", err)
 	}
 	defer func() {
@@ -129,10 +140,19 @@ func Migrate(from, to string) (err error) {
 			return fmt.Errorf("复制 %s：%w", name, err)
 		}
 	}
+	// 文件在 copyFile 里已逐个 fsync；这里把所有目录项（新建的子目录、文件名）也落盘。
+	if err = syncTree(target); err != nil {
+		return fmt.Errorf("写入新数据目录：%w", err)
+	}
 	if err = copyDatabase(from, target); err != nil {
 		return err
 	}
-	return os.Remove(filepath.Join(target, markerName))
+	// 只有新副本全部落盘后才去掉标记；去掉标记本身也要落盘，Cleanup 以“无标记”为前提。
+	trace("unmark", target)
+	if err = os.Remove(filepath.Join(target, markerName)); err != nil {
+		return err
+	}
+	return syncDir(target)
 }
 
 // Cleanup 删除 oldDir 里在 newDir 已有同名副本的条目（数据库的 -wal/-shm 随 data.db 一起删）。
@@ -148,6 +168,13 @@ func Cleanup(oldDir, newDir string) error {
 	}
 	if _, err := os.Stat(filepath.Join(newDir, dbName)); err != nil {
 		return fmt.Errorf("新数据目录里没有 data.db，拒绝清理旧目录：%w", err)
+	}
+	if _, err := os.Lstat(filepath.Join(newDir, markerName)); err == nil {
+		return errors.New("新数据目录的迁移尚未完成，拒绝清理旧目录")
+	}
+	// 删除旧数据前再做一次持久化屏障：确保新副本（含目录项）已在盘上。
+	if err := syncTree(newDir); err != nil {
+		return fmt.Errorf("确认新数据已写入磁盘失败，拒绝清理旧目录：%w", err)
 	}
 	entries, err := os.ReadDir(oldDir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -170,6 +197,7 @@ func Cleanup(oldDir, newDir string) error {
 		if !hasCopy {
 			continue
 		}
+		trace("remove", filepath.Join(oldDir, name))
 		if err := os.RemoveAll(filepath.Join(oldDir, name)); err != nil {
 			failed = append(failed, name)
 		}
@@ -199,10 +227,17 @@ func copyDatabase(from, to string) error {
 	if err := conn.Close(); err != nil {
 		return fmt.Errorf("关闭原数据库：%w", err)
 	}
+	if err := syncFile(tmp); err != nil {
+		return fmt.Errorf("写入新数据库：%w", err)
+	}
 	final := filepath.Join(to, dbName)
 	if err := os.Rename(tmp, final); err != nil {
 		return fmt.Errorf("数据库改名：%w", err)
 	}
+	if err := syncDir(to); err != nil {
+		return fmt.Errorf("数据库改名：%w", err)
+	}
+	trace("quick_check", final)
 	check, err := db.Open(final)
 	if err != nil {
 		return fmt.Errorf("打开新数据库：%w", err)
@@ -235,7 +270,9 @@ func copyTree(src, dst string) error {
 		case d.Type().IsRegular():
 			return copyFile(p, target)
 		default:
-			return nil // 符号链接等特殊文件不复制
+			// 符号链接等特殊文件不复制；记到 stderr 便于事后排查（旧目录随后会被整体清理）。
+			log.Printf("迁移数据目录：跳过非普通文件 %s", p)
+			return nil
 		}
 	})
 }
@@ -259,6 +296,7 @@ func copyFile(src, dst string) error {
 		err = fmt.Errorf("复制不完整：%d/%d 字节", n, st.Size())
 	}
 	if err == nil {
+		trace("fsync", dst)
 		err = out.Sync()
 	}
 	if cerr := out.Close(); err == nil {
@@ -353,4 +391,87 @@ func within(child, parent string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// trace 只给测试记录持久化相关调用的顺序。
+var trace = func(op, path string) {}
+
+// syncFile 打开文件并 fsync。
+func syncFile(p string) error {
+	trace("fsync", p)
+	f, err := os.OpenFile(p, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	err = f.Sync()
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// syncDir fsync 目录本身，让其中新建 / 改名 / 删除的目录项落盘。Windows 不支持对目录 fsync，跳过。
+func syncDir(dir string) error {
+	trace("fsyncdir", dir)
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	err = f.Sync()
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// syncTree fsync dir 下（含 dir）的每个目录。普通文件在复制时已逐个 fsync。
+func syncTree(dir string) error {
+	var dirs []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			dirs = append(dirs, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	// 自底向上：子目录先落盘，再落盘包含它的父目录。
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if err := syncDir(dirs[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// mkdirAllDurable 等同 os.MkdirAll，并对每个新建目录的父目录 fsync，让新目录项本身落盘。
+func mkdirAllDurable(dir string) error {
+	var created []string
+	for p := dir; ; {
+		if _, err := os.Stat(p); err == nil {
+			break
+		}
+		created = append(created, p)
+		parent := filepath.Dir(p)
+		if parent == p {
+			break
+		}
+		p = parent
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	for i := len(created) - 1; i >= 0; i-- {
+		if err := syncDir(filepath.Dir(created[i])); err != nil {
+			return err
+		}
+	}
+	return nil
 }

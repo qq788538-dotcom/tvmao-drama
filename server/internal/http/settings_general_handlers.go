@@ -162,16 +162,22 @@ func (h *generalSettingsHandler) restoreBaseDomain(w nethttp.ResponseWriter, r *
 	h.writeView(w, r)
 }
 
-// maskAPIKey 只保留前 3 位和后 4 位；8 位及以下全部遮住。Key 明文永不出 sidecar。
+// maskAPIKey 返回固定格式的掩码：最多露后 4 位，不露前几位；不足 12 位全部遮住。
+// 以 "sk-" 开头的 Key 保留这个通用前缀（spec 格式 sk-••••••••末4位）。Key 明文永不出 sidecar。
 func maskAPIKey(k string) string {
 	if k == "" {
 		return ""
 	}
+	const dots = "••••••••"
 	r := []rune(k)
-	if len(r) <= 8 {
-		return strings.Repeat("•", 8)
+	if len(r) < 12 {
+		return dots
 	}
-	return string(r[:3]) + strings.Repeat("•", 8) + string(r[len(r)-4:])
+	prefix := ""
+	if strings.HasPrefix(k, "sk-") {
+		prefix = "sk-"
+	}
+	return prefix + dots + string(r[len(r)-4:])
 }
 
 // normalizeBaseDomain 只接受 http/https 绝对地址，去掉末尾 "/"；允许路径前缀（反向代理场景）。

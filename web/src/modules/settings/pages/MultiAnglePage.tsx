@@ -4,7 +4,7 @@ import { useConfigEditor } from '../useConfigEditor';
 import { deepClone, updateAt } from '../draft';
 import { ModelSelect } from '../components/ModelSelect';
 import { RestoreDefaultButton } from '../components/RestoreDefaultButton';
-import { describeAngle, templateError, type MultiAngleConfig, type MultiAnglePreset } from './promptTemplates';
+import { describeAngle, modelsError, templateError, type MultiAngleConfig, type MultiAnglePreset } from './promptTemplates';
 
 export function MultiAnglePage() {
   const { message } = AntApp.useApp();
@@ -16,7 +16,9 @@ export function MultiAnglePage() {
   if (isLoading) return <Spin />;
   if (!draft) return <Card title="多角度"><Empty description="没有内置此配置" /></Card>;
   const tplErr = templateError(draft.template ?? '', '{angle}');
+  const modelsErr = modelsError(draft.models);
   const onSave = () => {
+    if (modelsErr) return message.error(modelsErr);
     if (tplErr) return message.error(tplErr);
     save.mutate(draft);
   };
@@ -26,7 +28,7 @@ export function MultiAnglePage() {
       extra={<Space><RestoreDefaultButton onConfirm={() => restore.mutate()} loading={restore.isPending} disabled={!data?.modified} /><Button type="primary" onClick={onSave} loading={save.isPending}>保存</Button></Space>}
     >
       <Form layout="vertical">
-        <Form.Item label="适用模型（第一个为默认）">
+        <Form.Item label="适用模型（第一个为默认）" validateStatus={modelsErr ? 'error' : undefined} help={modelsErr ?? undefined}>
           <ModelSelect type="image" multiple value={draft.models} onChange={(v) => set(['models'], v)} style={{ width: '100%' }} />
         </Form.Item>
         <Form.Item label="拼接模板" validateStatus={tplErr ? 'error' : undefined} help={tplErr ?? '{angle} 会被替换成“水平 / 俯仰 / 景别”的描述；留空使用内置模板。'}>

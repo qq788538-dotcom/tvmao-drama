@@ -4,7 +4,7 @@ import { useConfigEditor } from '../useConfigEditor';
 import { deepClone, updateAt } from '../draft';
 import { ModelSelect } from '../components/ModelSelect';
 import { RestoreDefaultButton } from '../components/RestoreDefaultButton';
-import { moveItem, scriptErrors, type ScriptConfig, type ScriptStyle } from './candidates';
+import { DEFAULT_MAX_RETRIES, moveItem, scriptErrors, type ScriptConfig, type ScriptStyle } from './candidates';
 
 export function ScriptConfigPage() {
   const { message } = AntApp.useApp();
@@ -35,7 +35,7 @@ export function ScriptConfigPage() {
                 <ModelSelect type="text" value={c.modelId} onChange={(v) => set(['modelCandidates', i, 'modelId'], v)} />
                 <Input style={{ width: 160 }} placeholder="展示名" value={c.displayName} onChange={(e) => set(['modelCandidates', i, 'displayName'], e.target.value)} />
                 <Button size="small" disabled={i === 0} onClick={() => set(['modelCandidates'], moveItem(cands, i, i - 1))}>上移</Button>
-                <Button size="small" danger onClick={() => set(['modelCandidates'], cands.filter((_, j) => j !== i))}>移除</Button>
+                <Button size="small" danger disabled={cands.length <= 1} onClick={() => set(['modelCandidates'], cands.filter((_, j) => j !== i))}>移除</Button>
               </Space>
             ))}
             <Button size="small" onClick={() => set(['modelCandidates'], [...cands, { modelId: '', displayName: '' }])}>添加候选模型</Button>
@@ -43,10 +43,10 @@ export function ScriptConfigPage() {
         </Form.Item>
         <Space size={24}>
           <Form.Item label="同时执行的任务数">
-            <InputNumber min={1} max={20} value={draft.concurrency ?? 1} onChange={(v) => set(['concurrency'], v ?? 1)} />
+            <InputNumber min={1} max={20} precision={0} value={draft.concurrency ?? 1} onChange={(v) => set(['concurrency'], v ?? 1)} />
           </Form.Item>
-          <Form.Item label="失败自动重跑次数">
-            <InputNumber min={0} max={10} value={draft.maxRetries ?? 0} onChange={(v) => set(['maxRetries'], v ?? 0)} />
+          <Form.Item label="失败自动重跑次数" help={`1 到 10 次，未设置时为 ${DEFAULT_MAX_RETRIES} 次`}>
+            <InputNumber min={1} max={10} precision={0} value={draft.maxRetries ?? DEFAULT_MAX_RETRIES} onChange={(v) => set(['maxRetries'], v ?? DEFAULT_MAX_RETRIES)} />
           </Form.Item>
         </Space>
       </Form>

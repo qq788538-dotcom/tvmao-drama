@@ -23,6 +23,10 @@ describe('modelForm', () => {
     const p = formToPatch(base, v);
     expect(p).toEqual({ name: '新名', concurrency: 2, uiSchemaDefaults: { ratio: '16:9' } });
   });
+  it('清空的数字框（null）视为未改动，不进补丁', () => {
+    const v = { ...modelToForm(base), sortOrder: null, concurrency: null, canvasMaxRetries: null, canvasRetryIntervalSec: null } as unknown as ReturnType<typeof modelToForm>;
+    expect(formToPatch(base, v)).toEqual({});
+  });
   it('filterModels 按类型和关键字（名称或 modelId）筛选', () => {
     const list = [base, { ...base, id: 2, type: 'video', name: '转高清', modelId: 'task-up' }];
     expect(filterModels(list, 'video', '').map((m) => m.id)).toEqual([2]);

@@ -35,12 +35,51 @@ pub fn read_location(path: &Path) -> Result<Location, String> {
     }
 }
 
-/// 先写临时文件再改名，避免写一半断电留下损坏的指针文件。
+/// 持久化原子写入：写临时文件并 fsync → 改名 → fsync 父目录（Windows 跳过）。
+/// 这样断电后指针文件要么是旧内容、要么是新内容，且已确认写入的内容不会丢。
 pub fn write_location(path: &Path, loc: &Location) -> Result<(), String> {
-    let tmp = path.with_extension("json.tmp");
     let body = serde_json::to_string_pretty(loc).map_err(|e| e.to_string())?;
-    std::fs::write(&tmp, body).map_err(|e| format!("无法写入数据目录配置：{e}"))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("无法写入数据目录配置：{e}"))
+    write_durable(&mut RealFs, path, body.as_bytes())
+        .map_err(|e| format!("无法写入数据目录配置：{e}"))
+}
+
+/// write_durable 依赖的文件操作，测试里用记录调用顺序的假实现替换。
+pub(crate) trait DurableFs {
+    /// 写入并 fsync 文件内容。
+    fn write_synced(&mut self, path: &Path, body: &[u8]) -> std::io::Result<()>;
+    fn rename(&mut self, from: &Path, to: &Path) -> std::io::Result<()>;
+    /// fsync 目录，让改名后的目录项落盘。
+    fn sync_dir(&mut self, dir: &Path) -> std::io::Result<()>;
+}
+
+struct RealFs;
+
+impl DurableFs for RealFs {
+    fn write_synced(&mut self, path: &Path, body: &[u8]) -> std::io::Result<()> {
+        use std::io::Write;
+        let mut f = std::fs::File::create(path)?;
+        f.write_all(body)?;
+        f.sync_all()
+    }
+    fn rename(&mut self, from: &Path, to: &Path) -> std::io::Result<()> {
+        std::fs::rename(from, to)
+    }
+    fn sync_dir(&mut self, dir: &Path) -> std::io::Result<()> {
+        std::fs::File::open(dir)?.sync_all()
+    }
+}
+
+pub(crate) fn write_durable(fs: &mut dyn DurableFs, path: &Path, body: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    fs.write_synced(&tmp, body)?;
+    fs.rename(&tmp, path)?;
+    // Windows 不能对目录句柄 fsync（需要 FILE_FLAG_BACKUP_SEMANTICS），跳过。
+    if cfg!(not(windows)) {
+        if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+            fs.sync_dir(dir)?;
+        }
+    }
+    Ok(())
 }
 
 /// 与 Go `db.Open` / `datadir.ValidateTarget` 相同的语法限制（完整校验在 sidecar 的 /data-dir/check）。
@@ -260,6 +299,56 @@ mod tests {
         assert!(raw.contains("pendingDataDir") && !raw.contains("lastError"), "{raw}");
         assert_eq!(read_location(&p).unwrap(), loc);
         assert!(!dir.join("data-location.json.tmp").exists());
+    }
+
+    #[derive(Default)]
+    struct RecordingFs {
+        calls: Vec<String>,
+        fail_write: bool,
+    }
+
+    impl DurableFs for RecordingFs {
+        fn write_synced(&mut self, path: &Path, _body: &[u8]) -> std::io::Result<()> {
+            self.calls.push(format!("write_synced {}", path.file_name().unwrap().to_string_lossy()));
+            if self.fail_write {
+                return Err(std::io::Error::other("disk full"));
+            }
+            Ok(())
+        }
+        fn rename(&mut self, from: &Path, to: &Path) -> std::io::Result<()> {
+            self.calls.push(format!(
+                "rename {} {}",
+                from.file_name().unwrap().to_string_lossy(),
+                to.file_name().unwrap().to_string_lossy()
+            ));
+            Ok(())
+        }
+        fn sync_dir(&mut self, dir: &Path) -> std::io::Result<()> {
+            self.calls.push(format!("sync_dir {}", dir.display()));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn write_durable_syncs_tmp_then_renames_then_syncs_parent() {
+        let dir = PathBuf::from("/cfg");
+        let mut fs = RecordingFs::default();
+        write_durable(&mut fs, &dir.join(POINTER_FILE), b"{}").unwrap();
+        let mut want = vec![
+            "write_synced data-location.json.tmp".to_string(),
+            "rename data-location.json.tmp data-location.json".to_string(),
+        ];
+        if cfg!(not(windows)) {
+            want.push("sync_dir /cfg".to_string());
+        }
+        assert_eq!(fs.calls, want);
+    }
+
+    #[test]
+    fn write_durable_does_not_rename_when_write_fails() {
+        let mut fs = RecordingFs { fail_write: true, ..Default::default() };
+        assert!(write_durable(&mut fs, &PathBuf::from("/cfg").join(POINTER_FILE), b"{}").is_err());
+        assert_eq!(fs.calls, vec!["write_synced data-location.json.tmp".to_string()]);
     }
 
     #[test]

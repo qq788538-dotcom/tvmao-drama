@@ -46,18 +46,18 @@ export function modelToForm(m: ModelView): ModelFormValues {
   };
 }
 
-/** 只放进与原值不同的字段；服务端严格拒绝补丁之外的任何字段（spec M10）。 */
+/** 只放进与原值不同的字段；服务端严格拒绝补丁之外的任何字段（spec M10）。清空的数字框（null）视为未改动。 */
 export function formToPatch(m: ModelView, v: ModelFormValues): ModelPatch {
   const before = modelToForm(m);
   const p: ModelPatch = {};
   const name = v.name.trim();
   if (name !== before.name) p.name = name;
-  if (v.sortOrder !== before.sortOrder) p.sortOrder = v.sortOrder;
+  if (v.sortOrder != null && v.sortOrder !== before.sortOrder) p.sortOrder = v.sortOrder;
   if (v.enabled !== before.enabled) p.enabled = v.enabled;
   if (v.hidden !== before.hidden) p.hidden = v.hidden;
-  if (v.concurrency !== before.concurrency) p.concurrency = v.concurrency;
-  if (v.canvasMaxRetries !== before.canvasMaxRetries) p.canvasMaxRetries = v.canvasMaxRetries;
-  if (v.canvasRetryIntervalSec !== before.canvasRetryIntervalSec) p.canvasRetryIntervalSec = v.canvasRetryIntervalSec;
+  if (v.concurrency != null && v.concurrency !== before.concurrency) p.concurrency = v.concurrency;
+  if (v.canvasMaxRetries != null && v.canvasMaxRetries !== before.canvasMaxRetries) p.canvasMaxRetries = v.canvasMaxRetries;
+  if (v.canvasRetryIntervalSec != null && v.canvasRetryIntervalSec !== before.canvasRetryIntervalSec) p.canvasRetryIntervalSec = v.canvasRetryIntervalSec;
   const defaults: Record<string, string | number> = {};
   for (const [k, val] of Object.entries(v.uiDefaults ?? {})) if (val !== before.uiDefaults[k]) defaults[k] = val;
   if (Object.keys(defaults).length) p.uiSchemaDefaults = defaults;

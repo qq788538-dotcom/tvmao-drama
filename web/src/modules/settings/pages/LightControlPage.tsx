@@ -4,7 +4,7 @@ import { useConfigEditor } from '../useConfigEditor';
 import { deepClone, updateAt } from '../draft';
 import { ModelSelect } from '../components/ModelSelect';
 import { RestoreDefaultButton } from '../components/RestoreDefaultButton';
-import { describeLight, templateError, type LightControlConfig, type LightControlPreset } from './promptTemplates';
+import { describeLight, modelsError, templateError, type LightControlConfig, type LightControlPreset } from './promptTemplates';
 
 export function LightControlPage() {
   const { message } = AntApp.useApp();
@@ -16,7 +16,9 @@ export function LightControlPage() {
   if (isLoading) return <Spin />;
   if (!draft) return <Card title="打光"><Empty description="没有内置此配置" /></Card>;
   const tplErr = templateError(draft.template ?? '', '{light}');
+  const modelsErr = modelsError(draft.models);
   const onSave = () => {
+    if (modelsErr) return message.error(modelsErr);
     if (tplErr) return message.error(tplErr);
     save.mutate(draft);
   };
@@ -26,7 +28,7 @@ export function LightControlPage() {
       extra={<Space><RestoreDefaultButton onConfirm={() => restore.mutate()} loading={restore.isPending} disabled={!data?.modified} /><Button type="primary" onClick={onSave} loading={save.isPending}>保存</Button></Space>}
     >
       <Form layout="vertical">
-        <Form.Item label="适用模型（第一个为默认）">
+        <Form.Item label="适用模型（第一个为默认）" validateStatus={modelsErr ? 'error' : undefined} help={modelsErr ?? undefined}>
           <ModelSelect type="image" multiple value={draft.models} onChange={(v) => set(['models'], v)} style={{ width: '100%' }} />
         </Form.Item>
         <Form.Item label="拼接模板" validateStatus={tplErr ? 'error' : undefined} help={tplErr ?? '{light} 会被替换成方向 / 亮度 / 颜色等描述；留空使用内置模板。'}>

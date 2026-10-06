@@ -13,6 +13,11 @@ export function templateError(template: string, placeholder: string): string | n
   return `拼接模板必须保留 ${placeholder}（留空则使用内置模板）`;
 }
 
+/** 与 sidecar 一致：多角度、打光的 models 至少一项。 */
+export function modelsError(models: string[] | undefined): string | null {
+  return models && models.length > 0 ? null : '至少选择一个适用模型';
+}
+
 export function describeAngle(p: MultiAnglePreset): string {
   return `水平 ${p.rotation}° · 俯仰 ${p.tilt}° · ${ZOOM_LABELS[p.zoom] ?? p.zoom}`;
 }
