@@ -150,7 +150,7 @@ func NewSQLCanvasAssetRefStore(db *sql.DB) *SQLCanvasAssetRefStore {
 
 func (s *SQLCanvasAssetRefStore) ProjectOwner(projectID int64) (int64, error) {
 	var owner int64
-	err := s.db.QueryRow(`SELECT user_id FROM projects WHERE id=?`, projectID).Scan(&owner)
+	err := s.db.QueryRow(`SELECT user_id FROM projects WHERE id=? AND deleted_at IS NULL`, projectID).Scan(&owner)
 	return owner, err
 }
 

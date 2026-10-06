@@ -143,7 +143,7 @@ JSON 结构草案（v2，已作废）：
 | SEC1 | 本地服务只监听 `127.0.0.1`，端口随机 | 是 | ✅ 已确认 |
 | SEC2 | 每次启动生成随机 token，所有请求校验 token 和 Origin（防止本机网页调用这个端口） | 是 | ✅ 已确认 |
 | SEC3 | 启动 token 的传递 | Tauri 通过 stdin 把启动 token 传给 sidecar，不用命令行参数或环境变量（Key 已按 M3 存 SQLite，不经过 Tauri） | ✅ 已确认 |
-| SEC4 | Tauri 权限与 CSP | capabilities 最小授权（取端口和 token、文件对话框、在访达中显示）；CSP 只放行 `127.0.0.1:<port>` 和 F7 角色库图片域名 | ✅ 已确认 |
+| SEC4 | Tauri 权限与 CSP | capabilities 最小授权（取端口和 token、文件对话框），壳不授 opener 权限；"在访达中显示"由 sidecar 执行（`POST /api/v1/media/reveal`），key 限定在媒体根目录内，只在访达 / 资源管理器中选中文件、不执行文件；CSP 只放行 `127.0.0.1:<port>` 和 F7 角色库图片域名 | ✅ 已确认 |
 
 ---
 

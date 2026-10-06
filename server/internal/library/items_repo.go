@@ -123,6 +123,8 @@ func (r *SQLiteItemsRepository) Get(userID, id int64) (*Item, error) {
 	return &it, nil
 }
 
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
 func (r *SQLiteItemsRepository) List(f ItemFilter) ([]Item, int64, error) {
 	where := `WHERE user_id=?`
 	args := []any{f.UserID}
@@ -131,8 +133,9 @@ func (r *SQLiteItemsRepository) List(f ItemFilter) ([]Item, int64, error) {
 		args = append(args, f.FolderID)
 	}
 	if f.Search != "" {
-		where += ` AND name LIKE ?`
-		args = append(args, "%"+f.Search+"%")
+		// 转义 LIKE 通配符，按字面量搜索（参考仓没转义，搜 "_" 会匹配所有名字）。
+		where += ` AND name LIKE ? ESCAPE '\'`
+		args = append(args, "%"+likeEscaper.Replace(f.Search)+"%")
 	}
 	var total int64
 	if err := r.db.QueryRow(`SELECT COUNT(*) FROM library_items `+where, args...).Scan(&total); err != nil {

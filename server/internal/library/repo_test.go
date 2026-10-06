@@ -134,6 +134,12 @@ func TestItemsCRUDAndFilters(t *testing.T) {
 	if _, total, _ := items.List(ItemFilter{UserID: 1, Search: "cat"}); total != 1 {
 		t.Fatalf("按名称搜索应大小写不敏感，total=%d", total)
 	}
+	// LIKE 通配符要按字面量搜：搜 "_" 或 "%" 不能匹配所有名字。
+	for _, q := range []string{"_", "%", `\`} {
+		if _, total, _ := items.List(ItemFilter{UserID: 1, Search: q}); total != 0 {
+			t.Fatalf("搜索 %q 应按字面量匹配，total=%d", q, total)
+		}
+	}
 
 	conn.Exec(`INSERT INTO users (id, email) VALUES (2, 'other@miaoju.desktop')`)
 	foreign, _ := folders.Create(2, nil, "别人的")

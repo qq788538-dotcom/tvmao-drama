@@ -264,7 +264,7 @@ func (h *LibraryBridgeHandler) ApplyToCanvas(w http.ResponseWriter, r *http.Requ
 
 	// 校验项目归属。
 	var ownerUser int64
-	if err := h.db.QueryRow(`SELECT user_id FROM projects WHERE id=?`, input.ProjectID).Scan(&ownerUser); err != nil {
+	if err := h.db.QueryRow(`SELECT user_id FROM projects WHERE id=? AND deleted_at IS NULL`, input.ProjectID).Scan(&ownerUser); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "project not found")
 			return

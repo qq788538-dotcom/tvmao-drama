@@ -142,11 +142,17 @@ func (h *AssetHandler) storeUpload(ctx context.Context, userID, projectID int64,
 	return uploadResult{ID: id, URL: stored.URL, Size: stored.Size, MimeType: contentType}, nil
 }
 
+// isBodyTooLarge 判断 ParseMultipartForm 的错误是否来自 MaxBytesReader 超限。
+// multipart 解析有时只把错误文本透出来，所以同时比对文案。
+func isBodyTooLarge(err error) bool {
+	var tooLarge *http.MaxBytesError
+	return errors.As(err, &tooLarge) || strings.Contains(err.Error(), "request body too large")
+}
+
 // readUploadForm 从 multipart 请求里取出文件。
 func readUploadForm(r *http.Request) (filename, contentType string, body []byte, err error) {
 	if perr := r.ParseMultipartForm(64 << 20); perr != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(perr, &tooLarge) || strings.Contains(perr.Error(), "request body too large") {
+		if isBodyTooLarge(perr) {
 			return "", "", nil, &uploadError{Status: http.StatusRequestEntityTooLarge, Message: "文件过大，单个文件不能超过 1GB"}
 		}
 		return "", "", nil, &uploadError{Status: http.StatusBadRequest, Message: "invalid multipart form"}

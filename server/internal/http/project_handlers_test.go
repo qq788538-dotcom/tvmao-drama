@@ -234,4 +234,3 @@ func (f *fakeCanvasOwner) Require(_ context.Context, _ int64, ownerToken string)
 	f.requiredToken = ownerToken
 	return f.requireErr
 }
-

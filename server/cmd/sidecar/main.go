@@ -3,8 +3,8 @@
 // 启动协议（壳与 sidecar 的唯一契约，改动要两边一起改，壳侧见 src-tauri/src/lib.rs）：
 //  1. 壳通过 stdin 写入一行 token；
 //  2. sidecar 打开 <data-dir>/data.db 并迁移，监听 127.0.0.1 的随机端口，就绪后向 stdout 打印 "READY <port>"；
-//  3. 之后 stdin 上读到一行 "SHUTDOWN"（壳正常退出）或 EOF（壳崩溃、被强杀），sidecar 停止接收请求、
-//     停掉后台任务、关闭数据库后以 0 退出。
+//  3. 之后 stdin 上读到一行 "SHUTDOWN"（壳正常退出）或 EOF（壳崩溃、被强杀），两者走同一条优雅退出路径：
+//     取消 ctx、停止接收请求、等后台任务退出、关闭数据库后以 0 退出，整个过程不超过 shutdownTimeout。
 //
 // token 走 stdin 而不是参数或环境变量：后两者同机其他进程读得到。
 package main
@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -43,8 +44,10 @@ var version = "dev"
 const defaultOrigins = "tauri://localhost,http://tauri.localhost"
 
 const (
-	maxTokenLen          = 256
-	shutdownTimeout      = 5 * time.Second
+	maxTokenLen = 256
+	// shutdownTimeout 是优雅退出的总时长上限（HTTP 收尾 + 等 worker）。壳在 3 秒后强杀，
+	// 超过它的部分没有意义；到点后不再等待，直接关库退出。
+	shutdownTimeout      = 3 * time.Second
 	projectCleanInterval = 30 * time.Second
 	orphanSweepInterval  = 24 * time.Hour
 )
@@ -118,8 +121,10 @@ func run() error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	a.cleaner.Start(ctx, projectCleanInterval)
-	a.sweeper.Start(ctx, orphanSweepInterval, library.DefaultGracePeriod)
+	workers := []<-chan struct{}{
+		a.cleaner.Start(ctx, projectCleanInterval),
+		a.sweeper.Start(ctx, orphanSweepInterval, library.DefaultGracePeriod),
+	}
 
 	go func() {
 		waitForShutdown(stdin)
@@ -143,16 +148,50 @@ func run() error {
 
 	select {
 	case err := <-serveErr:
+		cancel()
+		waitDone(shutdownTimeout, workers...)
 		return err
 	case <-ctx.Done():
 	}
-	sctx, scancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	// 关闭顺序：ctx 已取消（worker 不再开始新一轮）→ 停 HTTP → 等 worker 退出 → 关数据库（defer）。
+	// 必须等 worker 退出再关库：sql.DB.Close 不会等事务以外的后续语句，worker 剩下的步骤只会拿到
+	// "sql: database is closed"。
+	deadline := time.Now().Add(shutdownTimeout)
+	sctx, scancel := context.WithDeadline(context.Background(), deadline)
 	defer scancel()
 	if err := srv.Shutdown(sctx); err != nil {
 		log.Printf("关闭 HTTP 服务: %v", err)
 	}
-	// 后台任务随 ctx 取消停下；deferred conn.Close 会等在飞的语句结束。
+	if !waitDone(time.Until(deadline), workers...) {
+		log.Print("等待后台任务退出超时，直接关闭数据库")
+	}
+	log.Print("sidecar 已关闭")
 	return nil
+}
+
+// waitDone 等 chans 全部关闭，最多等 timeout；全部关闭返回 true。
+func waitDone(timeout time.Duration, chans ...<-chan struct{}) bool {
+	var wg sync.WaitGroup
+	for _, c := range chans {
+		wg.Add(1)
+		go func(c <-chan struct{}) {
+			defer wg.Done()
+			<-c
+		}(c)
+	}
+	all := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(all)
+	}()
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+	select {
+	case <-all:
+		return true
+	case <-t.C:
+		return false
+	}
 }
 
 // ensurePrivateDir 建数据目录并收紧成仅当前用户可访问（data.db 里有 API Key，spec M3）。

@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/james/huabu_studio/apps/api/internal/assets"
 	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
@@ -316,5 +317,18 @@ func TestProjectListImagesAndSetCover(t *testing.T) {
 	e.handler.SetCover(rec, projectReq(http.MethodPut, pid, fmt.Sprintf(`{"assetId":%d}`, foreign)))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("别的项目的图 code=%d want 404", rec.Code)
+	}
+}
+
+// 关闭时 main 要等清理 worker 真正退出再关库：Start 返回的通道在 ctx 取消后关闭。
+func TestProjectCleanerStartDoneClosesAfterCancel(t *testing.T) {
+	e := newProjectEnv(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := e.cleaner.Start(ctx, 0)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("ctx 取消 3 秒后清理 worker 仍未退出")
 	}
 }

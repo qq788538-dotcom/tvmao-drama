@@ -189,7 +189,7 @@ func TestPathRejectsTraversalAndIllegalKeys(t *testing.T) {
 
 func TestSignedURLRoundTripsThroughExtractKey(t *testing.T) {
 	s := newLocal(t)
-	for _, key := range []string{"u1/2026/10/a.png", "u1/2026/10/镜头 1#2%.png", "gen/task-3-0"} {
+	for _, key := range []string{"u1/2026/10/a.png", "u1/2026/10/镜头 1&2+3=4.png", "gen/task-3-0"} {
 		u, err := s.SignedURL(context.Background(), key, time.Hour)
 		if err != nil {
 			t.Fatal(err)
@@ -216,9 +216,10 @@ func TestExtractKeyAcceptsAnyLoopbackPortAndMediaScheme(t *testing.T) {
 	s := newLocal(t)
 	cases := map[string]string{
 		"http://127.0.0.1:61234/media/u1/2026/10/a.png?token=old": "u1/2026/10/a.png",
-		"http://127.0.0.1:1/media/gen/task-1-0":                    "gen/task-1-0",
-		"media://u1/2026/10/a%20b.png":                             "u1/2026/10/a b.png",
-		"media://u1/x.png?foo=1":                                   "u1/x.png",
+		"http://127.0.0.1:1/media/gen/task-1-0":                   "gen/task-1-0",
+		"media://u1/2026/10/a b.png":                              "u1/2026/10/a b.png",
+		"media://u1/x.png?foo=1":                                  "u1/x.png",
+		"http://127.0.0.1:5555/media/u1/a%20b.png?token=x":        "u1/a b.png",
 	}
 	for in, want := range cases {
 		got, ok := s.ExtractKey(in)
@@ -230,6 +231,10 @@ func TestExtractKeyAcceptsAnyLoopbackPortAndMediaScheme(t *testing.T) {
 		"https://cdn.example/media/u1/a.png", "http://localhost:5555/media/u1/a.png",
 		"http://127.0.0.1:5555/api/v1/ping", "media://../data.db",
 		"http://127.0.0.1:5555/media/..%2Fdata.db", "data:image/png;base64,AAAA", "",
+		// media:// 存的是原始 key，不做 URL 解码；key 里本来就不允许 %，转义串一律不认。
+		"media://u1/2026/10/a%20b.png", "media://u1/..%2Fdata.db", "media://u1/a%41.png",
+		// http 分支解码后含 # 或 % 的 key 同样非法。
+		"http://127.0.0.1:5555/media/u1/a%25b.png", "http://127.0.0.1:5555/media/u1/a%23b.png",
 	} {
 		if got, ok := s.ExtractKey(in); ok {
 			t.Errorf("ExtractKey(%q)=%q 不应识别", in, got)
@@ -265,5 +270,116 @@ func TestCopyObjectIsIndependentOfSource(t *testing.T) {
 	}
 	if _, err := s.CopyObject(ctx, "u1/missing.png", "u2/x.png", ""); err == nil {
 		t.Fatal("源不存在应报错")
+	}
+}
+
+// I1：key 里的 # 和 % 会让 media:// 与 ExtractKey 对不上，sanitizeName 必须替换掉，ValidKey 必须拒收。
+func TestValidKeyRejectsHashAndPercent(t *testing.T) {
+	for _, k := range []string{"u1/a#b.png", "u1/50%off.png", "u1/a%41.png"} {
+		if ValidKey(k) {
+			t.Errorf("ValidKey(%q) 应为 false", k)
+		}
+	}
+}
+
+// 写入返回的 media:// 和签名后的 http URL，都必须能经 ExtractKey 认回同一个 key。
+func TestPutObjectURLRoundTripsThroughExtractKey(t *testing.T) {
+	s := newLocal(t)
+	ctx := context.Background()
+	cases := map[string]string{
+		"镜头#1.png":     "镜头_1.png",
+		"50%off.png":   "50_off.png",
+		"a%41.png":     "a_41.png",
+		"主角立绘.png":     "主角立绘.png",
+		"my photo.png": "my photo.png",
+	}
+	for in, wantName := range cases {
+		key := s.NewKey(1, in)
+		if name := key[strings.LastIndex(key, "/")+1:]; name != wantName {
+			t.Errorf("NewKey(%q) 文件名=%q want %q", in, name, wantName)
+		}
+		obj, err := s.PutObject(ctx, PutObjectInput{Key: key, Body: []byte("x")})
+		if err != nil {
+			t.Fatalf("PutObject(%q): %v", key, err)
+		}
+		if got, ok := s.ExtractKey(obj.URL); !ok || got != key {
+			t.Errorf("ExtractKey(%q)=%q,%v want %q", obj.URL, got, ok, key)
+		}
+		signed, err := s.SignedURL(ctx, key, time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := s.ExtractKey(signed); !ok || got != key {
+			t.Errorf("ExtractKey(%q)=%q,%v want %q", signed, got, ok, key)
+		}
+		cp, err := s.CopyObject(ctx, key, key+".copy", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := s.ExtractKey(cp.URL); !ok || got != key+".copy" {
+			t.Errorf("CopyObject URL %q 认不回: %q,%v", cp.URL, got, ok)
+		}
+	}
+}
+
+// Windows 上 CON、NUL、COM1 等是设备名（带扩展名也是），不能直接做文件名。
+func TestNewKeyEscapesWindowsReservedNames(t *testing.T) {
+	s := newLocal(t)
+	cases := map[string]string{"con": "_con", "NUL.txt": "_NUL.txt", "com1.png": "_com1.png", "Lpt9": "_Lpt9", "console.png": "console.png", "com10.png": "com10.png"}
+	for in, want := range cases {
+		key := s.StaticKey(1, in)
+		if name := key[strings.LastIndex(key, "/")+1:]; name != want {
+			t.Errorf("StaticKey(%q) 文件名=%q want %q", in, name, want)
+		}
+	}
+}
+
+// 指向目录的 key 不是对象：GetObject 应按不存在处理（媒体 handler 据此回 404 而不是 500）。
+func TestGetObjectOnDirectoryIsNotExist(t *testing.T) {
+	s := newLocal(t)
+	if _, err := s.PutObject(context.Background(), PutObjectInput{Key: "u1/2026/a.png", Body: []byte("x")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetObject(context.Background(), "u1/2026"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("err=%v want fs.ErrNotExist", err)
+	}
+}
+
+// 进程在写入中途被杀会留下 .tmp-*：启动时清理根目录内超过 1 小时的残留，新的（可能正在写）不动。
+func TestNewLocalStorageRemovesStaleTempFiles(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "media")
+	sub := filepath.Join(root, "u1", "2026")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	write := func(p string, stale bool) {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if stale {
+			os.Chtimes(p, old, old)
+		}
+	}
+	staleTmp := filepath.Join(sub, ".tmp-123")
+	freshTmp := filepath.Join(sub, ".tmp-456")
+	normal := filepath.Join(sub, "a.png")
+	outside := filepath.Join(base, ".tmp-outside")
+	write(staleTmp, true)
+	write(freshTmp, false)
+	write(normal, true)
+	write(outside, true)
+
+	if _, err := NewLocalStorage(LocalConfig{Root: root}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(staleTmp); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("过期临时文件应被删除: %v", err)
+	}
+	for _, p := range []string{freshTmp, normal, outside} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s 不应被删除: %v", p, err)
+		}
 	}
 }

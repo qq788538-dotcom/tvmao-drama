@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -51,7 +52,30 @@ func NewLocalStorage(cfg LocalConfig) (*LocalStorage, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, fmt.Errorf("创建媒体目录: %w", err)
 	}
+	removeStaleTempFiles(root, time.Now().Add(-staleTempAge))
 	return &LocalStorage{root: root, baseURL: strings.TrimRight(cfg.BaseURL, "/"), token: cfg.Token}, nil
+}
+
+// staleTempAge 之前的 .tmp-* 视为残留。启动时不会有本进程的写入在进行，留一小时余量
+// 只是为了不误删同一数据目录上另一个进程（理论上不该存在）正在写的文件。
+const staleTempAge = time.Hour
+
+// removeStaleTempFiles 删掉 root 内（不越出 root、不跟随符号链接）早于 before 的 .tmp-* 普通文件。
+// 这些是 writeFileAtomic 写到一半进程被杀留下的，不在任何表里，不清就永久占盘。
+func removeStaleTempFiles(root string, before time.Time) {
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() || !strings.HasPrefix(d.Name(), ".tmp-") {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || !info.ModTime().Before(before) {
+			return nil
+		}
+		if err := os.Remove(p); err != nil {
+			log.Printf("media: 清理残留临时文件 %s 失败: %v", p, err)
+		}
+		return nil
+	})
 }
 
 // Root 返回媒体根目录的绝对路径。
@@ -73,13 +97,14 @@ func (s *LocalStorage) Path(key string) (string, error) {
 
 // ValidKey 判断 key 能否安全地映射成媒体根目录下的文件：段不能为空、"."、".."，
 // 不能以 "." 或空格结尾（Windows 会静默截掉，两个 key 撞到同一个文件），
-// 不能含控制字符和 Windows 文件名禁用字符。
+// 不能含控制字符和 Windows 文件名禁用字符，也不能含 # 和 %：DB 里存的是 media://<原始 key>，
+// 不做任何转义，key 里出现这两个字符会和 URL 语义冲突（片段、转义序列）。
 func ValidKey(key string) bool {
 	if key == "" || len(key) > 1024 || !utf8.ValidString(key) || strings.HasPrefix(key, "/") {
 		return false
 	}
 	for _, r := range key {
-		if r < 0x20 || r == 0x7f || strings.ContainsRune(`\:*?"<>|`, r) {
+		if r < 0x20 || r == 0x7f || strings.ContainsRune(`\:*?"<>|#%`, r) {
 			return false
 		}
 	}
@@ -99,7 +124,7 @@ const maxNameBytes = 150
 func sanitizeName(name string) string {
 	var b strings.Builder
 	for _, r := range name {
-		if r == utf8.RuneError || r < 0x20 || r == 0x7f || strings.ContainsRune(`/\:*?"<>|`, r) {
+		if r == utf8.RuneError || r < 0x20 || r == 0x7f || strings.ContainsRune(`/\:*?"<>|#%`, r) {
 			b.WriteByte('_')
 			continue
 		}
@@ -122,7 +147,27 @@ func sanitizeName(name string) string {
 	if out == "" {
 		out = "file"
 	}
+	if isWindowsReservedName(out) {
+		out = "_" + out
+	}
 	return out
+}
+
+// isWindowsReservedName 判断文件名在 Windows 上是否是设备名（CON、NUL、COM1 等，带扩展名也算）。
+func isWindowsReservedName(name string) bool {
+	stem := name
+	if i := strings.IndexByte(stem, '.'); i >= 0 {
+		stem = stem[:i]
+	}
+	stem = strings.ToUpper(strings.TrimRight(stem, " "))
+	switch stem {
+	case "CON", "PRN", "AUX", "NUL":
+		return true
+	}
+	if len(stem) == 4 && (strings.HasPrefix(stem, "COM") || strings.HasPrefix(stem, "LPT")) {
+		return stem[3] >= '1' && stem[3] <= '9'
+	}
+	return false
 }
 
 func (s *LocalStorage) PutObject(_ context.Context, input PutObjectInput) (StoredObject, error) {
@@ -149,6 +194,10 @@ func writeFileAtomic(dst string, r io.Reader) (int64, error) {
 		return 0, err
 	}
 	n, err := io.Copy(tmp, r)
+	if err == nil {
+		// rename 前落盘：否则断电后可能出现文件名是新的、内容却是空的或半截。
+		err = tmp.Sync()
+	}
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
@@ -179,7 +228,15 @@ func (s *LocalStorage) GetObject(_ context.Context, key string) (io.ReadCloser, 
 	if err != nil {
 		return nil, err
 	}
-	return os.Open(p)
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	if st, err := f.Stat(); err != nil || st.IsDir() {
+		f.Close()
+		return nil, fs.ErrNotExist
+	}
+	return f, nil
 }
 
 // SignedURL 返回 sidecar 的本地媒体 URL。不过期：有效性由本次启动的媒体 token 决定，
@@ -213,23 +270,30 @@ var localMediaURL = regexp.MustCompile(`^http://127\.0\.0\.1:[0-9]{1,5}/media/([
 
 // ExtractKey 在输入是 media:// 伪 URL 或 sidecar 自己发出的本地媒体 URL 时返回 (key, true)。
 // 解出的 key 不合法（如 ../data.db）一律不认，外部 URL、data: 等原样不认。
+//
+// 两种形式的编码约定不同，必须与写入方对称：
+//   - media://<key> 是 PutObject/CopyObject/Canonicalize 原文拼接的，不做 URL 解码；
+//     key 本身不允许含 % 和 #（ValidKey），所以原文拼接始终无歧义。
+//   - http://127.0.0.1:<port>/media/<escaped> 由 SignedURL 逐段 PathEscape，这里对应解码。
 func (s *LocalStorage) ExtractKey(urlOrKey string) (string, bool) {
-	var raw string
+	var key string
 	switch {
 	case strings.HasPrefix(urlOrKey, MediaProtocol):
-		raw = strings.TrimPrefix(urlOrKey, MediaProtocol)
-		if idx := strings.IndexAny(raw, "?#"); idx >= 0 {
-			raw = raw[:idx]
+		key = strings.TrimPrefix(urlOrKey, MediaProtocol)
+		if idx := strings.IndexAny(key, "?#"); idx >= 0 {
+			key = key[:idx]
 		}
 	default:
 		m := localMediaURL.FindStringSubmatch(urlOrKey)
 		if m == nil {
 			return "", false
 		}
-		raw = m[1]
+		var err error
+		if key, err = url.PathUnescape(m[1]); err != nil {
+			return "", false
+		}
 	}
-	key, err := url.PathUnescape(raw)
-	if err != nil || !ValidKey(key) {
+	if !ValidKey(key) {
 		return "", false
 	}
 	return key, true

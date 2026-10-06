@@ -76,8 +76,14 @@ func (s *OrphanSweeper) Sweep(ctx context.Context, grace time.Duration) (SweepRe
 }
 
 // Start 在后台定时清扫：立即跑一次（应用常常只开几个小时，等满一天才跑等于不跑），之后每 interval 一次。
-func (s *OrphanSweeper) Start(ctx context.Context, interval, grace time.Duration) {
+// interval<=0 回落到 24 小时。返回的通道在 ctx 取消、goroutine 退出后关闭，main 据此等它停下再关库。
+func (s *OrphanSweeper) Start(ctx context.Context, interval, grace time.Duration) <-chan struct{} {
+	if interval <= 0 {
+		interval = 24 * time.Hour
+	}
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -94,4 +100,5 @@ func (s *OrphanSweeper) Start(ctx context.Context, interval, grace time.Duration
 			}
 		}
 	}()
+	return done
 }

@@ -160,7 +160,9 @@ func TestMediaRevealOpensLocalPath(t *testing.T) {
 
 func TestMediaRevealRejectsUnknownAndMissing(t *testing.T) {
 	env := newMediaEnv(t)
+	env.put(t, "u1/2026/a.png", mediaPNG, "image/png")
 	cases := map[string]int{
+		`{"url":"media://u1/2026"}`:           http.StatusNotFound, // 目录不是媒体，和 Serve 一致
 		`{"url":"https://cdn.example/a.png"}`: http.StatusBadRequest,
 		`{"url":"media://../secret.txt"}`:     http.StatusBadRequest,
 		`{"url":"media://u1/missing.png"}`:    http.StatusNotFound,

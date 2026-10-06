@@ -97,3 +97,18 @@ func TestSweeperStartRunsImmediately(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// 关闭时 main 要等 worker 真正退出再关库：Start 返回的通道在 ctx 取消后关闭。
+// interval<=0 是配置错误，不能让 time.NewTicker 在 goroutine 里 panic 掉整个 sidecar。
+func TestSweeperStartDoneClosesAfterCancelAndToleratesZeroInterval(t *testing.T) {
+	conn := dbtest.Open(t)
+	orphans := NewSQLiteOrphansRepository(conn)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := NewOrphanSweeper(orphans, &fakeDeleter{}, conn).Start(ctx, 0, DefaultGracePeriod)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("ctx 取消 3 秒后 sweeper 仍未退出")
+	}
+}

@@ -59,7 +59,6 @@ type SQLiteRepository struct{ db *sql.DB }
 
 func NewSQLiteRepository(db *sql.DB) *SQLiteRepository { return &SQLiteRepository{db: db} }
 
-// FindByTaskSlot 见接口注释。
 // FindByID 按主键取单行。agent 的 read_attachment 工具用它做归属校验后分段
 // 读取大文本附件；未命中返回 (nil, nil)——调用方统一报「不存在」，不区分
 // 「没有这行」与「不是你的」（不泄露存在性）。
@@ -160,9 +159,9 @@ func (r *SQLiteRepository) FindByUserProjectHash(userID, projectID int64, hash s
 		return nil, sql.ErrNoRows
 	}
 	var (
-		rec                                       AssetRecord
+		rec                                      AssetRecord
 		dbProjectID, sourceTaskID, libraryItemID sql.NullInt64
-		err                                       error
+		err                                      error
 	)
 	if projectID > 0 {
 		err = r.db.QueryRow(

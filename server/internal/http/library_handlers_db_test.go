@@ -36,6 +36,7 @@ type libraryEnv struct {
 	assets   *assets.SQLiteRepository
 	users    *users.SQLiteRepository
 	projects *projects.SQLiteRepository
+	itemH    *LibraryItemHandler
 	router   http.Handler
 }
 
@@ -78,7 +79,7 @@ func newLibraryEnv(t *testing.T) *libraryEnv {
 	r.Post("/admin/gc", gc.Run)
 
 	return &libraryEnv{conn: conn, storage: storage, signer: signer, folders: folders, assets: ar, users: ur,
-		projects: projects.NewSQLiteRepository(conn), router: r}
+		projects: projects.NewSQLiteRepository(conn), itemH: itemH, router: r}
 }
 
 func (e *libraryEnv) do(method, path string, body io.Reader, contentType string) *httptest.ResponseRecorder {
@@ -207,6 +208,49 @@ func TestLibraryUploadRejectsUnsupportedMime(t *testing.T) {
 	}
 }
 
+// I2：sidecar 前面没有 nginx，素材库上传必须有 body 上限，超限 413，且不落盘、不记账。
+func TestLibraryUploadTooLargeReturns413(t *testing.T) {
+	e := newLibraryEnv(t)
+	if e.itemH.maxUploadBytes != assetMaxUploadBytes {
+		t.Fatalf("默认上限=%d want %d", e.itemH.maxUploadBytes, assetMaxUploadBytes)
+	}
+	e.itemH.maxUploadBytes = 64
+	fid := e.mkFolder(t, "f", nil)
+	rec := e.upload(t, fid, "big.png", "image/png", bytes.Repeat([]byte("x"), 1024))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("code=%d body=%s want 413", rec.Code, rec.Body.String())
+	}
+	if got := e.used(t); got != 0 {
+		t.Fatalf("超限上传不应记账，used=%d", got)
+	}
+	if _, err := os.Stat(filepath.Join(e.storage.Root(), "library")); !os.IsNotExist(err) {
+		t.Fatal("超限上传不应落盘")
+	}
+}
+
+// M3：扩展名直接拼进 key，"clip.mp4 "、"photo."、"a.b:c" 这类名字会让 ValidKey 失败、回 502。
+func TestLibraryUploadSanitizesExtension(t *testing.T) {
+	e := newLibraryEnv(t)
+	fid := e.mkFolder(t, "f", nil)
+	cases := map[string]string{"clip.png ": ".png", "photo.": "", "a.b:c": ".bc", "镜头#1.png": ".png", "x.p%n#g": ".png", "noext": ""}
+	for name, wantExt := range cases {
+		rec := e.upload(t, fid, name, "image/png", libraryPNG)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("%q: code=%d body=%s", name, rec.Code, rec.Body.String())
+		}
+		var it libraryItemJSON
+		json.Unmarshal(rec.Body.Bytes(), &it)
+		key := e.signer.ObjectKey(it.URL)
+		if key == "" || !assets.ValidKey(key) {
+			t.Fatalf("%q: url=%q 认不回合法 key", name, it.URL)
+		}
+		last := key[strings.LastIndex(key, "/")+1:]
+		if got := filepath.Ext(last); got != wantExt {
+			t.Errorf("%q: key=%q ext=%q want %q", name, key, got, wantExt)
+		}
+	}
+}
+
 func TestLibraryItemDeleteMarksOrphanAndFreesQuota(t *testing.T) {
 	e := newLibraryEnv(t)
 	fid := e.mkFolder(t, "f", nil)
@@ -329,6 +373,24 @@ func TestLibrarySaveToLibraryChecksProject(t *testing.T) {
 	rec := e.doJSON(http.MethodPost, fmt.Sprintf("/projects/%d/assets/%d/save-to-library", pa, aid), body)
 	if rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"name":"存档"`) {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// M7：已软删的项目不能再写引用行，否则 HardDelete 后这些行留下来，对应 key 永远算作被引用。
+func TestLibraryApplyToCanvasRejectsDeletedProject(t *testing.T) {
+	e := newLibraryEnv(t)
+	fid := e.mkFolder(t, "f", nil)
+	it := e.uploadOK(t, fid)
+	pid, _ := e.projects.Create(LocalUserID, "画布", "")
+	if err := e.projects.Delete(LocalUserID, pid); err != nil {
+		t.Fatal(err)
+	}
+	rec := e.doJSON(http.MethodPost, fmt.Sprintf("/library/items/%d/apply-to-canvas", it.ID), fmt.Sprintf(`{"projectId":%d}`, pid))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("code=%d body=%s want 404", rec.Code, rec.Body.String())
+	}
+	if rows, _ := e.assets.ListForProject(pid); len(rows) != 0 {
+		t.Fatalf("不应写入引用行: %+v", rows)
 	}
 }
 

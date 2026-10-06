@@ -106,7 +106,7 @@ func (h *MediaHandler) Reveal(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "无法识别这个媒体")
 		return
 	}
-	if _, err := os.Stat(p); err != nil {
+	if st, err := os.Stat(p); err != nil || st.IsDir() {
 		writeError(w, http.StatusNotFound, "文件不存在，可能已被删除")
 		return
 	}

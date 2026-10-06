@@ -120,9 +120,11 @@ func TestHandshakeAndPing(t *testing.T) {
 }
 
 // Tauri 进程崩溃时 stdin 管道会被关闭；sidecar 必须跟着退出，不能变成孤儿。
+// EOF 走和 SHUTDOWN 相同的优雅退出路径：数据库正常关闭（WAL 被检查点合并并删除），不是直接 os.Exit。
 func TestExitsWhenStdinCloses(t *testing.T) {
 	bin := buildSidecar(t)
-	cmd, stdin, _ := startSidecar(t, bin, t.TempDir())
+	dataDir := t.TempDir()
+	cmd, stdin, _ := startSidecar(t, bin, dataDir)
 	stdin.Close()
 
 	done := make(chan error, 1)
@@ -134,6 +136,27 @@ func TestExitsWhenStdinCloses(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("stdin 关闭 5 秒后 sidecar 仍未退出")
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "data.db-wal")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("data.db-wal 仍在，数据库没有正常关闭: %v", err)
+	}
+}
+
+// waitDone 等所有后台 worker 退出，超时返回 false（main 不会因为卡住的 worker 无限挂起）。
+func TestWaitDone(t *testing.T) {
+	a, b := make(chan struct{}), make(chan struct{})
+	close(a)
+	close(b)
+	if !waitDone(time.Second, a, b) {
+		t.Fatal("全部关闭时应返回 true")
+	}
+	stuck := make(chan struct{})
+	start := time.Now()
+	if waitDone(50*time.Millisecond, a, stuck) {
+		t.Fatal("有 worker 未退出时应超时返回 false")
+	}
+	if time.Since(start) > time.Second {
+		t.Fatal("超时没有生效")
 	}
 }
 
