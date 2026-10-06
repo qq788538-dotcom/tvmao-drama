@@ -13,7 +13,7 @@ import {
   submitCanvasTask,
   type ModelConfig,
 } from '@/shared/api';
-import { loadEstimate, loadSeedanceStatus } from '../batchQueries';
+import { loadSeedanceStatus } from '../batchQueries';
 
 vi.mock('@/shared/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/shared/api')>();
@@ -32,10 +32,9 @@ vi.mock('@/shared/api', async (importOriginal) => {
   };
 });
 
-// 估价/合规状态都走合批器（batchQueries.ts）——按节点边界 stub 掉，隔离合批器的
+// 合规状态走合批器（batchQueries.ts）——按节点边界 stub 掉，隔离合批器的
 // 时间窗内部逻辑，让组件测试只关心「传了什么、几次」。
 vi.mock('../batchQueries', () => ({
-  loadEstimate: vi.fn(),
   loadSeedanceStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -104,7 +103,6 @@ describe('GenImageNode lightbox', () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([imageModel]);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
     vi.mocked(api.post).mockResolvedValue({
       data: { thumbs: { [imageURL]: thumbURL } },
@@ -207,60 +205,18 @@ describe('GenImageNode lightbox', () => {
     expect(screen.getByTitle('上传图片（节点将转为图片节点）')).toBeInTheDocument();
   });
 
-  it('未选中的节点不发起估价——预计积分标签本就随选中才显示', async () => {
-    // beforeEach 默认 selectedIds=['other-node']，即 image-1 未选中。
+  // spec X3：桌面端不计费。哪怕模型配置里带着 priceNote（单价说明），节点上也不出现
+  // 任何估价/积分文案。
+  it('选中后不显示估价或积分文案（X3）', async () => {
+    vi.mocked(listRuntimeModels).mockResolvedValue([{ ...imageModel, priceNote: '100积分/分钟' }]);
+    useCanvasStore.setState({ selectedIds: new Set(['image-1']) });
     renderNode();
-    // 等模型加载(异步)+ 估价防抖窗口(400ms)都过去，确认自始至终没打估价。
+
+    expect((await screen.findAllByText('Image Model', {}, { timeout: 3000 })).length).toBeGreaterThan(0);
     await act(async () => {
       await new Promise((resolve) => window.setTimeout(resolve, 700));
     });
-    expect(loadEstimate).not.toHaveBeenCalled();
-  });
-
-  it('选中后才发起一次估价', async () => {
-    useCanvasStore.setState({ selectedIds: new Set(['image-1']) });
-    renderNode();
-    await waitFor(() => expect(loadEstimate).toHaveBeenCalled());
-  });
-
-  it('priceNote 非空时只显示单价说明，不显示预扣/预计积分数字', async () => {
-    vi.mocked(listRuntimeModels).mockResolvedValue([{ ...imageModel, priceNote: '100积分/分钟' }]);
-    vi.mocked(loadEstimate).mockResolvedValue(500);
-    useCanvasStore.setState({ selectedIds: new Set(['image-1']) });
-    renderNode();
-
-    expect(await screen.findByText('100积分/分钟', {}, { timeout: 3000 })).toBeInTheDocument();
-    expect(screen.queryByText(/预扣/)).toBeNull();
-    expect(screen.queryByText(/^预计/)).toBeNull();
-  });
-
-  it('无 priceNote 保持「预计 X 积分」原文案', async () => {
-    vi.mocked(loadEstimate).mockResolvedValue(3);
-    useCanvasStore.setState({ selectedIds: new Set(['image-1']) });
-    renderNode();
-
-    expect(await screen.findByText('预计 3 积分', {}, { timeout: 3000 })).toBeInTheDocument();
-  });
-
-  it('does not re-estimate cost while only the prompt text changes', async () => {
-    useCanvasStore.setState({
-      selectedIds: new Set(['image-1']),
-    });
-
-    renderNode();
-
-    await waitFor(() => expect(loadEstimate).toHaveBeenCalled());
-    await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 1000));
-    });
-    vi.mocked(loadEstimate).mockClear();
-
-    await userEvent.type(screen.getByRole('textbox', { name: '生成提示词' }), '新的提示词');
-    await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 500));
-    });
-
-    expect(loadEstimate).not.toHaveBeenCalled();
+    expect(screen.queryByText(/积分|估算中|预计/)).toBeNull();
   });
 
   it('shows the resolution option label on the pill, not the raw value', async () => {
@@ -372,7 +328,6 @@ describe('GenImageNode 版本提示词', () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([imageModel]);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
     vi.mocked(api.post).mockResolvedValue({ data: { thumbs: {} } });
   });
@@ -542,7 +497,6 @@ describe('GenImageNode 提交按钮禁用', () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([imageModel]);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
     vi.mocked(api.post).mockResolvedValue({ data: { thumbs: {} } });
   });
@@ -588,7 +542,6 @@ describe('GenImageNode 在故事板详情面板里', () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([imageModel]);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
     vi.mocked(api.post).mockResolvedValue({
       data: { thumbs: { [imageURL]: thumbURL } },
@@ -658,7 +611,6 @@ describe('GenImageNode 故事板参考区连线编辑', () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([imageModel]);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
     vi.mocked(api.post).mockResolvedValue({ data: { thumbs: {} } });
     useCanvasStore.setState({

@@ -1,5 +1,5 @@
 // 视频工具条右侧两个查看类入口的行为约定（镜像 ImageActionsBar.viewactions）：
-// 「下载」= 隐藏 <a download> 触发浏览器下载（不建节点、不扣积分）；
+// 「下载」= 隐藏 <a download> 触发浏览器下载（不建节点）；
 // 「放大查看」= 打开全局 Lightbox（kind=video，与双击节点视频同一个弹框）。
 // 取 URL 都用宿主传入的 url prop——三个宿主各自已解析好当前视频。
 import { App as AntApp } from 'antd';

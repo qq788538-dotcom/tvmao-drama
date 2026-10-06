@@ -1,6 +1,6 @@
 // apps/web/src/canvas/agent/MessageBubble.tsx
 //
-// 气泡外壳视觉上跟 apps/web/src/panels/ChatPanel.tsx 的 MessageBubble 对齐
+// 气泡外壳视觉沿用参考仓 ChatPanel 的 MessageBubble（桌面端未迁移 ChatPanel，spec X7）
 //（rounded-2xl、用户 justify-end / assistant justify-start、右下角 hover
 // 才显示的复制按钮）。block 渲染则是 agent 专属——遍历 msg.blocks 渲染
 // text / tool_use / tool_event（artifact 缩略图）/ tool_result，再加上下方的
@@ -366,7 +366,7 @@ export function MessageBubble({
   }, [msg.blocks, msg.pending, msg.workflowSteps, dedupeUrls]);
 
   // 把所有 text block 拍平成一个字符串供复制按钮用——tool_use / tool_event 不参与，
-  // 跟 ChatPanel 一样只复制可见正文。
+  // 只复制可见正文。
   const copyText = useMemo(() => {
     return msg.blocks
       .filter((b) => b && b.type === 'text' && b.text)
@@ -626,7 +626,7 @@ export function MessageBubble({
         <WorkflowProgress msg={msg} />
 
         {/* 复制按钮——任何带文本内容的消息都会显示。定位 + hover 才显示
-            跟 ChatPanel.MessageBubble 一致。 */}
+            与参考仓 ChatPanel 的气泡一致。 */}
         {copyText && (
           <button
             onClick={copyToClipboard}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { App as AntApp, ConfigProvider, Select, Slider, Switch } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUp, RotateCcw, X, Zap } from 'lucide-react';
+import { ArrowUp, RotateCcw, X } from 'lucide-react';
 import {
   MULTI_ANGLE_PRESET_KEY,
   MultiAngleZoom,
@@ -13,8 +13,6 @@ import {
 import { DEFAULT_SIZES, useCanvasStore } from '../store';
 import { persistNodeById } from '../persistence/canvasMutations';
 import { buildDynamicInputs, buildImageGenerationInputs } from '../utils/generationInputs';
-import { loadEstimate } from '../batchQueries';
-import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { MultiAngleSphere } from './MultiAngleSphere';
 
 // 左=全景、右=特写（对标站方向：往右拉近景别，球体中央图随之变大）。
@@ -49,7 +47,7 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
     queryFn: fetchMultiAngleConfig,
     staleTime: 300_000,
   });
-  // 模型显示名/uiSchema/priceNote 从模型目录反查（与 GenImageNode 同 queryKey 共享缓存）。
+  // 模型显示名/uiSchema 从模型目录反查（与 GenImageNode 同 queryKey 共享缓存）。
   const modelsQuery = useQuery({
     queryKey: ['runtime-models'],
     queryFn: listRuntimeModels,
@@ -80,8 +78,7 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
     return typeof n?.content === 'string' ? n.content : undefined;
   });
 
-  // ── 预扣积分：与 AI 绘图节点同一套预估（同 buildDynamicInputs 默认值 +
-  //   loadEstimate 合批 + priceNote 口径），不另造规则。────────────────────
+  // ── 动态入参：与 AI 绘图节点同一套默认值（buildDynamicInputs），提交时用。──
   const schemaEntries = useMemo(
     () =>
       Object.entries(selectedModel?.uiSchema ?? {}).filter(([, v]) => v != null) as Array<
@@ -90,36 +87,6 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
     [selectedModel],
   );
   const dynamicInputs = useMemo(() => buildDynamicInputs(schemaEntries, undefined), [schemaEntries]);
-  const estimateInputs = useMemo(
-    () =>
-      buildImageGenerationInputs({
-        prompt: '',
-        fallbackPrompt: '',
-        dynamicInputs,
-        connectedImages: sourceImageUrl ? [sourceImageUrl] : [],
-      }),
-    [dynamicInputs, sourceImageUrl],
-  );
-  const debouncedEstimateInputs = useDebouncedValue(estimateInputs, 400);
-  const estimateQuery = useQuery({
-    queryKey: [
-      'canvas-cost-estimate',
-      'image',
-      effectiveModelId,
-      JSON.stringify(debouncedEstimateInputs),
-    ],
-    queryFn: () => loadEstimate({ modelId: effectiveModelId, inputs: debouncedEstimateInputs }),
-    enabled: Boolean(selectedModel),
-    staleTime: 30_000,
-    retry: false,
-  });
-  // priceNote 非空 = 按实际用量结算的模型：预估是冻结上限不是实价，显示文案不显示数字。
-  const priceNote = selectedModel?.priceNote;
-  const creditsLabel = priceNote
-    ? priceNote
-    : estimateQuery.isFetching
-      ? '…'
-      : String(estimateQuery.data ?? 0);
 
   const applyPreset = (key: string) => {
     setPresetKey(key);
@@ -341,7 +308,7 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
         </div>
       </div>
 
-      {/* 底部：重置 + 模型下拉（左）；⚡预扣积分 + 圆形↑提交（右，对标 liblib） */}
+      {/* 底部：重置 + 模型下拉（左）；圆形↑提交（右，对标 liblib） */}
       <div className="mt-4 flex items-center gap-3">
         <button
           type="button"
@@ -360,13 +327,6 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
           onChange={setModelId}
         />
         <div className="flex-1" />
-        <span
-          className="flex items-center gap-1 text-sm text-muted-foreground"
-          title={priceNote ? '按实际结算，显示为计费说明' : '本次生成预扣的积分'}
-        >
-          <Zap size={14} />
-          {creditsLabel}
-        </span>
         <button
           type="button"
           aria-label="生成"

@@ -17,7 +17,7 @@ import {
   type GenImagePresetsConfig,
   type ModelConfig,
 } from '@/shared/api';
-import { loadEstimate, loadSeedanceStatus } from '../batchQueries';
+import { loadSeedanceStatus } from '../batchQueries';
 
 vi.mock('@/shared/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/shared/api')>();
@@ -34,7 +34,6 @@ vi.mock('@/shared/api', async (importOriginal) => {
 });
 
 vi.mock('../batchQueries', () => ({
-  loadEstimate: vi.fn(),
   loadSeedanceStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -178,7 +177,6 @@ describe('GenImageNode 提示词预设', () => {
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([imageModel, unboundModel]);
     vi.mocked(fetchGenImagePresets).mockResolvedValue(presetsConfig);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
     vi.mocked(api.post).mockResolvedValue({ data: { thumbs: {} } });
   });

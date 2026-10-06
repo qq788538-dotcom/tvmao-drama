@@ -14,14 +14,7 @@ import {
   upsertCanvasNode,
 } from '@/shared/api';
 import { applyMergePatch } from '../mergePatch';
-import {
-  setCanvasOpSink,
-  setPendingLocalPatchProvider,
-  setRemoteNodeStateSink,
-  useCanvasStore,
-  type CanvasOp,
-  type RemoteNodeStateOp,
-} from '../store';
+import { setCanvasOpSink, useCanvasStore, type CanvasOp } from '../store';
 import type { CanvasNode } from '../types';
 
 const nodePatchDebounceMs = 1500;
@@ -71,40 +64,14 @@ let lifecycleGeneration = 0;
 // per-node「上次已知的服务端节点状态」。persistNodeById 拿它做 diff，只把变更
 // 字段发出去（PatchNode 递归合并），而不是整节点覆盖。
 //
-// 为什么必须有它：整节点 upsert 在团队并发编辑下等于「我这份内存状态是全部真相」
-// ——队友刚改的字段会被我原封不动写回旧值，而我甚至不知道它变过。基线让 LWW
-// 落到**字段级**：谁改哪个字段，才写哪个字段。
+// 为什么必须有它：整节点 upsert 等于把内存里整份状态都当作要写入的内容，
+// 没改的字段也会被原样重发。基线记录服务端状态，只发变化的字段：改哪个字段，
+// 才写哪个字段。
 //
-// 谁推进基线（三个入口，都代表「服务端此刻就是这个状态」）：
+// 谁推进基线（两个入口，都代表「服务端此刻就是这个状态」）：
 //   1. 整快照加载后 seedCanvasBaselines()；
-//   2. 本端 mutation 发送成功（upsert 发的是整节点，patch 按同一套递归合并规则并进去）；
-//   3. 远端 op 落地（store 的 RemoteNodeStateSink 回吐）。
+//   2. 本端 mutation 发送成功（upsert 发的是整节点，patch 按同一套递归合并规则并进去）。
 let nodeBaselines = new Map<string, CanvasNode>();
-
-// 「已经决定要发、但还没 settle」的 patch（per-node，可能排队多条）。
-//
-// 为什么 pending 队列不够：文本节点失焦的真实时序是
-//   flushTextDraft → flushNodePatch（**同步**把 patch 从 pendingNodePatches 摘掉，
-//   然后才 await 发请求）→ onExit → React 提交 → effect cleanup → endInteraction
-//   → store flush 挂起的远端帧 → 查「本地还占着哪些字段」。
-// 查到的时候 pending 已经空了——保护窗在真实事件序里恰好比交互窗短一截，队友的
-// 旧文本于是整段覆盖我刚打的字：本地回退、store≠server，而且没有任何后续帧会纠正
-// （自己的 echo 只推版本），此后每次 persist 还会把旧值当成我的改动写回服务端。
-// 登记从「决定发送」持续到「settle」，把这个缺口补上（拖拽落点几何同理）。
-let inFlightNodePatches = new Map<string, Record<string, unknown>[]>();
-
-function registerInFlightPatch(nodeID: string, patch: Record<string, unknown>): () => void {
-  const list = inFlightNodePatches.get(nodeID);
-  if (list) list.push(patch);
-  else inFlightNodePatches.set(nodeID, [patch]);
-  return () => {
-    const current = inFlightNodePatches.get(nodeID);
-    if (!current) return;
-    const index = current.indexOf(patch);
-    if (index >= 0) current.splice(index, 1);
-    if (current.length === 0) inFlightNodePatches.delete(nodeID);
-  };
-}
 
 export function configureCanvasPersistence(next: {
   projectID: number;
@@ -139,53 +106,16 @@ export function configureCanvasPersistence(next: {
   // 翻译成一次局部 mutation 入队。放在 config 赋值之后，确保 applyCanvasOp 拿到
   // 的是最新 projectID。
   setCanvasOpSink(applyCanvasOp);
-  // 远端 op 落地时同步基线——服务端已经做了那一步。
-  setRemoteNodeStateSink(noteRemoteNodeState);
-  // 挂起的远端 patch 落地前，store 要问「这个节点还有哪些本地字段没发出去」。
-  setPendingLocalPatchProvider(pendingLocalPatchFor);
-}
-
-// 该节点「本端还占着的字段」= 在飞的 patch（已发未 settle）∪ 队列里等 debounce 的
-// patch。store 用它保护本端刚提交/正在提交的字段不被旧序远端帧覆盖，见
-// PendingLocalPatchProvider。两段窗口缺一不可：只看 pending 会在失焦冲刷后落空
-// （C1），只看在飞会漏掉还没到点的 debounce。
-function pendingLocalPatchFor(nodeID: string): Record<string, unknown> | null {
-  const parts: Record<string, unknown>[] = [...(inFlightNodePatches.get(nodeID) ?? [])];
-  const pending = pendingNodePatches.get(nodeID);
-  if (pending && isMutationContextCurrent(pending)) parts.push(pending.patch);
-  if (parts.length === 0) return null;
-  // 按时间序合成（在飞的更早，pending 更晚）。这里只有「本端占着哪些字段」这一个
-  // 用途，值本身仅用于整节点 upsert 落地后的回盖。
-  let merged: Record<string, unknown> = {};
-  for (const part of parts) merged = mergePlainObjectRecords(merged, part);
-  return merged;
 }
 
 /**
  * 用整快照的节点播种基线。**只能传服务端来的快照**（首次加载、版本缺口整拉），
- * 不能拿本地构造的节点（例如 WorkflowImportModal 导入的 JSON）来播——那些节点
+ * 不能拿本地构造的节点（例如本地新建、尚未落库的节点）来播——那些节点
  * 服务端根本没有，一旦有了基线，后续就会对不存在的节点发 PatchNode 而报错。
  * 没播种也不会坏：没基线 = 走整节点 upsert（即重构前的行为）。
  */
 export function seedCanvasBaselines(nodes: CanvasNode[]): void {
   nodeBaselines = new Map(nodes.map((node) => [node.id, cloneNode(node)]));
-}
-
-// 远端 op 落地时推进基线。收到的是**服务端做的那一步动作**（整节点或 patch），
-// 不是 store 里合并完的节点——store 节点还掺着本地尚未发出的编辑，拿它当基线
-// 会让那些编辑在 diff 时消失（发不出去且无报错）。
-function noteRemoteNodeState(nodeId: string, op: RemoteNodeStateOp | null): void {
-  if (!op) {
-    nodeBaselines.delete(nodeId);
-    return;
-  }
-  if (op.kind === 'node') {
-    nodeBaselines.set(nodeId, cloneNode(op.node));
-    return;
-  }
-  // 只有已知基线才能推进：光凭一条 patch 拼不出服务端的完整节点，没有基线时
-  // 保持「无基线 → 整节点 upsert」的安全默认。
-  mergePatchIntoBaseline(nodeId, op.patch);
 }
 
 // 把 store 广播的结构性 op 翻译成局部 mutation，走统一的串行队列。owner-token
@@ -220,8 +150,8 @@ export function applyCanvasOp(op: CanvasOp): void {
  *
  * 100+ 个调用点看到的签名不变，内部从「整节点 upsert」换成了「对基线做 diff →
  * 只发变更字段的 PatchNode」：
- *   - 有基线且有变更 → PatchNode(变更字段)。字段级 LWW，改 A 字段不会覆盖队友
- *     刚改的 B 字段。
+ *   - 有基线且有变更 → PatchNode(变更字段)。只发变化的字段，改 A 字段不会重发
+ *     没变的 B 字段。
  *   - 有基线且无变更 → 一个请求都不发（旧实现每次都发一整份）。
  *   - 相对基线**少了字段**（生成结束清掉 taskId / settings.pendingGen 之类）
  *     → 该字段发 `null`，按 RFC 7386 的删键语义走同一条 PatchNode。
@@ -263,24 +193,17 @@ function sendNodePatch(nodeID: string, patch: Record<string, unknown>): void {
   const token = context.ownerToken;
   if (projectID == null || !token) return;
   const patchNode = config.patchNode ?? patchCanvasNode;
-  // 登记在入队**之前**：从这一刻起这些字段就归本端所有，直到 settle。排队等待
-  // 期间同样算在飞——队列是串行的，前面一个慢请求能把窗口拉得很长。
-  const release = registerInFlightPatch(nodeID, patch);
   void runNodeMutation(context, async () => {
     const result = await patchNode(projectID, token, nodeID, patch);
     if (isMutationContextCurrent(context)) mergePatchIntoBaseline(nodeID, patch);
     return result;
-  }).finally(release);
+  });
 }
 
 /**
  * 落库一批节点几何（拖拽松手 / 自动排布）。走这里而不是直接
- * `enqueueCanvasMutation(patchCanvasNodePositions(...))` 的两个理由：
- *   1. **在飞登记**：松手瞬间要先把落点登记为本端字段，紧接着解除拖拽在途登记时，
- *      挂起的远端坐标才会被剔掉几何字段。顺序颠倒（先解除、后读几何）就是
- *      「松手瞬间节点跳到队友的坐标，而且这个坐标被当成我的移动写回服务端」。
- *   2. 成功后推进基线——几何是节点字段，不推的话随后的 persistNodeById 会把
- *      x/y/w/h 当成变更再发一遍。
+ * `enqueueCanvasMutation(patchCanvasNodePositions(...))`：成功后要推进基线——几何是
+ * 节点字段，不推的话随后的 persistNodeById 会把 x/y/w/h 当成变更再发一遍。
  */
 export function persistNodePositions(
   projectID: number,
@@ -289,15 +212,12 @@ export function persistNodePositions(
 ): void {
   if (patches.length === 0) return;
   const context = captureMutationContext();
-  const releases = patches.map((patch) => registerInFlightPatch(patch.id, geometryRecord(patch)));
   void runNodeMutation(context, async () => {
     const result = await patchCanvasNodePositions(projectID, token, patches);
     if (isMutationContextCurrent(context)) {
       for (const patch of patches) mergePatchIntoBaseline(patch.id, geometryRecord(patch));
     }
     return result;
-  }).finally(() => {
-    for (const release of releases) release();
   });
 }
 
@@ -499,24 +419,16 @@ export async function flushNodePatch(nodeID: string): Promise<void> {
 
   if (!isMutationContextCurrent(patch)) return;
 
-  // 摘出 pending 的同一步就登记为在飞——中间**一个 tick 都不能空窗**：失焦冲刷
-  // 与随后的 endInteraction 之间没有 await，空窗期挂起的远端帧就会覆盖刚打的字。
-  const release = registerInFlightPatch(nodeID, patch.patch);
-  try {
-    await enqueueCanvasMutationInContext(async () => {
-      if (patch.projectID == null) {
-        return Promise.resolve();
-      }
-      const result = await patch.patchNode(patch.projectID, patch.ownerToken, nodeID, patch.patch);
-      // debounce 落库的 patch 同样推进基线：不推的话基线一直落后于服务端，
-      // persistNodeById 之后会把这些字段的旧值再算成「变更」发一遍——真正的风险
-      // 是队友在这中间改过同一个字段，那次重发就是拿我的旧值盖掉他的新值。
-      if (isMutationContextCurrent(patch)) mergePatchIntoBaseline(nodeID, patch.patch);
-      return result;
-    }, patch);
-  } finally {
-    release();
-  }
+  await enqueueCanvasMutationInContext(async () => {
+    if (patch.projectID == null) {
+      return Promise.resolve();
+    }
+    const result = await patch.patchNode(patch.projectID, patch.ownerToken, nodeID, patch.patch);
+    // debounce 落库的 patch 同样推进基线：不推的话基线一直落后于服务端，
+    // persistNodeById 之后会把这些字段的旧值再算成「变更」发一遍。
+    if (isMutationContextCurrent(patch)) mergePatchIntoBaseline(nodeID, patch.patch);
+    return result;
+  }, patch);
 }
 
 export async function flushAllNodePatches(): Promise<void[]> {
@@ -549,12 +461,9 @@ export function geometryPatchFromNode(node: {
 
 export function resetCanvasPersistence(): void {
   setCanvasOpSink(null);
-  setRemoteNodeStateSink(null);
-  setPendingLocalPatchProvider(null);
   // 基线是「服务端某个项目的节点状态」，跨项目/跨会话残留会让新画布对不存在的
   // 节点发 patch。清空后即回到「无基线 → 整节点 upsert」的安全默认。
   nodeBaselines = new Map();
-  inFlightNodePatches = new Map();
   ownerToken = '';
   queue = Promise.resolve();
   config = { projectID: null };

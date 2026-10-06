@@ -44,7 +44,6 @@ import { groupPresets, splitPresetColumns, PRESET_COL_W } from '../utils/presetM
 import { PresetIcon } from '../utils/presetIcon';
 import { pokerStackOffset } from '../utils/pokerStack';
 import { useGenerationTimer } from '../hooks/useGenerationTimer';
-import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { buildDynamicInputs, buildImageGenerationInputs, composePrompt, modelSettingDefaults } from '../utils/generationInputs';
 import {
   appendHistoryItem,
@@ -56,7 +55,6 @@ import { PromptMentionEditor, serializeMentionPrompt, stripDeadMentions } from '
 import { useThumbUrl } from '../thumbs';
 import { useStoryboardMode } from '../../storyboard/StoryboardContext';
 import { getDragNodeId, hasDragNode, useNodeDragActive } from '../../storyboard/dragConnect';
-import { loadEstimate } from '../batchQueries';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
 import { ImageActionsBar } from './ImageActionsBar';
 import { ThumbImg } from '../ThumbImg';
@@ -477,7 +475,6 @@ export function GenImageNode({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [schemaFingerprint, settingsFingerprint],
   );
-  const dynamicInputsFingerprint = JSON.stringify(dynamicInputs);
   const fallbackPrompt = linked.texts.filter(Boolean).join('\n');
   // 「有词可生成」的口径必须和 handleGenerate 取词的口径一致：真正提交的是
   // 「输入框的词 || 上游文本节点的词」，两个都空才是真的没东西可生成。只看
@@ -486,46 +483,6 @@ export function GenImageNode({ id }: { id: string }) {
   // placeholder 文案就是「点击生成，直接基于当前图像生成…」——不放行的话这句
   // 引导就是骗人的。
   const hasPrompt = Boolean(prompt.trim() || fallbackPrompt.trim() || activePreset);
-  const connectedImagesFingerprint = connectedImages.join('\n');
-  const estimateInputs = useMemo(
-    () =>
-      buildImageGenerationInputs({
-        prompt: '',
-        fallbackPrompt: '',
-        dynamicInputs,
-        connectedImages,
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dynamicInputsFingerprint, connectedImagesFingerprint],
-  );
-  const debouncedEstimateInputs = useDebouncedValue(estimateInputs, 400);
-  const debouncedEstimateInputsFingerprint = JSON.stringify(debouncedEstimateInputs);
-  const estimateQuery = useQuery({
-    queryKey: ['canvas-cost-estimate', 'image', selectedModelId, debouncedEstimateInputsFingerprint],
-    // 走合批器：大画布上多个生图节点的估价塌成一次 estimate-batch，见 batchQueries.ts。
-    queryFn: () => loadEstimate({ modelId: selectedModelId, inputs: debouncedEstimateInputs }),
-    // 只在面板可见时才估价——「预计 X 积分」标签本就随面板显示（下方面板
-    // opacity 由 overlaysVisible 驱动，选中且不在宫格切分模式），面板不可见时
-    // 估价纯属白打请求。
-    // 叠加 selectedModel 兜底：极早选中时模型列表可能还没加载，避免用空 schema 估。
-    enabled: overlaysVisible && Boolean(selectedModel),
-    staleTime: 30_000,
-    retry: false,
-  });
-  // priceNote 非空 = 按上游响应实际用量结算的模型：estimate 给的是预冻结上限，
-  // 不是实价——积分数字干脆不显示（freezeEstimate 没配时会出「预扣 0 积分」这种
-  // 误导文案，用户点名去掉），只展示单价说明，结算口径放 tooltip。
-  const priceNote = selectedModel?.priceNote;
-  const estimateLabel = priceNote
-    ? priceNote
-    : estimateQuery.isFetching
-      ? '估算中...'
-      : estimateQuery.isError
-        ? '预计 --'
-        : `预计 ${estimateQuery.data ?? 0} 积分`;
-  const estimateTitle = priceNote
-    ? priceNote
-    : '按当前模型和参数预估，实际以完成后结算为准';
 
   // 用户是否已经在上游连了媒体（图片 / 音频 / 视频，包括能解析成媒体 URL 的
   // PreviewNode 输出）。为 true 时隐藏上传 chip——用户已经在喂参考图了。
@@ -1252,15 +1209,6 @@ export function GenImageNode({ id }: { id: string }) {
             )}
 
             <div className="flex-1" />
-
-            {selectedModelId && (
-              <span
-                className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-[11px] text-muted-foreground border border-white/10"
-                title={estimateTitle}
-              >
-                {estimateLabel}
-              </span>
-            )}
 
             {/* 装饰性麦克风——语音 prompt 不在本次范围内，所以这是个虚位，
                 对标参考站点的右侧栏，但不凭空造功能。从 tab 顺序里隐藏。 */}

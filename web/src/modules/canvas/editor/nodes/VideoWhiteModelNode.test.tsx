@@ -7,13 +7,12 @@ import { useCanvasStore } from '../store';
 import {
   currentProjectId,
   fetchCanvasPostprocessConfig,
-  fetchCanvasPostprocessEstimate,
   submitCanvasUpscale,
   submitCanvasWhiteModel,
   type CanvasPostprocessConfig,
 } from '@/shared/api';
 
-// 转白模与转高清共用 TieredVideoNode，档位/预估/收起面板等共性由 VideoUpscaleNode.test.tsx 覆盖。
+// 转白模与转高清共用 TieredVideoNode，档位/收起面板等共性由 VideoUpscaleNode.test.tsx 覆盖。
 // 这里只钉「共用」带来的风险：白模节点必须读白模那组配置、打白模端点，不能串到转高清。
 
 vi.mock('@/shared/api', async (importOriginal) => {
@@ -21,7 +20,6 @@ vi.mock('@/shared/api', async (importOriginal) => {
   return {
     ...actual,
     fetchCanvasPostprocessConfig: vi.fn(),
-    fetchCanvasPostprocessEstimate: vi.fn(),
     submitCanvasUpscale: vi.fn(),
     submitCanvasWhiteModel: vi.fn(),
     pollCanvasTaskUntilDone: vi.fn().mockReturnValue(new Promise(() => {})),
@@ -72,22 +70,16 @@ describe('VideoWhiteModelNode', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(fetchCanvasPostprocessConfig).mockResolvedValue(bothConfigured);
-    vi.mocked(fetchCanvasPostprocessEstimate).mockResolvedValue({ credits: 30, durationMs: 9000 });
     vi.mocked(currentProjectId).mockReturnValue(42);
     seedStore();
   });
 
-  it('档位来自 whiteModelResolutions（平铺列表），预估用白模模型', async () => {
+  it('档位来自 whiteModelResolutions（平铺列表）', async () => {
     renderNode();
 
     expect(await screen.findByText('720p (短边<720px)')).toBeInTheDocument();
     expect(screen.getByText('1080p (短边<1080px)')).toBeInTheDocument();
     expect(screen.queryByText('4K 极清')).toBeNull();
-    await waitFor(() =>
-      expect(fetchCanvasPostprocessEstimate).toHaveBeenCalledWith({
-        projectId: 42, sourceNodeId: 'src-1', modelId: 'white-clay', resolution: '720p',
-      }),
-    );
     // 多模型下拉只给转高清；转白模仍是单模型，不显示。
     expect(screen.queryByRole('button', { name: '选择转高清模型' })).toBeNull();
   });
@@ -110,7 +102,7 @@ describe('VideoWhiteModelNode', () => {
     await waitFor(() => expect(useCanvasStore.getState().nodes.find((n) => n.id === 'clay-1')?.taskId).toBe(888));
   });
 
-  it('只配了转高清、没配白模 → 「未配置白模模型」+ 按钮 disabled，且不问价', async () => {
+  it('只配了转高清、没配白模 → 「未配置白模模型」+ 按钮 disabled', async () => {
     vi.mocked(fetchCanvasPostprocessConfig).mockResolvedValue({
       ...bothConfigured, whiteModelModel: '', whiteModelResolutions: [],
     });
@@ -118,6 +110,5 @@ describe('VideoWhiteModelNode', () => {
 
     expect(await screen.findByText('未配置白模模型')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '转白模' })).toBeDisabled();
-    expect(fetchCanvasPostprocessEstimate).not.toHaveBeenCalled();
   });
 });

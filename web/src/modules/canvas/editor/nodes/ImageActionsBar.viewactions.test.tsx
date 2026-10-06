@@ -1,5 +1,5 @@
 // 工具条右侧两个查看类入口的行为约定：「下载」= 隐藏 <a download> 触发浏览器
-// 下载（不建节点、不扣积分）；「放大查看」= 打开全局 Lightbox（与双击节点图片
+// 下载（不建节点）；「放大查看」= 打开全局 Lightbox（与双击节点图片
 // 同一个弹框）。两者取图都是 content 优先、上游引用态退回连线图。
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';

@@ -9,8 +9,8 @@
 // - 点「提交」:逐段浏览器内切片(复用 trim 的 mediabunny 管道)→ 上传 →
 //   铺「切片 preview 节点 + gen-video 节点」对并连线,提示词写进各 gen-video;
 //   切片自动异步提交 Seedance 合规校验,结果走节点角标显示;
-// - 提交只铺节点,不扣积分——生成由用户在每个 gen-video 节点上手动点
-//   (批量入口绝不自动扣积分的铁律)。
+// - 提交只铺节点——生成由用户在每个 gen-video 节点上手动点
+//   (批量入口绝不自动发起生成的铁律)。
 import { redactSecrets } from '@/shared/redact';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as AntApp } from 'antd';
@@ -358,7 +358,7 @@ export function SegmentReshootBar({ nodeId, url }: { nodeId: string; url: string
             {sorted.length}/{RESHOOT_MAX_RANGES} 个片段
           </span>
 
-          <span title={submitTip ?? '提交:切片并铺出重拍节点(不扣积分)'} className="shrink-0 inline-flex">
+          <span title={submitTip ?? '提交:切片并铺出重拍节点'} className="shrink-0 inline-flex">
             <button
               type="button"
               disabled={phase !== 'edit' || wholeTooLong || !modelReady}

@@ -170,7 +170,7 @@ export function CanvasEditorPage() {
       // 正文随帧携带——必须在 url 守卫之前分流，否则整类产物被静默丢弃。
       const isTextInfo = artifact.artifact_type === 'text_info';
       // gen_*_node_info（create_gen_node 工具）同理无 URL：铺生成节点预填提示词，
-      // 不执行生成、不扣积分（铁律：生成必须用户逐节点手动点）。
+      // 不执行生成（铁律：生成必须用户逐节点手动点）。
       const genNodeType =
         artifact.artifact_type === 'gen_image_node_info'
           ? 'gen-image'

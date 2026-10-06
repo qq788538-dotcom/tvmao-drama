@@ -1,7 +1,7 @@
 // apps/web/src/canvas/agent/AgentPanel.tsx
 //
-// 承载 agent 对话的右侧抽屉。视觉结构是 apps/web/src/panels/ChatPanel.tsx 的
-// 1:1 移植（抽屉外壳、会话下拉、消息区、附件预览、输入栏）——唯一的区别在数据层：
+// 承载 agent 对话的右侧抽屉（抽屉外壳、会话下拉、消息区、附件预览、输入栏）。
+// 视觉结构源自参考仓已删除的 ChatPanel（桌面端不迁移，spec X7），数据层的区别：
 //   - REST 聊天补全 → 经 AgentClient 走 WebSocket
 //   - ChatMessageRecord[]   → AgentMessage[]（来自 useAgentStore）
 //   - 模型下拉            → skill chip + skill 选择按钮

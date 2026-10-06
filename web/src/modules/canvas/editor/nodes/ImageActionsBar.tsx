@@ -273,7 +273,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
 
   // 按预设 key 在当前图片右侧铺一个 gen-image 下游节点并连线，预选该预设 +
   // 后台绑定模型（配了多个取第一个）。只铺节点预填参数，绝不自动提交生成——
-  // 生成必须用户在新节点上手动点（扣积分的动作不能替用户做）。
+  // 生成必须用户在新节点上手动点（生成动作不能替用户做）。
   // 调用方负责保证配置已加载、预设存在、模型已绑定。
   const spawnPresetNode = (presetKey: string) => {
     const cfg = presetsQuery.data;
@@ -600,7 +600,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
           )}
         </div>
         {/* 宫格切分：选规格 → 节点上叠网格逐格点选 → 创建分镜组（对标 libtv）。
-            切图纯前端（canvas 裁剪 + 走统一上传口），不扣积分。 */}
+            切图纯前端（canvas 裁剪 + 走统一上传口）。 */}
         <div className="relative">
           <BarButton
             label="宫格切分"
@@ -614,7 +614,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
         </div>
         <Divider />
         {/* 标注：图片上画笔/矩形/文字涂鸦，保存合成新图落 input-image 节点
-            连回源（对标 liblib，纯前端合成不扣积分）。 */}
+            连回源（对标 liblib，纯前端合成）。 */}
         <BarButton title="标注" onAction={() => setAnnotateOpen(true)}>
           <Brush size={iconSize} />
         </BarButton>

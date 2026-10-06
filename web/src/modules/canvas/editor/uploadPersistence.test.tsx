@@ -30,7 +30,6 @@ vi.mock('@/shared/api', async (importOriginal) => {
 });
 
 vi.mock('./batchQueries', () => ({
-  loadEstimate: vi.fn(),
   loadSeedanceStatus: vi.fn().mockResolvedValue(undefined),
 }));
 

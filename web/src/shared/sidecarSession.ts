@@ -31,14 +31,6 @@ export function sidecarApiBaseUrl(): string {
   return session ? buildHttpUrl(session, '/api/v1') : '/api/v1';
 }
 
-/**
- * WebSocket 地址，**不带 token**：AgentClient 会自己把 token 和 project_id 拼进
- * 查询串（参考仓的约定），这里再拼一次就重复了。会话未建立时原样返回 path。
- */
-export function sidecarWsUrl(path: string): string {
-  return session ? `ws://127.0.0.1:${session.port}${path}` : path;
-}
-
 // 会话来源：startApp 设成 server.ts 的 getServerInfo。它有缓存，壳广播 sidecar 状态
 // 事件（P8 自动重启）时缓存被清掉，下一次调用会拿到新的端口和 token。
 let loader: (() => Promise<ServerInfo>) | null = null;

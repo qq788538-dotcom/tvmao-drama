@@ -7,8 +7,8 @@
 // - 确认:浏览器内切出前置片段(复用 trim 的 mediabunny 管道)→ 上传 →
 //   铺「切片 preview 节点 + gen-video 节点」对并连线,模型写死续写专用
 //   doubao-seedance-2-5-260628-extend;切片自动异步提交 Seedance 合规校验;
-// - 确认只铺节点,不扣积分——生成由用户在 gen-video 节点上手动点
-//   (批量入口绝不自动扣积分的铁律)。
+// - 确认只铺节点——生成由用户在 gen-video 节点上手动点
+//   (批量入口绝不自动发起生成的铁律)。
 import { redactSecrets } from '@/shared/redact';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as AntApp } from 'antd';
@@ -288,7 +288,7 @@ export function VideoContinuationBar({ nodeId, url }: { nodeId: string; url: str
             )}
           </div>
 
-          <span title="确认:切出前置片段并铺续写节点(不扣积分)" className="shrink-0 inline-flex">
+          <span title="确认:切出前置片段并铺续写节点" className="shrink-0 inline-flex">
             <button
               type="button"
               disabled={phase !== 'edit'}
