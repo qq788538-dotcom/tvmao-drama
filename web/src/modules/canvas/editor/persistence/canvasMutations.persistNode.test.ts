@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/shared/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/api')>()),
+  patchCanvasNodePositions: vi.fn(async () => ({ version: 1 })),
+}));
+
+import { patchCanvasNodePositions } from '@/shared/api';
 import { useCanvasStore } from '../store';
 import type { CanvasNode } from '../types';
 import {
   configureCanvasPersistence,
   flushCanvasMutations,
+  flushNodePatch,
   persistNodeById,
+  persistNodePositions,
   resetCanvasPersistenceForTest,
   scheduleNodePatch,
   seedCanvasBaselines,
@@ -141,28 +150,6 @@ describe('persistNodeById 字段级 diff', () => {
     expect(patchNode).toHaveBeenCalledWith(42, 'owner-token', 'n1', { content: 'c' });
   });
 
-  // H1：基线只能记服务端做过的那一步。若把「远端 patch 合并后的 store 节点」
-  // 当基线，本地那些还没发出去的编辑会被算成「无变更」，永远发不出且无报错。
-  it('本地有未发出的编辑时，远端 patch 落地不会吞掉它', async () => {
-    seedCanvasBaselines([node('n1', { settings: { prompt: 'server' } })]);
-    // 本地已改 prompt，但还没触发持久化。
-    setNodes([node('n1', { settings: { prompt: 'local' } })]);
-
-    // 队友改了另一个字段 → 远端 patch 合并进 store。
-    useCanvasStore.getState().applyRemoteOp({
-      kind: 'patchNode',
-      nodeId: 'n1',
-      patch: { settings: { ratio: '16:9' } },
-    });
-
-    persistNodeById('n1');
-    await flushCanvasMutations();
-
-    expect(patchNode).toHaveBeenCalledWith(42, 'owner-token', 'n1', {
-      settings: { prompt: 'local' },
-    });
-  });
-
   it('值为 undefined 等同于「没有这个字段」，不当成变更', async () => {
     seedCanvasBaselines([node('n1', { settings: { prompt: 'p' } })]);
     setNodes([node('n1', { settings: { prompt: 'p' }, progress: undefined })]);
@@ -172,34 +159,6 @@ describe('persistNodeById 字段级 diff', () => {
 
     expect(patchNode).not.toHaveBeenCalled();
     expect(upsertNode).not.toHaveBeenCalled();
-  });
-
-  it('远端 op 落地后基线跟着推进——本地 diff 不会把队友的字段改回去', async () => {
-    seedCanvasBaselines([node('n1', { settings: { prompt: 'p' } })]);
-    setNodes([node('n1', { settings: { prompt: 'p' } })]);
-
-    // 队友改了 x（远端 op 已合并进 store，同时推进基线）。
-    useCanvasStore.getState().applyRemoteOp({ kind: 'patchNode', nodeId: 'n1', patch: { x: 500 } });
-    // 本地随后改了 content。
-    setNodes([node('n1', { x: 500, content: 'local', settings: { prompt: 'p' } })]);
-
-    persistNodeById('n1');
-    await flushCanvasMutations();
-
-    expect(patchNode).toHaveBeenCalledWith(42, 'owner-token', 'n1', { content: 'local' });
-  });
-
-  it('远端删除后基线一并清除，同 id 节点重新出现时走 upsert', async () => {
-    seedCanvasBaselines([node('n1')]);
-    setNodes([node('n1')]);
-    useCanvasStore.getState().applyRemoteOp({ kind: 'deleteNodes', nodeIds: ['n1'] });
-
-    setNodes([node('n1', { content: 'back' })]);
-    persistNodeById('n1');
-    await flushCanvasMutations();
-
-    expect(upsertNode).toHaveBeenCalledTimes(1);
-    expect(patchNode).not.toHaveBeenCalled();
   });
 
   it('scheduleNodePatch 落库成功后也推进基线，避免重复发同一字段', async () => {
@@ -215,6 +174,81 @@ describe('persistNodeById 字段级 diff', () => {
     await flushCanvasMutations();
 
     expect(patchNode).toHaveBeenCalledTimes(1);
+  });
+
+  // 三条保存路径（拖拽落库 / 文本失焦保存 / 生成回填）在删除协作在途登记前后行为不变的守护。
+  it('拖拽落库：persistNodePositions 发几何 PATCH，成功后推进基线，随后 persistNodeById 不重发 x/y', async () => {
+    vi.mocked(patchCanvasNodePositions).mockClear();
+    seedCanvasBaselines([node('n1')]);
+    setNodes([node('n1', { x: 40, y: 30 })]);
+
+    persistNodePositions(42, 'owner-token', [{ id: 'n1', x: 40, y: 30, width: 280, height: 280 }]);
+    await flushCanvasMutations();
+    expect(patchCanvasNodePositions).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(patchCanvasNodePositions).mock.calls[0]).toEqual([
+      42,
+      'owner-token',
+      [{ id: 'n1', x: 40, y: 30, width: 280, height: 280 }],
+    ]);
+
+    persistNodeById('n1');
+    await flushCanvasMutations();
+    expect(patchNode).not.toHaveBeenCalled();
+    expect(upsertNode).not.toHaveBeenCalled();
+  });
+
+  it('文本失焦保存：flushNodePatch 不等 debounce 立即发 patch，成功后推进基线', async () => {
+    seedCanvasBaselines([node('t1', { type: 'text-node', settings: { text: 'old' } })]);
+    setNodes([node('t1', { type: 'text-node', settings: { text: 'typed' } })]);
+
+    scheduleNodePatch('t1', { settings: { text: 'typed' } });
+    await flushNodePatch('t1');
+    expect(patchNode).toHaveBeenCalledTimes(1);
+    expect(patchNode).toHaveBeenCalledWith(42, 'owner-token', 't1', { settings: { text: 'typed' } });
+
+    // debounce 到点也不会再发第二次；基线已推进，persistNodeById 无差量。
+    await vi.advanceTimersByTimeAsync(1500);
+    persistNodeById('t1');
+    await flushCanvasMutations();
+    expect(patchNode).toHaveBeenCalledTimes(1);
+  });
+
+  it('生成回填：只发结果与状态字段，阶段字段发 null，成功后基线推进', async () => {
+    seedCanvasBaselines([
+      node('g1', { status: 'generating', taskId: 9, settings: { prompt: 'p', pendingGen: { at: 1 } } }),
+    ]);
+    setNodes([node('g1', { status: 'succeeded', content: 'https://x/r.png', settings: { prompt: 'p' } })]);
+
+    persistNodeById('g1');
+    await flushCanvasMutations();
+    expect(patchNode).toHaveBeenCalledTimes(1);
+    expect(patchNode).toHaveBeenCalledWith(42, 'owner-token', 'g1', {
+      status: 'succeeded',
+      content: 'https://x/r.png',
+      taskId: null,
+      settings: { pendingGen: null },
+    });
+
+    persistNodeById('g1');
+    await flushCanvasMutations();
+    expect(patchNode).toHaveBeenCalledTimes(1);
+  });
+
+  it('patch 失败：交给 onError，基线不推进，下次 persistNodeById 重发同一差量', async () => {
+    const onError = vi.fn();
+    patchNode.mockRejectedValueOnce(new Error('boom'));
+    configureCanvasPersistence({ projectID: 42, patchNode, upsertNode, onError });
+    seedCanvasBaselines([node('n1')]);
+    setNodes([node('n1', { content: 'c' })]);
+
+    persistNodeById('n1');
+    await flushCanvasMutations();
+    expect(onError).toHaveBeenCalledTimes(1);
+
+    persistNodeById('n1');
+    await flushCanvasMutations();
+    expect(patchNode).toHaveBeenCalledTimes(2);
+    expect(patchNode).toHaveBeenLastCalledWith(42, 'owner-token', 'n1', { content: 'c' });
   });
 
   it('store 里没有这个节点时什么都不发', async () => {
