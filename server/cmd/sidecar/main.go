@@ -47,6 +47,9 @@ const (
 	shutdownTimeout      = 5 * time.Second
 	projectCleanInterval = 30 * time.Second
 	orphanSweepInterval  = 24 * time.Hour
+	// genDrainTimeout 关闭时等在途生成任务收尾的上限。壳只给 3 秒（src-tauri SHUTDOWN_GRACE），
+	// 与 HTTP Shutdown 并行，留出余量；没跑完的由下次启动接管续跑。
+	genDrainTimeout = 2 * time.Second
 )
 
 func main() {
@@ -153,12 +156,19 @@ func run() error {
 		return err
 	case <-ctx.Done():
 	}
+	// 先停止领取新生成任务并开始等在途任务（M1），同时关 HTTP；两者都结束后才返回，
+	// deferred conn.Close 不会在收口事务进行中关库。
+	drained := make(chan struct{})
+	go func() {
+		a.gen.Gen.Drain(genDrainTimeout)
+		close(drained)
+	}()
 	sctx, scancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer scancel()
 	if err := srv.Shutdown(sctx); err != nil {
 		log.Printf("关闭 HTTP 服务: %v", err)
 	}
-	// 后台任务随 ctx 取消停下；deferred conn.Close 会等在飞的语句结束。
+	<-drained
 	return nil
 }
 
