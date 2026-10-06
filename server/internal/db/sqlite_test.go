@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -48,6 +49,26 @@ func TestOpenPathWithSpaces(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("数据库文件没有建在预期路径: %v", err)
+	}
+}
+
+// TestOpenPathWithSpaces 预先建好了目录；这里覆盖 Open 自己建出带空格的多级目录，且权限仅当前用户。
+func TestOpenCreatesMissingDirWithSpaces(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Application Support", "com.miaoju.desktop")
+	conn, err := db.Open(filepath.Join(dir, "data.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("目录没有被建出来: %v", err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
+		t.Fatalf("目录权限 = %o, want 700", info.Mode().Perm())
 	}
 }
 

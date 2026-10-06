@@ -23,11 +23,6 @@ func TestGetByID(t *testing.T) {
 	repo := NewSQLiteRepository(conn)
 
 	const slug = "test-getbyid-slug"
-	// 清掉之前中断的测试残留数据，保证测试幂等；
-	// 否则 model_id 上的唯一索引会让 Create 触发 UNIQUE 约束失败。
-	if _, err := conn.Exec(`DELETE FROM model_configs WHERE model_id = ?`, slug); err != nil {
-		t.Fatalf("pre-clean: %v", err)
-	}
 
 	created, err := repo.Create(ModelConfig{
 		Type:            "image",
@@ -61,9 +56,6 @@ func TestImageProtocolFieldsRoundTrip(t *testing.T) {
 	repo := NewSQLiteRepository(conn)
 
 	const slug = "test-image-protocol-slug"
-	if _, err := conn.Exec(`DELETE FROM model_configs WHERE model_id = ?`, slug); err != nil {
-		t.Fatalf("pre-clean: %v", err)
-	}
 
 	created, err := repo.Create(ModelConfig{
 		Type:             "image",
@@ -113,9 +105,6 @@ func TestAdminNoteRoundTrip(t *testing.T) {
 	repo := NewSQLiteRepository(conn)
 
 	const slug = "test-admin-note-slug"
-	if _, err := conn.Exec(`DELETE FROM model_configs WHERE model_id = ?`, slug); err != nil {
-		t.Fatalf("pre-clean: %v", err)
-	}
 
 	created, err := repo.Create(ModelConfig{
 		Type:            "image",
@@ -188,6 +177,22 @@ func TestJSONColumnsStoredAsText(t *testing.T) {
 	if got.GenConcurrency() != 3 || string(got.UISchema) != `{"duration":{"default":5}}` {
 		t.Fatalf("回读不一致: concurrency=%d uiSchema=%s", got.GenConcurrency(), got.UISchema)
 	}
+
+	// Update 也必须以 TEXT 落库。
+	m.UISchema = json.RawMessage(`{"duration":{"default":10}}`)
+	m.GenControlRaw = json.RawMessage(`{"concurrency":5}`)
+	if _, err := repo.Update(m.ID, m); err != nil {
+		t.Fatal(err)
+	}
+	for _, col := range []string{"request_template", "polling_template", "ui_schema", "billing_config", "gen_control"} {
+		var typ string
+		if err := conn.QueryRow(`SELECT typeof(`+col+`) FROM model_configs WHERE id = ?`, m.ID).Scan(&typ); err != nil {
+			t.Fatal(err)
+		}
+		if typ != "text" {
+			t.Fatalf("Update 后 %s 存成了 %s，want text", col, typ)
+		}
+	}
 }
 
 func TestListOnlyVisibleFiltersDisabledAndHidden(t *testing.T) {
@@ -223,5 +228,38 @@ func TestCreateDuplicateModelIDFails(t *testing.T) {
 	}
 	if _, err := repo.Create(m); err == nil {
 		t.Fatal("重复的 model_id 应当违反唯一约束")
+	}
+}
+
+// 可选 JSON 列的字面量 null / 空值写成 SQL NULL；request_template 是 NOT NULL 列，
+// 字面量 null 原样存成文本 "null"（与参考仓一致，钉住现状）。
+func TestNullJSONLiteralsBecomeSQLNull(t *testing.T) {
+	conn := openTestDB(t)
+	repo := NewSQLiteRepository(conn)
+	m, err := repo.Create(ModelConfig{
+		Type: "image", Name: "n", ModelID: "null-json", BasePath: "/v1/x",
+		RequestTemplate:  json.RawMessage(`null`),
+		PollingTemplate:  json.RawMessage(`null`),
+		UISchema:         json.RawMessage(``),
+		BillingConfigRaw: json.RawMessage(`null`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, col := range []string{"polling_template", "ui_schema", "billing_config", "gen_control"} {
+		var isNull bool
+		if err := conn.QueryRow(`SELECT `+col+` IS NULL FROM model_configs WHERE id = ?`, m.ID).Scan(&isNull); err != nil {
+			t.Fatal(err)
+		}
+		if !isNull {
+			t.Fatalf("%s 应为 SQL NULL", col)
+		}
+	}
+	var rt string
+	if err := conn.QueryRow(`SELECT request_template FROM model_configs WHERE id = ?`, m.ID).Scan(&rt); err != nil {
+		t.Fatal(err)
+	}
+	if rt != "null" {
+		t.Fatalf("request_template = %q, want \"null\"", rt)
 	}
 }
