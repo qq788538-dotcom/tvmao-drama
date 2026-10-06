@@ -15,7 +15,7 @@ import {
   switchToDefaultDataDir,
   type ServerInfo,
 } from './server';
-import { gateReducer, initialGateState, offerDefaultDataDir, type DataDirProbe } from './gateState';
+import { gateReducer, initialGateState, isDataDirBusy, offerDefaultDataDir, startingMessage, type DataDirProbe } from './gateState';
 
 export function SidecarGate({ children }: { children: (info: ServerInfo) => ReactNode }) {
   const [state, dispatch] = useReducer(gateReducer, initialGateState);
@@ -84,10 +84,7 @@ export function SidecarGate({ children }: { children: (info: ServerInfo) => Reac
   if (state.view.kind === 'starting') {
     const themed = 'bg-background text-foreground';
     const style = { padding: 24, minHeight: '100vh' } as const;
-    if (state.view.migrating) {
-      return <div className={themed} style={style}>正在迁移数据目录，请勿关闭应用…（数据多时需要几分钟）</div>;
-    }
-    return <div className={themed} style={style}>正在启动本地服务…</div>;
+    return <div className={themed} style={style}>{startingMessage(state.view)}</div>;
   }
   if (state.view.kind === 'failed') {
     return (
@@ -95,14 +92,16 @@ export function SidecarGate({ children }: { children: (info: ServerInfo) => Reac
         <h2>本地服务未启动</h2>
         <pre style={{ whiteSpace: 'pre-wrap', color: '#f88', userSelect: 'text' }}>{state.view.reason}</pre>
         <button onClick={retry}>重试</button>
-        {dataDir && offerDefaultDataDir(dataDir) && (
+        {/* 上一个窗口仍在关闭：稍后点“重试”即可，切换数据目录没有意义 */}
+        {dataDir && offerDefaultDataDir(dataDir) && !isDataDirBusy(state.view.reason) && (
           <div style={{ marginTop: 16 }}>
             <p>
               {dataDir.ok
                 ? `当前使用的是自定义数据目录：${dataDir.info.current}。如果它所在的磁盘没有连接、或者没有写入权限，本地服务就无法启动。`
                 : '数据目录配置文件读取失败，本地服务不知道数据放在哪里，所以无法启动。'}
-              可以改用默认数据目录先用起来：原目录里的数据不会被删除或移动，但默认目录里看不到它们；
-              问题解决后可以在设置里重新选回原目录。
+              可以改用默认数据目录先用起来：原目录里的数据不会被删除或移动，但默认目录里看不到它们。
+              问题解决后（例如重新连接磁盘），在“设置 → 通用 → 数据目录 → 更改…”里选择原来的文件夹，
+              再选“直接使用该目录（不迁移）”，即可切回原来的数据。
             </p>
             <button onClick={switchDefault}>改用默认数据目录</button>
           </div>

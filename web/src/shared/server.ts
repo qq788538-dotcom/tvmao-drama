@@ -70,8 +70,8 @@ export function getServerInfo(): Promise<ServerInfo> {
 /** sidecar 状态，与 src-tauri/src/lifecycle.rs 的 SidecarStatus 一致（不含 token）。 */
 export type SidecarStatus =
   | { status: 'starting' }
-  /** 启动前正在迁移数据目录（设置页更改数据目录后重启的那一次）。 */
-  | { status: 'migrating' }
+  /** 启动前正在迁移数据目录（设置页更改数据目录后重启的那一次）。waiting：在等上一次迁移结束。 */
+  | { status: 'migrating'; waiting?: boolean }
   | { status: 'ready' }
   | { status: 'failed'; reason: string };
 

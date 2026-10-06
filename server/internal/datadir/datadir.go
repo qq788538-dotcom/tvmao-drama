@@ -32,7 +32,13 @@ const (
 	markerName = ".miaoju-migrating"
 	dbName     = "data.db"
 	dbTmpName  = "data.db.migrating"
+	// migratedFromName 记录“这份副本是从哪个目录迁来的”，在去掉迁移标记之前写入。下次启动重跑同一迁移时
+	// （壳在迁移子进程跑完之前退出），据此认出“副本已完整”并视为成功（I2）。它不随后续迁移复制。
+	migratedFromName = ".miaoju-migrated-from"
 )
+
+// sqliteHeader 是 SQLite 数据库文件的前 16 字节。
+const sqliteHeader = "SQLite format 3\x00"
 
 // ignorable 是判断“目录为空”时忽略的文件。
 // 指针文件的临时文件（壳写指针时崩溃会留下）同样忽略。
@@ -42,85 +48,149 @@ var ignorable = map[string]bool{
 	"System Volume Information": true, "$RECYCLE.BIN": true,
 	PointerFileName: true, PointerFileName + ".tmp": true,
 	LocationFileName: true, LocationFileName + ".tmp": true,
-	MigrateLockFileName: true,
+	MigrateLockFileName: true, InstanceLockFileName: true,
 }
 
 // notCopied 是复制时跳过的顶层条目：数据库单独用 VACUUM INTO 复制。
 // diag（诊断样本）照常复制，这样 Cleanup 会把它从旧目录删掉，旧目录（通常是默认目录）才能再次被选为迁移目标。
-var notCopied = map[string]bool{markerName: true, dbName: true, dbName + "-wal": true, dbName + "-shm": true, dbTmpName: true}
+var notCopied = map[string]bool{markerName: true, migratedFromName: true, dbName: true, dbName + "-wal": true, dbName + "-shm": true, dbTmpName: true}
 
 // DedicatedSubdir 是用户所选文件夹下、由应用自建的专用数据目录名，与壳 datadir.rs 的 DEDICATED_SUBDIR 一致。
 // 数据总放进专用子目录：用户可以直接选 ~/Documents 这类非空文件夹，壳也能放心把这个子目录收紧为 0700
 // （不动用户所选文件夹本身的权限）。
 const DedicatedSubdir = "MiaojuData"
 
-// ValidateChosenFolder 把用户在对话框里选的文件夹换成实际的数据目录（其下的 MiaojuData 子目录），
-// 再按 ValidateTarget 校验。所选文件夹必须已存在。返回值交给壳的 apply_data_dir_change。
-func ValidateChosenFolder(current, picked string) (string, error) {
+// TargetState 是所选数据目录的状态（I1）：空（可迁移过去）/ 已有喵剧数据（可直接使用，不迁移）。
+// 非空且不是喵剧数据目录的情况直接报错。
+type TargetState string
+
+const (
+	TargetEmpty    TargetState = "empty"
+	TargetExisting TargetState = "existing"
+)
+
+// Target 是设置页校验结果：实际数据目录路径与其状态。
+type Target struct {
+	Path  string
+	State TargetState
+}
+
+// InspectChosenFolder 把用户在对话框里选的文件夹换成实际的数据目录并判断状态。
+// 一般取其下的 MiaojuData 子目录；用户直接选中了一个已有数据的 MiaojuData 时就用它本身。
+func InspectChosenFolder(current, picked string) (Target, error) {
 	p := strings.TrimSpace(picked)
 	if p == "" {
-		return "", errors.New("请选择新的数据目录")
+		return Target{}, errors.New("请选择新的数据目录")
 	}
 	if filepath.IsAbs(p) && !strings.Contains(p, "?") {
 		if st, err := os.Stat(p); err != nil || !st.IsDir() {
-			return "", fmt.Errorf("所选文件夹不存在：%s", p)
+			return Target{}, fmt.Errorf("所选文件夹不存在：%s", p)
+		}
+		if c := filepath.Clean(p); filepath.Base(c) == DedicatedSubdir && IsDataDir(c) {
+			return InspectTarget(current, c)
 		}
 	}
-	return ValidateTarget(current, filepath.Join(p, DedicatedSubdir))
+	return InspectTarget(current, filepath.Join(p, DedicatedSubdir))
 }
 
-// ValidateTarget 校验新数据目录，返回规范化后的路径。错误文案直接展示给用户。
+// IsDataDir 报告 dir 是否是一个可以直接使用的喵剧数据目录：有有效的 data.db，且没有未完成的迁移标记。
+func IsDataDir(dir string) bool {
+	if _, err := os.Lstat(filepath.Join(dir, markerName)); err == nil {
+		return false
+	}
+	return isSQLiteFile(filepath.Join(dir, dbName))
+}
+
+func isSQLiteFile(p string) bool {
+	f, err := os.Open(p)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	buf := make([]byte, len(sqliteHeader))
+	if _, err := io.ReadFull(f, buf); err != nil {
+		return false
+	}
+	return string(buf) == sqliteHeader
+}
+
+// ValidateTarget 校验迁移目标，返回规范化后的路径。已有喵剧数据的目录不能作为迁移目标。错误文案直接展示给用户。
 func ValidateTarget(current, target string) (string, error) {
+	t, err := InspectTarget(current, target)
+	if err != nil {
+		return "", err
+	}
+	if t.State == TargetExisting {
+		return "", errors.New("所选文件夹里已有喵剧数据，不能迁移到这里；可以在设置里选择它并“直接使用该目录”")
+	}
+	return t.Path, nil
+}
+
+// InspectTarget 校验 target 并判断状态（空 / 已有喵剧数据）；非空且无关时报错。
+func InspectTarget(current, target string) (Target, error) {
+	state := TargetEmpty
 	t := strings.TrimSpace(target)
 	if t == "" {
-		return "", errors.New("请选择新的数据目录")
+		return Target{}, errors.New("请选择新的数据目录")
 	}
 	// 与 db.Open 相同的限制：驱动按 DSN 解析路径，"?" 之后会被当成参数。
 	if strings.Contains(t, "?") || strings.HasPrefix(t, "file:") {
-		return "", fmt.Errorf("数据目录路径不能包含 \"?\"，也不能以 \"file:\" 开头：%s", t)
+		return Target{}, fmt.Errorf("数据目录路径不能包含 \"?\"，也不能以 \"file:\" 开头：%s", t)
 	}
 	if !filepath.IsAbs(t) {
-		return "", fmt.Errorf("请选择绝对路径：%s", t)
+		return Target{}, fmt.Errorf("请选择绝对路径：%s", t)
 	}
 	t = filepath.Clean(t)
 	rc, rt := realPath(current), realPath(t)
 	switch {
 	case samePath(rc, rt):
-		return "", errors.New("新目录与当前数据目录相同")
+		return Target{}, errors.New("新目录与当前数据目录相同")
 	case within(rt, rc):
-		return "", errors.New("不能选择当前数据目录里面的文件夹")
+		return Target{}, errors.New("不能选择当前数据目录里面的文件夹")
 	case within(rc, rt):
-		return "", errors.New("不能选择当前数据目录的上级文件夹")
+		return Target{}, errors.New("不能选择当前数据目录的上级文件夹")
 	}
 	st, err := os.Stat(t)
 	switch {
 	case err == nil && !st.IsDir():
-		return "", errors.New("所选路径不是文件夹")
+		return Target{}, errors.New("所选路径不是文件夹")
 	case err == nil:
 		entries, err := os.ReadDir(t)
 		if err != nil {
-			return "", fmt.Errorf("无法读取所选文件夹：%w", err)
+			return Target{}, fmt.Errorf("无法读取所选文件夹：%w", err)
 		}
-		if !hasEntry(entries, markerName) {
+		switch {
+		case hasEntry(entries, markerName):
+			// 上次迁移没做完：迁移会清掉半成品重做
+		case hasEntry(entries, dbName):
+			if !isSQLiteFile(filepath.Join(t, dbName)) {
+				return Target{}, errors.New("所选文件夹里的 data.db 不是有效的喵剧数据库，请选择空文件夹或新建一个")
+			}
+			state = TargetExisting
+		default:
 			for _, e := range entries {
 				if !ignorable[e.Name()] {
-					return "", errors.New("所选文件夹不是空的，请选择空文件夹或新建一个")
+					return Target{}, errors.New("所选文件夹不是空的，请选择空文件夹或新建一个")
 				}
 			}
 		}
 	case errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR):
 		// 不存在（或路径中间有同名文件，交给 checkWritable 给出准确提示）
 	default:
-		return "", fmt.Errorf("无法访问所选文件夹：%w", err)
+		return Target{}, fmt.Errorf("无法访问所选文件夹：%w", err)
 	}
 	if err := checkWritable(t); err != nil {
-		return "", err
+		return Target{}, err
 	}
-	return t, nil
+	return Target{Path: t, State: state}, nil
 }
 
 // Migrate 把 from 的全部数据复制到 to 并校验新数据库。不修改、不删除 from。
 func Migrate(from, to string) (err error) {
+	if completedFrom(from, to) {
+		log.Printf("迁移数据目录：%s 已是 %s 的完整副本（上次迁移已完成），视为成功", to, from)
+		return nil
+	}
 	target, err := ValidateTarget(from, to)
 	if err != nil {
 		return err
@@ -173,12 +243,46 @@ func Migrate(from, to string) (err error) {
 	if err = copyDatabase(from, target); err != nil {
 		return err
 	}
+	// 记下来源，再去掉标记：重跑同一迁移时据此认出“已完成”（completedFrom）。
+	if err = writeSynced(filepath.Join(target, migratedFromName), []byte(filepath.Clean(from)+"\n")); err != nil {
+		return fmt.Errorf("写入迁移记录：%w", err)
+	}
 	// 只有新副本全部落盘后才去掉标记；去掉标记本身也要落盘，Cleanup 以“无标记”为前提。
 	trace("unmark", target)
 	if err = os.Remove(filepath.Join(target, markerName)); err != nil {
 		return err
 	}
 	return syncDir(target)
+}
+
+// completedFrom 报告 to 是否已是“从 from 迁来的完整副本”：没有迁移标记、有有效 data.db、来源记录等于 from。
+func completedFrom(from, to string) bool {
+	to = filepath.Clean(strings.TrimSpace(to))
+	if !filepath.IsAbs(to) || !IsDataDir(to) {
+		return false
+	}
+	b, err := os.ReadFile(filepath.Join(to, migratedFromName))
+	if err != nil {
+		return false
+	}
+	return samePath(realPath(strings.TrimSpace(string(b))), realPath(from))
+}
+
+// writeSynced 创建（覆盖）文件并 fsync。
+func writeSynced(p string, body []byte) error {
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(body)
+	if err == nil {
+		trace("fsync", p)
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // Cleanup 删除 oldDir 里在 newDir 已有同名副本的条目（数据库的 -wal/-shm 随 data.db 一起删）。

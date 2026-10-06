@@ -61,7 +61,7 @@ func main() {
 	log.SetOutput(os.Stderr)
 	if err := run(); err != nil {
 		log.Printf("sidecar 启动失败: %v", err)
-		os.Exit(1)
+		os.Exit(exitCodeOf(err))
 	}
 }
 
@@ -85,6 +85,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	// I4：打开 data.db 前锁住数据目录，同一目录不会有两个 sidecar（退出码 exitDataDirBusy，见 exit.go）。
+	unlock, err := lockDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	conn, err := db.Open(filepath.Join(*dataDir, "data.db"))
 	if err != nil {

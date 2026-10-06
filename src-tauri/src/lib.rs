@@ -14,7 +14,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tauri::{Emitter as TauriEmitter, Manager, RunEvent, State};
+use tauri::{Emitter as TauriEmitter, Manager, RunEvent, State, WindowEvent};
 
 use lifecycle::{Emitter, ServerInfo, SidecarManager, SidecarStatus, SpecFactory, Timeouts};
 
@@ -62,7 +62,26 @@ pub fn locate_python_home(roots: &[PathBuf]) -> Option<PathBuf> {
         .iter()
         .map(|r| r.join("python"))
         .find(|home| python_interpreter(home).is_file())
-        .map(|home| std::fs::canonicalize(&home).unwrap_or(home))
+        .map(|home| {
+            let p = std::fs::canonicalize(&home).unwrap_or(home);
+            // M7：Windows 的 canonicalize 返回 \\?\C:\... 形式，Python getpath 和下游路径比较未必认，去掉前缀。
+            if cfg!(windows) {
+                PathBuf::from(strip_verbatim(&p.to_string_lossy()))
+            } else {
+                p
+            }
+        })
+}
+
+/// 去掉 Windows 扩展长度路径前缀：`\\?\C:\x` → `C:\x`，`\\?\UNC\srv\share` → `\\srv\share`。
+pub fn strip_verbatim(p: &str) -> String {
+    if let Some(rest) = p.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = p.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        p.to_string()
+    }
 }
 
 fn python_home(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -115,7 +134,7 @@ async fn server_info(m: State<'_, Arc<SidecarManager>>) -> Result<ServerInfo, St
 #[tauri::command]
 fn sidecar_status(m: State<'_, Arc<SidecarManager>>, dd: State<'_, datadir::DataDirState>) -> SidecarStatus {
     if dd.migrating.load(Ordering::SeqCst) {
-        return SidecarStatus::Migrating;
+        return SidecarStatus::Migrating { waiting: dd.waiting_lock.load(Ordering::SeqCst) };
     }
     m.status()
 }
@@ -139,8 +158,13 @@ async fn restart_sidecar(
 async fn apply_data_dir_change(
     app: tauri::AppHandle,
     m: State<'_, Arc<SidecarManager>>,
+    dd: State<'_, datadir::DataDirState>,
     path: String,
 ) -> Result<(), String> {
+    // M1：迁移进行中不接受新的待办（会被迁移循环的内存副本覆盖），也不能重启（会中断迁移）。
+    if dd.migrating.load(Ordering::SeqCst) {
+        return Err("正在迁移数据目录，请稍候".into());
+    }
     let default = default_data_dir(&app)?;
     let target = datadir::check_target_shape(&path, &default)?;
     if data_dir::resolve(&default)?.current == target {
@@ -150,7 +174,9 @@ async fn apply_data_dir_change(
     let mut loc = datadir::read_location(&pointer)?;
     loc.pending_data_dir = Some(target.to_string_lossy().into_owned());
     datadir::write_location(&pointer, &loc)?;
-    // app.restart() 直接结束进程、不走 RunEvent::Exit，所以先在这里优雅关闭 sidecar（写 SHUTDOWN、关 stdin、等待）。
+    // 先在这里优雅关闭 sidecar（写 SHUTDOWN、关 stdin、等待），sidecar 的收尾不依赖退出事件的时序。
+    // 从异步命令（非主线程）调用 app.restart() 会经 request_exit 触发 ExitRequested / Exit，再重启进程；
+    // 那里的 shutdown 是幂等的，此时直接返回。
     let manager = m.inner().clone();
     let _ = tokio::time::timeout(Duration::from_secs(6), manager.shutdown()).await;
     app.restart();
@@ -161,12 +187,61 @@ fn get_data_dir(app: tauri::AppHandle) -> Result<data_dir::DataDirInfo, String> 
     data_dir::resolve(&default_data_dir(&app)?)
 }
 
-/// 只改“下次启动用哪个数据目录”，不搬数据。P4 迁移完数据后调用，再调 restart_sidecar 生效。
-/// path 为 null 表示恢复默认目录。
+/// 只改“用哪个数据目录”，不搬数据；前端随后调 restart_sidecar 生效。
+/// - path 为 null：恢复默认目录（失败页“改用默认数据目录”）。
+/// - path 为已有喵剧数据的目录（设置页“直接使用该目录（不迁移）”，I1）：必须是“所选文件夹/MiaojuData”，
+///   含有效 data.db 且没有未完成的迁移标记（M2：不接受任意路径）。
+/// 用户手动切换后，尚未执行的迁移 / 清理待办作废。
 #[tauri::command]
-fn set_data_dir(app: tauri::AppHandle, path: Option<String>) -> Result<data_dir::DataDirInfo, String> {
+fn set_data_dir(
+    app: tauri::AppHandle,
+    dd: State<'_, datadir::DataDirState>,
+    path: Option<String>,
+) -> Result<data_dir::DataDirInfo, String> {
+    if dd.migrating.load(Ordering::SeqCst) {
+        return Err("正在迁移数据目录，请稍候".into());
+    }
     let default = default_data_dir(&app)?;
-    data_dir::write_location(&default, path.as_deref().map(Path::new))
+    let target = match path.as_deref() {
+        None => None,
+        Some(p) => Some(datadir::check_existing_data_dir(p, &default)?),
+    };
+    let info = data_dir::write_location(&default, target.as_deref())?;
+    datadir::forget_pending(&default)?;
+    Ok(info)
+}
+
+/// 迁移进行中拦下关闭 / 退出时的提示（非阻塞；同一时刻只开一个）。
+fn notify_exit_blocked(app: &tauri::AppHandle) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+    let Some(dd) = app.try_state::<datadir::DataDirState>() else { return };
+    if dd.exit_notice_open.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let handle = app.clone();
+    app.dialog()
+        .message("正在迁移数据目录，迁移完成后应用会自动继续启动。为保证数据完整，迁移期间不能关闭应用，请稍候。")
+        .title("正在迁移数据目录")
+        .kind(MessageDialogKind::Warning)
+        .show(move |_| {
+            if let Some(dd) = handle.try_state::<datadir::DataDirState>() {
+                dd.exit_notice_open.store(false, Ordering::SeqCst);
+            }
+        });
+}
+
+fn migrating(app: &tauri::AppHandle) -> bool {
+    app.try_state::<datadir::DataDirState>().is_some_and(|dd| dd.migrating.load(Ordering::SeqCst))
+}
+
+/// 关 stdin → 等 sidecar 收尾（最多 3 秒）→ 强杀。正在启动时 shutdown 会立即取消启动，不会等 READY。
+/// 整体再加上限兜底；即便超时，壳退出后 stdin 管道关闭，sidecar 也会自行退出。幂等。
+fn shutdown_sidecar(app: &tauri::AppHandle) {
+    let Some(manager) = app.try_state::<Arc<SidecarManager>>() else { return };
+    let manager = manager.inner().clone();
+    let _ = tauri::async_runtime::block_on(async move {
+        tokio::time::timeout(Duration::from_secs(6), manager.shutdown()).await
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -220,10 +295,21 @@ pub fn run() {
                     if datadir::has_pending(&default) {
                         let dd = task_app.state::<datadir::DataDirState>();
                         dd.migrating.store(true, Ordering::SeqCst);
-                        emit(SidecarStatus::Migrating);
+                        emit(SidecarStatus::Migrating { waiting: false });
+                        let slot = dd.child.clone();
+                        let (line_app, line_emit) = (task_app.clone(), emit.clone());
                         let r = tauri::async_runtime::spawn_blocking(move || {
                             let program = sidecar_program()?;
-                            datadir::run_pending(&default, &mut |args| datadir::run_sidecar_once(&program, &args))
+                            // 子命令在等上一次迁移的锁时打一行提示（I3），界面据此区分“等待”与“迁移中”。
+                            let mut on_line = |line: &str| {
+                                if let Some(waiting) = datadir::lock_line_status(line) {
+                                    line_app.state::<datadir::DataDirState>().waiting_lock.store(waiting, Ordering::SeqCst);
+                                    line_emit(SidecarStatus::Migrating { waiting });
+                                }
+                            };
+                            datadir::run_pending(&default, &mut |args| {
+                                datadir::run_sidecar_once(&program, &args, &slot, &mut on_line)
+                            })
                         })
                         .await
                         .map_err(|e| format!("数据目录迁移中断：{e}"))
@@ -231,12 +317,22 @@ pub fn run() {
                         if let Err(e) = r {
                             *dd.startup_error.lock().unwrap() = Some(e);
                         }
+                        dd.waiting_lock.store(false, Ordering::SeqCst);
                         dd.migrating.store(false, Ordering::SeqCst);
                     }
                 }
                 let _ = manager.start().await;
             });
             Ok(())
+        })
+        // I2：迁移期间拦下关窗（否则窗口没了、进程还在）。macOS 的 Cmd+Q 拦不住，走 Exit 里结束子进程那条路。
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if migrating(window.app_handle()) {
+                    api.prevent_close();
+                    notify_exit_blocked(window.app_handle());
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             server_info,
@@ -262,15 +358,26 @@ pub fn run() {
         }
     };
 
-    app.run(|app, event| {
-        if let RunEvent::Exit = event {
-            let manager = app.state::<Arc<SidecarManager>>().inner().clone();
-            // 关 stdin → 等 sidecar 收尾（最多 3 秒）→ 强杀。正在启动时 shutdown 会立即取消启动，不会等 READY。
-            // 整体再加上限兜底；即便超时，壳退出后 stdin 管道关闭，sidecar 也会自行退出。
-            let _ = tauri::async_runtime::block_on(async move {
-                tokio::time::timeout(Duration::from_secs(6), manager.shutdown()).await
-            });
+    app.run(|app, event| match event {
+        RunEvent::ExitRequested { code, api, .. } => {
+            // I2：迁移期间不退出（restart 不可拦，也不会发生：迁移期间 apply_data_dir_change 被拒绝）。
+            if code != Some(tauri::RESTART_EXIT_CODE) && migrating(app) {
+                api.prevent_exit();
+                notify_exit_blocked(app);
+                return;
+            }
+            // I4：单实例插件在 Exit 时释放锁，这里（Exit 之前）先把 sidecar 关掉，新实例不会和它同时打开数据目录。
+            // macOS Cmd+Q 不经过 ExitRequested，靠 sidecar 自己的数据目录锁兜底。
+            shutdown_sidecar(app);
         }
+        RunEvent::Exit => {
+            // 结束仍在跑的迁移子进程（Cmd+Q 等拦不住的退出）；中途被杀是安全的，下次启动重做。
+            if let Some(dd) = app.try_state::<datadir::DataDirState>() {
+                dd.child.kill();
+            }
+            shutdown_sidecar(app);
+        }
+        _ => {}
     });
 }
 
@@ -340,6 +447,15 @@ mod tests {
         assert!(py.is_none());
         let args = sidecar_args(Path::new("/data"), false, py.as_deref());
         assert!(!args.iter().any(|a| a == "--python-home"));
+    }
+
+    /// M7：Windows 上 canonicalize 产生的 \\?\ 前缀要去掉（UNC 形式保留为 \\server\share）。
+    #[test]
+    fn strip_verbatim_prefix_rules() {
+        assert_eq!(strip_verbatim(r"\\?\C:\Program Files\miaoju\python"), r"C:\Program Files\miaoju\python");
+        assert_eq!(strip_verbatim(r"\\?\UNC\server\share\python"), r"\\server\share\python");
+        assert_eq!(strip_verbatim(r"C:\x"), r"C:\x");
+        assert_eq!(strip_verbatim("/Applications/喵剧AI.app/Contents/Resources/python"), "/Applications/喵剧AI.app/Contents/Resources/python");
     }
 
     #[test]

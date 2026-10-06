@@ -505,7 +505,8 @@ pub async fn save_bytes<R: Runtime>(
         .and_then(|v| v.to_str().ok())
         .and_then(percent_decode)
         .unwrap_or_default();
-    let root = root.get();
+    // M9：数据目录未知时拒绝，不能跳过“不能写进数据目录 / 覆盖 data.db”的保护。
+    let root = Some(media_root_required(&root)?);
     let detected = sniff_media_ext(&bytes[..bytes.len().min(64)]);
     let suggested = fix_extension(&sanitize_file_name(&name), detected);
     let Some(dest) = ask_save_path(&app, &suggested).await else {
@@ -814,6 +815,8 @@ mod tests {
     fn media_root_state_roundtrip() {
         let s = MediaRoot::default();
         assert!(s.get().is_none());
+        // M9：数据目录未知（迁移中 / sidecar 未启动）时拒绝保存，不能跳过“不能写进数据目录”的保护
+        assert!(media_root_required(&s).is_err());
         s.set(media_root_of(Path::new("/data")));
         assert_eq!(s.get().unwrap(), Path::new("/data/media"));
     }
