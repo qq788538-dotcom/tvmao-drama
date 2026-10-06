@@ -66,6 +66,12 @@ export async function connectionChecks(info: ServerInfo): Promise<CheckResult[]>
           clearTimeout(timer);
           reject(new Error('连接失败'));
         };
+        // 服务端在回显之前就关了连接（例如 Origin 被拒）：立刻判失败，不必干等 5 秒。
+        // 已经 resolve 过的话（onmessage 里主动 close 也会触发这里），reject 是空操作。
+        ws.onclose = (ev) => {
+          clearTimeout(timer);
+          reject(new Error(`连接在回显前关闭（code ${ev.code}）`));
+        };
       });
     }),
   );
@@ -132,10 +138,15 @@ export async function uploadSample(info: ServerInfo, file: File): Promise<string
   return ((await resp.json()) as { name: string }).name;
 }
 
+/** 诊断媒体的接口路径。文件名来自 sidecar，可能含空格或中文，必须编码。 */
+export function diagMediaPath(name: string): string {
+  return `/api/v1/diag/media/${encodeURIComponent(name)}`;
+}
+
 /** 用参考仓画布同样的 mediabunny 调用方式，对 sidecar 返回的媒体跑一遍。 */
 export async function mediaChecks(info: ServerInfo, name: string): Promise<CheckResult[]> {
   const mb = await import('mediabunny');
-  const url = buildMediaUrl(info, `/api/v1/diag/media/${name}`);
+  const url = buildMediaUrl(info, diagMediaPath(name));
   const out: CheckResult[] = [];
 
   const convert = async (options: Record<string, unknown>, wav = false): Promise<string> => {
