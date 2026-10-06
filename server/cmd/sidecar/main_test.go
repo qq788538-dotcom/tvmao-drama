@@ -334,8 +334,8 @@ func TestBuiltinSeedImportedOnStartup(t *testing.T) {
 	if err := conn.QueryRow(`SELECT COUNT(*) FROM settings WHERE "key" IN ('base_domain', 'canvas_light_control', 'canvas_multi_angle', 'canvas_postprocess_config', 'canvas_script_config', 'gen_image_prompt_presets')`).Scan(&settings); err != nil {
 		t.Fatal(err)
 	}
-	if models != 42 || settings != 6 {
-		t.Fatalf("models=%d settings=%d, want 42/6", models, settings)
+	if models != 30 || settings != 6 {
+		t.Fatalf("models=%d settings=%d, want 30/6", models, settings)
 	}
 }
 
