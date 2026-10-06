@@ -302,7 +302,6 @@ func (r *SQLiteRepository) CountProjectsReferencingAllUsers(objectKey string) (i
         FROM workflow_snapshots ws
         JOIN projects p ON p.id = ws.project_id
         WHERE p.deleted_at IS NULL
-          AND ws.payload LIKE ? ESCAPE '\'
-    `, ReferenceLikePattern(objectKey)).Scan(&n)
+          AND `+ReferenceMatchSQL, ReferenceNeedles(objectKey)...).Scan(&n)
 	return n, err
 }

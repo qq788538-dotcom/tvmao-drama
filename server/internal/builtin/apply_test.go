@@ -185,7 +185,8 @@ func TestApplySettingOverrideKeptAndStructureUpdated(t *testing.T) {
 		lightSetting(t, `["img-a"]`, "新 {light}", `[{"key":"p1","name":"P1 新名","prompt":"内置 p1 v2"},{"key":"p2","name":"P2","prompt":"p2"}]`),
 	}))
 	got := settingByKey(t, conn, SettingCanvasLightControl)
-	want := `{"models":["img-a"],"presets":[{"key":"p1","name":"P1 新名","prompt":"我的 p1"},{"key":"p2","name":"P2","prompt":"p2"}],"template":"新 {light}"}`
+	// 键序跟新版种子原文（P2a M8）。
+	want := `{"models":["img-a"],"template":"新 {light}","presets":[{"key":"p1","name":"P1 新名","prompt":"我的 p1"},{"key":"p2","name":"P2","prompt":"p2"}]}`
 	if got.Value != want || !reflect.DeepEqual(got.Overrides, []string{"presets[p1].prompt"}) {
 		t.Fatalf("got  %s %v\nwant %s", got.Value, got.Overrides, want)
 	}

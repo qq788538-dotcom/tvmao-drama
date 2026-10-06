@@ -72,7 +72,8 @@ func TestApplyListOverridePrunesOnlyRemovedModels(t *testing.T) {
 	simulateUserEdit(t, conn, `UPDATE settings SET value = '{"models":["img-b","img-a","img-c"],"presets":[],"template":"{light}"}', user_overrides = '["models"]' WHERE "key" = ?`, SettingCanvasLightControl)
 	mustApply(t, conn, mustSeed(t, three[:2], []string{lightSetting(t, `["img-a"]`, "{light}", `[]`)}))
 	got := settingByKey(t, conn, SettingCanvasLightControl)
-	if want := `{"models":["img-b","img-a"],"presets":[],"template":"{light}"}`; got.Value != want || !reflect.DeepEqual(got.Overrides, []string{"models"}) {
+	// 键序跟新版种子原文（models, template, presets），不是字母序（P2a M8）。
+	if want := `{"models":["img-b","img-a"],"template":"{light}","presets":[]}`; got.Value != want || !reflect.DeepEqual(got.Overrides, []string{"models"}) {
 		t.Fatalf("got %s %v", got.Value, got.Overrides)
 	}
 }

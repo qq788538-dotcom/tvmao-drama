@@ -587,7 +587,7 @@ func modelDoc(mp modelParts) (any, error) {
 }
 
 // partsFromDoc 把文档写回模型的可改部分：被覆盖的字段取 doc，其余一律取 seed。
-// ui_schema / gen_control 只要有一个子路径被覆盖就整列重新编码，否则保留种子原文（逐字节一致）。
+// ui_schema / gen_control 只要有一个子路径被覆盖就整列重新编码（键序跟种子原文），否则保留种子原文（逐字节一致）。
 func partsFromDoc(doc any, seed modelParts, overrides []string) (modelParts, error) {
 	m, ok := doc.(map[string]any)
 	if !ok {
@@ -630,7 +630,15 @@ func partsFromDoc(doc any, seed modelParts, overrides []string) (modelParts, err
 		if !hasUnder(col) {
 			continue
 		}
-		s, err := encodeJSON(m[col])
+		// 按种子原文的键序编码：ui_schema 的参数顺序就是前端 pill 顺序，按 map 默认的
+		// 字母序重编码会让用户只改一个 default 就打乱排列。
+		var s string
+		var err error
+		if *dst != nil {
+			s, err = encodeJSONLike(m[col], **dst)
+		} else {
+			s, err = encodeJSON(m[col])
+		}
 		if err != nil {
 			return modelParts{}, err
 		}
@@ -659,5 +667,5 @@ func settingValueFromDoc(kind valueKind, seedValue string, doc any, overrides []
 		}
 		return s, nil
 	}
-	return encodeJSON(doc)
+	return encodeJSONLike(doc, seedValue)
 }

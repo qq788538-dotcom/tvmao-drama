@@ -2,7 +2,6 @@ package directorlibrary
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/james/huabu_studio/apps/api/internal/directormodels"
@@ -84,15 +83,10 @@ func TestDeleteCategory_EmptyDeletes(t *testing.T) {
 	}
 }
 
-// TestReferenceLikePattern 钉住别名指向 directormodels 的同一套转义实现：
-// 引用形态是 media://<key>，key 里的 LIKE 通配符必须被转义。
-func TestReferenceLikePattern(t *testing.T) {
-	got := ReferenceLikePattern("lib/2026/ab12_chair.glb")
-	want := `%media://lib/2026/ab12\_chair.glb%`
-	if got != want {
-		t.Fatalf("ReferenceLikePattern=%q, want %q", got, want)
-	}
-	if p := ReferenceLikePattern("k.glb"); !strings.HasPrefix(p, "%media://") || !strings.HasSuffix(p, "%") {
-		t.Fatalf("pattern 形状不对: %q", p)
+// TestReferenceNeedles 钉住别名指向 directormodels 的同一套实现。
+func TestReferenceNeedles(t *testing.T) {
+	got := ReferenceNeedles("lib/2026/ab12_chair.glb")
+	if len(got) != 2 || got[0] != `media://lib/2026/ab12_chair.glb"` || got[1] != `media://lib/2026/ab12_chair.glb\` {
+		t.Fatalf("ReferenceNeedles=%q", got)
 	}
 }

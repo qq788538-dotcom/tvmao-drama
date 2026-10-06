@@ -2,7 +2,6 @@ package directormodels
 
 import (
 	"errors"
-	"strings"
 	"testing"
 )
 
@@ -83,25 +82,12 @@ func TestValidateUpload(t *testing.T) {
 	}
 }
 
-func TestReferenceLikePattern(t *testing.T) {
-	// 引用检查扫的是快照 JSON 里的 media://<key> 字符串；LIKE 通配符必须转义，
-	// 否则 key 里的下划线（uniqueUploadFilename 必带）会当单字符通配用。
-	cases := []struct {
-		key  string
-		want string
-	}{
-		{"tapnow/u1/2026/08/ab12_robot.fbx", `%media://tapnow/u1/2026/08/ab12\_robot.fbx%`},
-		{"a%b.obj", `%media://a\%b.obj%`},
-		{`a\b.obj`, `%media://a\\b.obj%`},
-	}
-	for _, c := range cases {
-		if got := ReferenceLikePattern(c.key); got != c.want {
-			t.Fatalf("ReferenceLikePattern(%q)=%q, want %q", c.key, got, c.want)
-		}
-	}
-	// 前后必须是 % 包裹的子串匹配，中间必须带 media:// 前缀——
-	// 少了前缀会把裸 key 出现在别处（比如日志字段）也算成引用。
-	if p := ReferenceLikePattern("k.fbx"); !strings.HasPrefix(p, "%media://") || !strings.HasSuffix(p, "%") {
-		t.Fatalf("pattern 形状不对: %q", p)
+func TestReferenceNeedles(t *testing.T) {
+	// instr 没有通配符，key 原文拼接即可；两根针分别是 JSON 字符串结束引号与
+	// 嵌套 JSON 里的转义引号。少了 media:// 前缀会把裸 key 出现在别处也算成引用。
+	got := ReferenceNeedles("tapnow/u1/ab12_robot.fbx")
+	want := []any{`media://tapnow/u1/ab12_robot.fbx"`, `media://tapnow/u1/ab12_robot.fbx\`}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("ReferenceNeedles=%q, want %q", got, want)
 	}
 }

@@ -157,3 +157,40 @@ func TestFindByIDAndListForUser(t *testing.T) {
 		t.Fatalf("list=%+v err=%v", list, err)
 	}
 }
+
+// 求和与删除必须原子：分两步时，两步之间插入的行会被删掉却不计入 freed，
+// 配额扣减就少扣了。并发插入期间反复删除，freed 总和必须等于插入总量。
+func TestDeleteForProjectFreedMatchesDeletedRows(t *testing.T) {
+	repo, _ := newRepo(t)
+	const total = 300
+	done := make(chan error, 1)
+	go func() {
+		for i := 0; i < total; i++ {
+			if _, err := repo.Insert(AssetRecord{UserID: 1, ProjectID: 9, ObjectKey: "k", SourceKind: "upload",
+				URL: "media://k", SizeBytes: 1, MimeType: "image/png"}); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+	var freed int64
+	for running := true; running; {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+			running = false
+		default:
+		}
+		n, err := repo.DeleteForProject(9)
+		if err != nil {
+			t.Fatal(err)
+		}
+		freed += n
+	}
+	if freed != total {
+		t.Fatalf("freed=%d, want %d", freed, total)
+	}
+}

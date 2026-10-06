@@ -120,7 +120,15 @@ func (r *SQLiteFoldersRepository) Rename(userID, id int64, name string) error {
 }
 
 func (r *SQLiteFoldersRepository) Move(userID, id int64, newParentID *int64) error {
-	// 循环检测：BFS 从 newParentID 向上爬，不能爬到 id
+	// 查环与 UPDATE 必须在同一个事务里：_txlock=immediate 下 Begin 即拿写锁，
+	// 并发的两个 Move（A 挂到 B 下、B 挂到 A 下）串行执行，后一个必然看到环。
+	// 分开执行时两边都能通过查环，造出环后 DescendantIDs 的 BFS 会死循环。
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// 循环检测：从 newParentID 向上爬，不能爬到 id
 	if newParentID != nil {
 		cur := *newParentID
 		for {
@@ -128,7 +136,7 @@ func (r *SQLiteFoldersRepository) Move(userID, id int64, newParentID *int64) err
 				return ErrFolderCycle
 			}
 			var p sql.NullInt64
-			if err := r.db.QueryRow(`SELECT parent_id FROM library_folders WHERE id=? AND user_id=?`, cur, userID).Scan(&p); err != nil {
+			if err := tx.QueryRow(`SELECT parent_id FROM library_folders WHERE id=? AND user_id=?`, cur, userID).Scan(&p); err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
 					return ErrFolderNotFound
 				}
@@ -144,7 +152,7 @@ func (r *SQLiteFoldersRepository) Move(userID, id int64, newParentID *int64) err
 	if newParentID != nil {
 		pid = *newParentID
 	}
-	res, err := r.db.Exec(`UPDATE library_folders SET parent_id=? WHERE id=? AND user_id=?`, pid, id, userID)
+	res, err := tx.Exec(`UPDATE library_folders SET parent_id=? WHERE id=? AND user_id=?`, pid, id, userID)
 	if err != nil {
 		return err
 	}
@@ -152,7 +160,7 @@ func (r *SQLiteFoldersRepository) Move(userID, id int64, newParentID *int64) err
 	if n == 0 {
 		return ErrFolderNotFound
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (r *SQLiteFoldersRepository) DeleteIfEmpty(userID, id int64) error {
