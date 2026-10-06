@@ -13,6 +13,12 @@ import { NodeContextMenu, type NodeMenuItem } from './NodeContextMenu';
 import { standardNodeMenuItems } from './standardNodeMenuItems';
 import { SaveToLibraryModal } from './SaveToLibraryModal';
 import { SEEDANCE_REQUIREMENTS, checkSeedanceDuration } from './seedanceRules';
+import {
+  fileManagerLabel,
+  isLocalMediaUrl,
+  revealErrorMessage,
+  revealInFileManager,
+} from '@/desktop/localMedia';
 
 type Kind = 'image' | 'video' | 'audio';
 
@@ -154,6 +160,18 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
     }
   }, [url, kind, message, queryClient]);
 
+  // 桌面端（spec S3）：本机文件在系统文件管理器里定位出来。内容还是上游外链（生成结果
+  // 没保存到本地）时没有本机文件可定位，直接置灰。
+  const canReveal = isLocalMediaUrl(url);
+  const reveal = async () => {
+    if (!url) return;
+    try {
+      await revealInFileManager(url);
+    } catch (e) {
+      message.error(revealErrorMessage(e));
+    }
+  };
+
   const handleSave = async (folderId: number, name: string) => {
     if (!url) return;
     setSaving(true);
@@ -205,6 +223,16 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
       },
       disabled: !canAct,
       hint: canAct ? undefined : '还没有内容可保存',
+    },
+    {
+      key: 'reveal',
+      label: fileManagerLabel(),
+      onPick: () => {
+        setMenuPos(null);
+        void reveal();
+      },
+      disabled: !canReveal,
+      hint: !url ? '还没有内容' : canReveal ? undefined : '还没有保存到本地，无法在文件夹中显示',
     },
     // 删除固定放最后一项——节点右上角的悬浮 X 因误点风险已移除，右键菜单是
     // 唯一的鼠标删除入口（键盘 Delete/Backspace 仍在）。
