@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   App as AntApp,
-  Button,
   Dropdown,
   Empty,
   Form,
@@ -393,9 +392,6 @@ export function CanvasProjectsPage() {
           <Title level={3} style={{ margin: 0, color: '#e4e4e7' }}>
             项目列表
           </Title>
-          {/* 创建入口只剩网格首卡，这里不再放「创建项目」按钮——两个功能相同的
-              入口并存会让人犹豫点哪个。 */}
-          <Button onClick={() => navigate('/workflows/mine')}>我的分享</Button>
         </div>
 
         {projectsQuery.isLoading ? (
