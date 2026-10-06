@@ -6,8 +6,6 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invoke(...args),
   isTauri: () => tauri,
 }));
-const saveAs = vi.fn();
-vi.mock('file-saver', () => ({ saveAs: (...args: unknown[]) => saveAs(...args) }));
 
 import {
   FILE_NAME_HEADER,
@@ -26,7 +24,6 @@ const LOCAL = 'http://127.0.0.1:54321/media/gen/1/out?token=t';
 
 beforeEach(() => {
   invoke.mockReset();
-  saveAs.mockReset();
   tauri = true;
   vi.unstubAllGlobals();
 });
@@ -105,11 +102,35 @@ describe('saveMediaToDisk (浏览器回退)', () => {
     expect(document.querySelectorAll('a').length).toBe(0);
   });
 
-  it('Blob 非 Tauri 时交给 file-saver', async () => {
+  it('Blob 非 Tauri 时转 object URL 走锚点下载，随后 revoke', async () => {
     tauri = false;
+    vi.useFakeTimers();
     const blob = new Blob(['zip']);
-    await expect(saveBlobToDisk(blob, 'h.zip')).resolves.toBe('fallback');
-    expect(saveAs).toHaveBeenCalledWith(blob, 'h.zip');
+    const create = vi.fn(() => 'blob:fake-1');
+    const revoke = vi.fn();
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = create;
+    URL.revokeObjectURL = revoke;
+    const clicks: Array<{ href: string; download: string }> = [];
+    const orig = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      clicks.push({ href: this.href, download: this.download });
+    };
+    try {
+      await expect(saveBlobToDisk(blob, 'h.zip')).resolves.toBe('fallback');
+      expect(create).toHaveBeenCalledWith(blob);
+      expect(clicks).toEqual([{ href: 'blob:fake-1', download: 'h.zip' }]);
+      expect(revoke).not.toHaveBeenCalled();
+      vi.runAllTimers();
+      expect(revoke).toHaveBeenCalledWith('blob:fake-1');
+      expect(invoke).not.toHaveBeenCalled();
+    } finally {
+      HTMLAnchorElement.prototype.click = orig;
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -121,7 +142,6 @@ describe('saveBlobToDisk (Tauri)', () => {
     expect(cmd).toBe('save_bytes');
     expect(Array.from(body as Uint8Array)).toEqual([80, 75]);
     expect(opts.headers[FILE_NAME_HEADER]).toBe('history-1.zip');
-    expect(saveAs).not.toHaveBeenCalled();
   });
 });
 

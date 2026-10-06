@@ -22,7 +22,7 @@ export function LocalSaveNode({ id }: { id: string }) {
     `output-${idx + 1}.${extFromUrl(url, isVideoUrl(url) ? 'mp4' : 'png')}`;
 
   // 统一走 saveMediaToDisk：Tauri 里弹系统保存对话框、Rust 直接复制本地媒体
-  // （<a download> 在 Tauri/macOS 下会被 WebView 直接取消）。
+  // （锚点 download 在 Tauri/macOS 下会被 WebView 直接取消）。
   const handleDownloadSingle = (url: string, idx: number) => {
     void saveWithFeedback(() => saveMediaToDisk(url, fileName(url, idx)), message);
   };

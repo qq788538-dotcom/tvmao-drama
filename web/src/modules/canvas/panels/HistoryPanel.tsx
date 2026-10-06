@@ -200,7 +200,7 @@ export function HistoryPanel({ open, projectId, onClose }: Props) {
     }
 
     // ZIP 是前端内存里现打的包，没有现成的源文件可复制：字节经 IPC raw body 交给 Rust，
-    // 由 Rust 弹保存对话框写盘（非 Tauri 环境回退 file-saver）。
+    // 由 Rust 弹保存对话框写盘（非 Tauri 环境回退浏览器下载）。
     try {
       await saveWithFeedback(async () => {
         const zipBlob = await zip.generateAsync({ type: 'blob' });

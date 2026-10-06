@@ -25,7 +25,7 @@ export function buildCaptureFileName(result: ScreenshotResult, index = 0) {
   return `storyai-director-desk-${result.meta.mode}${cameraSuffix}-${labelSlug}-${index + 1}.png`;
 }
 
-/** 单张截图：统一走 saveMediaToDisk（Tauri 里弹系统保存对话框；<a download> 会被 WebView 取消）。 */
+/** 单张截图：统一走 saveMediaToDisk（Tauri 里弹系统保存对话框；锚点 download 会被 WebView 取消）。 */
 export function downloadDataUrl(dataUrl: string, fileName: string): Promise<SaveResult> {
   return saveMediaToDisk(dataUrl, fileName);
 }

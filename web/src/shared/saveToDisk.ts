@@ -1,15 +1,14 @@
-// 统一的“保存到本地”入口。所有下载按钮都走这里，不要再直接用 <a download>。
+// 统一的“保存到本地”入口。所有下载按钮都走这里，不要再直接用带 download 属性的锚点。
 //
-// 为什么：Tauri（wry 0.57）在没有注册 on_download 时，macOS WKWebView 会把 <a download>
+// 为什么：Tauri（wry 0.57）在没有注册 on_download 时，macOS WKWebView 会把锚点 download
 // 触发的下载直接取消；媒体地址 http://127.0.0.1:<port>/media/... 和页面也不同源，
 // 浏览器会忽略 download 属性。所以在 Tauri 里：
 //   - 本地媒体：调 Rust 命令 save_media，由 Rust 弹系统保存对话框，再把媒体根目录里的源文件
 //     直接复制过去（不经过前端 blob，大视频也不占内存）；
 //   - 前端生成的内容（ZIP、截图、JSON）：save_bytes，字节走 IPC raw body，同样由 Rust 弹对话框。
 // 写盘路径只来自用户在对话框里的选择，前端从不传目标路径。
-// 不在 Tauri 里（纯浏览器调试）时回退到 <a download> / file-saver。
+// 不在 Tauri 里（纯浏览器调试）时回退到隐藏锚点（Blob 先转 object URL，下一拍再 revoke）。
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import { saveAs } from 'file-saver';
 
 /** saved：已写盘；cancelled：用户取消了对话框；fallback：非 Tauri 环境，交给浏览器下载。 */
 export type SaveResult = 'saved' | 'cancelled' | 'fallback';
@@ -32,7 +31,7 @@ function inTauri(): boolean {
   }
 }
 
-/** 非 Tauri 回退：隐藏 <a download>。target=_blank 兜底跨域时浏览器退化成新标签打开，不把画布顶掉。 */
+/** 非 Tauri 回退：隐藏的 download 锚点。target=_blank 兜底跨域时浏览器退化成新标签打开，不把画布顶掉。 */
 export function anchorDownload(url: string, name: string): void {
   const a = document.createElement('a');
   a.href = url;
@@ -42,6 +41,13 @@ export function anchorDownload(url: string, name: string): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+/** 非 Tauri 回退：Blob → object URL → 锚点下载。revoke 放到下一拍，Safari 同步 revoke 会取消下载。 */
+function blobFallback(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
+  anchorDownload(url, name);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /** data: URL 手动解码：CSP 的 connect-src 不放行 data:，不能用 fetch。 */
@@ -66,7 +72,7 @@ export const MAX_SAVE_BYTES = 2 * 1024 * 1024 * 1024;
 export async function saveBytesToDisk(bytes: Uint8Array, suggestedName: string): Promise<SaveResult> {
   if (bytes.byteLength > MAX_SAVE_BYTES) throw new Error('文件过大（超过 2 GB），无法保存');
   if (!inTauri()) {
-    saveAs(new Blob([bytes as BlobPart]), suggestedName);
+    blobFallback(new Blob([bytes as BlobPart]), suggestedName);
     return 'fallback';
   }
   const saved = await invoke<string | null>('save_bytes', bytes, {
@@ -89,7 +95,7 @@ async function blobToBytes(blob: Blob): Promise<Uint8Array> {
 /** 前端生成的 Blob（ZIP、导出 JSON 等）。 */
 export async function saveBlobToDisk(blob: Blob, suggestedName: string): Promise<SaveResult> {
   if (!inTauri()) {
-    saveAs(blob, suggestedName);
+    blobFallback(blob, suggestedName);
     return 'fallback';
   }
   return saveBytesToDisk(await blobToBytes(blob), suggestedName);

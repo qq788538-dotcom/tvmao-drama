@@ -1,13 +1,13 @@
 //! “保存到本地”：把媒体文件 / 前端生成的字节写到**用户在系统保存对话框里选的位置**。
 //!
-//! 为什么不靠 `<a download>`：wry 0.57 的 WKWebView 导航代理在没有注册 download handler 时，
+//! 为什么不靠锚点 download 属性：wry 0.57 的 WKWebView 导航代理在没有注册 download handler 时，
 //! 对 `shouldPerformDownload` 的导航直接回 `Cancel`（见 wry src/wkwebview/navigation.rs），
 //! Tauri 只有在 `WebviewBuilder::on_download` 被调用时才注册 handler。本应用没注册，
-//! 所以 macOS 上点 `<a download>` 没有任何反应。
+//! 所以 macOS 上点带 download 属性的锚点没有任何反应。
 //!
 //! 安全约束（spec SEC4）：
 //! - 写盘目标路径只来自本模块在 Rust 里弹出的保存 / 选文件夹对话框，前端拿不到“往任意路径写”的能力，
-//!   也不需要授予前端任何 dialog / fs 权限。
+//!   前端只有 dialog:allow-open（P4 数据目录选择，只返回路径），不授予 dialog:allow-save / fs:*。
 //! - 复制媒体时，源只接受 sidecar 发出的本地媒体 URL（或 `media://<key>`），key 规则与
 //!   server/internal/assets/local.go 的 ValidKey 一致，并在 canonicalize 之后再确认仍在媒体根目录内
 //!   （防符号链接逃逸；媒体根目录的上一级就是 data.db）。
