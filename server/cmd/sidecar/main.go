@@ -107,11 +107,15 @@ func run() error {
 		return err
 	}
 
-	a := wire(conn, storage, localauth.Config{
+	a, err := wire(conn, storage, localauth.Config{
 		Token:          token,
 		MediaToken:     mediaToken,
 		AllowedOrigins: splitOrigins(*origins),
 	}, *dataDir, version)
+	if err != nil {
+		ln.Close()
+		return err
+	}
 	apphttp.MustWire(a.deps)
 	srv := &nethttp.Server{
 		Handler: apphttp.NewRouter(a.deps),
@@ -125,6 +129,9 @@ func run() error {
 		a.cleaner.Start(ctx, projectCleanInterval),
 		a.sweeper.Start(ctx, orphanSweepInterval, library.DefaultGracePeriod),
 	}
+	// 生成后台：先把上个进程的租约判过期并续跑在途任务，再起队列/投递/巡检循环（spec S7）。
+	// 在 READY 之前调用；退出时随 ctx 取消停下，没跑完的任务由下次启动续跑。
+	a.gen.Gen.StartBackground(ctx)
 
 	go func() {
 		waitForShutdown(stdin)

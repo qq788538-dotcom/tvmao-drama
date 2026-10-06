@@ -49,7 +49,10 @@ func newE2E(t *testing.T) *e2eEnv {
 	if err := os.WriteFile(filepath.Join(dataDir, "secret.txt"), []byte("API-KEY"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	a := wire(conn, storage, localauth.Config{Token: testToken, MediaToken: e2eMediaToken, AllowedOrigins: []string{"tauri://localhost"}}, dataDir, "test")
+	a, err := wire(conn, storage, localauth.Config{Token: testToken, MediaToken: e2eMediaToken, AllowedOrigins: []string{"tauri://localhost"}}, dataDir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
 	apphttp.MustWire(a.deps)
 	srv.Config.Handler = apphttp.NewRouter(a.deps)
 	srv.Start()
