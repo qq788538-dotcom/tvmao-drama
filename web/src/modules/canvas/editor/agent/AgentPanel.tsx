@@ -52,6 +52,7 @@ import { MessageBubble } from './MessageBubble';
 import { SkillCreateModal } from './SkillCreateModal';
 import { SkillPopover } from './SkillPopover';
 import type { Artifact, ContentBlock, Mention } from './types';
+import { sidecarWsUrl } from '@/shared/sidecarSession';
 
 export interface AgentPanelProps {
   projectId: number;
@@ -265,7 +266,7 @@ export function AgentPanel({ projectId, jwt, open, width, onWidthChange, onClose
     if (!jwt) return;
     setCurrentProjectId(projectId);
     setConnectionState('connecting');
-    const c = new AgentClient({ url: '/api/v1/agent/ws', token: jwt, projectId });
+    const c = new AgentClient({ url: sidecarWsUrl('/api/v1/agent/ws'), token: jwt, projectId });
     // 【L6】状态回调只认「当前 client」：effect 重建 client 后，旧 socket 的
     // close 事件是异步派发的、可能晚到，不加守卫会把新连接的 connectionState
     // 打回 closed，让 12s 看门狗对健康连接误开火。

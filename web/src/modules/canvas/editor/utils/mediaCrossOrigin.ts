@@ -15,7 +15,16 @@
 // 只对平台签名 URL 生效（带 TOS/S3 签名参数的才是我们的对象存储，CORS 已
 // 配置）：极少数历史节点可能落了上游裸 URL（persistOutputs 存储失败的回退
 // 路径），那些主机未必配 CORS，加 crossOrigin 反而会让本来能播的直接拒载。
+//
+// 桌面端：媒体由本机 sidecar（http://127.0.0.1:<端口>/…）提供，页面来源却是
+// tauri://localhost（Windows 是 http://tauri.localhost），两者跨源。不带
+// crossOrigin 加载的图片会污染 canvas，宫格切分/标注/旋转烘焙读像素时直接抛
+// SecurityError。sidecar 对白名单 Origin 回 Access-Control-Allow-Origin，所以
+// 本机媒体一律按 CORS 模式加载。
+const SIDECAR_MEDIA = /^http:\/\/127\.0\.0\.1:\d+\//;
+
 export function mediaCrossOrigin(url: string | null | undefined): 'anonymous' | undefined {
   if (!url) return undefined;
+  if (SIDECAR_MEDIA.test(url)) return 'anonymous';
   return url.includes('X-Tos-') || url.includes('X-Amz-') ? 'anonymous' : undefined;
 }
