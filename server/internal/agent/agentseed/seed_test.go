@@ -130,7 +130,7 @@ func TestImportRemovesRowsNotInSeed(t *testing.T) {
 }
 
 func TestDefaultBackboneModelName(t *testing.T) {
-	if name, ok := DefaultBackboneModelName(1); !ok || name != "canvas-agent-gpt-5.5" {
+	if name, ok := DefaultBackboneModelName(1); !ok || name != "gpt-5.5" {
 		t.Fatalf("got %q %v", name, ok)
 	}
 	if _, ok := DefaultBackboneModelName(999); ok {
@@ -179,5 +179,37 @@ func TestImportHandlesSwappedCategoryNames(t *testing.T) {
 	_ = conn.QueryRow(`SELECT name FROM skill_categories WHERE id=2`).Scan(&got)
 	if got != n2 {
 		t.Fatalf("id 2 应恢复为 %q，得到 %q", n2, got)
+	}
+}
+
+// 旧库里 model_name 仍是合并前的 canvas-agent-gpt-5.5（未被用户覆盖）：升级导入后变成 gpt-5.5；
+// 被用户在设置页覆盖过的行（model_name_overridden=1）保持用户的选择。
+func TestImportUpgradesMergedGPT55ModelName(t *testing.T) {
+	conn := dbtest.Open(t)
+	insertModels(t, conn, toolModelIDs...)
+	if _, err := Import(conn); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(`UPDATE agent_backbone_models SET model_name='canvas-agent-gpt-5.5' WHERE id IN (1,2)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(`UPDATE agent_backbone_models SET model_name_overridden=1 WHERE id=2`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(conn); err != nil {
+		t.Fatal(err)
+	}
+	var m1, m2 string
+	if err := conn.QueryRow(`SELECT model_name FROM agent_backbone_models WHERE id=1`).Scan(&m1); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.QueryRow(`SELECT model_name FROM agent_backbone_models WHERE id=2`).Scan(&m2); err != nil {
+		t.Fatal(err)
+	}
+	if m1 != "gpt-5.5" {
+		t.Fatalf("未覆盖的旧行应升级为 gpt-5.5，got %q", m1)
+	}
+	if m2 != "canvas-agent-gpt-5.5" {
+		t.Fatalf("用户覆盖过的行应保持，got %q", m2)
 	}
 }
