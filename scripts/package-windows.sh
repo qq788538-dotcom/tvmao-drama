@@ -23,6 +23,9 @@ rm -rf "$STAGE" "$ZIP"
 mkdir -p "$STAGE"
 cp "$REL/miaoju.exe" "$REL/sidecar.exe" "$STAGE/"
 
+# 内置 Python：sidecar 在自身所在目录的 python/ 下找解释器，必须是 Windows 版本。
+[ -f src-tauri/resources/python/python.exe ] || { echo "内置 Python 不是 Windows 版本，先运行 scripts/fetch-python.sh $TARGET" >&2; exit 1; }
+
 # --no-bundle 不处理 bundle.resources：按 {源: 目标} 映射复制到 exe 同目录
 while IFS=$'\t' read -r src dest; do
   [ -n "$src" ] || continue
@@ -34,6 +37,8 @@ while IFS=$'\t' read -r src dest; do
     cp "src-tauri/$src" "$STAGE/$dest"
   fi
 done < <(node scripts/lib/list-resources.mjs src-tauri/tauri.conf.json)
+# 占位说明和下载戳不进发布包
+rm -f "$STAGE/python/README.md" "$STAGE/python/.stamp"
 
 # 说明文件：UTF-8 BOM + CRLF，老版本记事本打开也不乱码
 { printf '\xEF\xBB\xBF'; sed 's/$/\r/' "packaging/首次打开说明-Windows.txt"; } > "$STAGE/首次打开说明.txt"
