@@ -3,13 +3,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const invoke = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
+let eventHandler: ((e: { payload: unknown }) => void) | null = null;
+const unlisten = vi.fn();
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: (name: string, handler: (e: { payload: unknown }) => void) => {
+    expect(name).toBe('sidecar-state');
+    eventHandler = handler;
+    return Promise.resolve(unlisten);
+  },
+}));
+
 import {
   authHeaders,
   buildHttpUrl,
   buildMediaUrl,
   buildWsUrl,
   getServerInfo,
+  getSidecarStatus,
+  onSidecarStatus,
   resetServerInfoForTest,
+  restartSidecar,
 } from './server';
 
 const info = { port: 54321, token: 'a+b/c=' };
@@ -17,6 +30,7 @@ const info = { port: 54321, token: 'a+b/c=' };
 beforeEach(() => {
   invoke.mockReset();
   resetServerInfoForTest();
+  eventHandler = null;
 });
 
 describe('URL 构造', () => {
@@ -61,5 +75,44 @@ describe('getServerInfo', () => {
     invoke.mockResolvedValueOnce(info);
     expect(await getServerInfo()).toEqual(info);
     expect(invoke).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('sidecar 状态', () => {
+  it('getSidecarStatus 调用 sidecar_status', async () => {
+    invoke.mockResolvedValue({ status: 'ready' });
+    expect(await getSidecarStatus()).toEqual({ status: 'ready' });
+    expect(invoke).toHaveBeenCalledWith('sidecar_status');
+  });
+
+  it('restartSidecar 调用 restart_sidecar，并把新端口写入缓存', async () => {
+    invoke.mockResolvedValueOnce(info);
+    await getServerInfo();
+    const fresh = { port: 60000, token: 'new' };
+    invoke.mockResolvedValueOnce(fresh);
+    expect(await restartSidecar()).toEqual(fresh);
+    expect(invoke).toHaveBeenLastCalledWith('restart_sidecar');
+    expect(await getServerInfo()).toEqual(fresh);
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it('restartSidecar 失败不缓存', async () => {
+    invoke.mockRejectedValueOnce('本地服务启动失败：x');
+    await expect(restartSidecar()).rejects.toBe('本地服务启动失败：x');
+    invoke.mockResolvedValueOnce(info);
+    expect(await getServerInfo()).toEqual(info);
+  });
+
+  it('收到状态事件时回调并清掉端口缓存', async () => {
+    invoke.mockResolvedValue(info);
+    await getServerInfo();
+    const seen: unknown[] = [];
+    const un = await onSidecarStatus((s) => seen.push(s));
+    eventHandler!({ payload: { status: 'starting' } });
+    expect(seen).toEqual([{ status: 'starting' }]);
+    await getServerInfo();
+    expect(invoke).toHaveBeenCalledTimes(2); // 缓存已清，重新调用 server_info
+    un();
+    expect(unlisten).toHaveBeenCalled();
   });
 });
