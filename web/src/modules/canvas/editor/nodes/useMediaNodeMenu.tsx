@@ -19,6 +19,7 @@ import {
   revealErrorMessage,
   revealInFileManager,
 } from '@/desktop/localMedia';
+import { useUnsavedLocalBadge } from '@/desktop/unsavedLocal';
 
 type Kind = 'image' | 'video' | 'audio';
 
@@ -125,6 +126,7 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
   const canAct = !!url;
   const duration = useMediaDuration(url, kind);
   const durationCheck = checkSeedanceDuration(kind, duration);
+  const unsavedBadge = useUnsavedLocalBadge(nodeId);
 
   const statusQuery = useQuery({
     queryKey: ['seedance-status', url],
@@ -248,9 +250,9 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
     },
   ];
 
-  // 状态角标。没校验过的不显示任何东西——绝大多数素材都属于这一类，全都挂标记
+  // 合规状态角标。没校验过的不显示任何东西——绝大多数素材都属于这一类，全都挂标记
   // 只会变成噪音。
-  const badge = !state ? null : state.status === 'active' ? (
+  const seedanceBadge = !state ? null : state.status === 'active' ? (
     <span
       className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-600/90 text-white text-[11px] leading-none font-medium"
       title="已通过 Seedance 2.0 合规校验"
@@ -277,6 +279,14 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
       校验中
     </span>
   );
+
+  // 「未保存到本地」（spec S5）和合规角标互不相干，同时出现时并排显示，未保存排前面。
+  const badge = unsavedBadge || seedanceBadge ? (
+    <>
+      {unsavedBadge}
+      {seedanceBadge}
+    </>
+  ) : null;
 
   const overlay = (
     <>

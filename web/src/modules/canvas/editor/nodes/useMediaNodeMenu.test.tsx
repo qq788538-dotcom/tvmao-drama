@@ -47,6 +47,7 @@ function Probe({
   return (
     <div data-testid="probe" onContextMenu={menu.onContextMenu}>
       probe
+      {menu.badge}
       {menu.overlay}
     </div>
   );
@@ -299,5 +300,38 @@ describe('useMediaNodeMenu 在访达中显示（S3）', () => {
     expect(save).toBeGreaterThanOrEqual(0);
     expect(reveal).toBe(save + 1);
     expect(del).toBe(reveal + 1);
+  });
+});
+
+describe('useMediaNodeMenu 「未保存到本地」角标（S5）', () => {
+  it('生成结果还是上游外链时，badge 里有「未保存到本地」和「重试」', () => {
+    useCanvasStore.setState({
+      nodes: [{
+        id: 'g1', type: 'gen-image', x: 0, y: 0, width: 280, height: 280,
+        status: 'succeeded', content: 'https://upstream.example.com/1.png', settings: {},
+      }],
+      connections: [],
+      selectedIds: new Set(),
+      view: { x: 0, y: 0, zoom: 1 },
+      lightbox: null,
+    });
+    renderProbe({ url: 'https://upstream.example.com/1.png', kind: 'image', nodeId: 'g1' });
+    expect(screen.getByText('未保存到本地')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
+  });
+
+  it('本机文件不挂这个角标', () => {
+    useCanvasStore.setState({
+      nodes: [{
+        id: 'g1', type: 'gen-image', x: 0, y: 0, width: 280, height: 280,
+        status: 'succeeded', content: 'http://127.0.0.1:5123/media/k', settings: {},
+      }],
+      connections: [],
+      selectedIds: new Set(),
+      view: { x: 0, y: 0, zoom: 1 },
+      lightbox: null,
+    });
+    renderProbe({ url: 'http://127.0.0.1:5123/media/k', kind: 'image', nodeId: 'g1' });
+    expect(screen.queryByText('未保存到本地')).toBeNull();
   });
 });
