@@ -150,8 +150,8 @@ pub fn run() {
     app.run(|app, event| {
         if let RunEvent::Exit = event {
             let manager = app.state::<Arc<SidecarManager>>().inner().clone();
-            // 关 stdin → 等 sidecar 收尾（最多 3 秒）→ 强杀。整体再加上限，避免卡在“启动中”的锁上；
-            // 即便超时，壳退出后 stdin 管道关闭，sidecar 也会自行退出。
+            // 关 stdin → 等 sidecar 收尾（最多 3 秒）→ 强杀。正在启动时 shutdown 会立即取消启动，不会等 READY。
+            // 整体再加上限兜底；即便超时，壳退出后 stdin 管道关闭，sidecar 也会自行退出。
             let _ = tauri::async_runtime::block_on(async move {
                 tokio::time::timeout(Duration::from_secs(6), manager.shutdown()).await
             });

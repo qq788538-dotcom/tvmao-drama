@@ -3,23 +3,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const invoke = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
 
-let eventHandler: ((e: { payload: unknown }) => void) | null = null;
+type Handler = (e: { payload: unknown }) => void;
+let handlers: Handler[] = [];
+const fire = (payload: unknown) => handlers.forEach((h) => h({ payload }));
 const unlisten = vi.fn();
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: (name: string, handler: (e: { payload: unknown }) => void) => {
+  listen: (name: string, handler: Handler) => {
     expect(name).toBe('sidecar-state');
-    eventHandler = handler;
+    handlers.push(handler);
     return Promise.resolve(unlisten);
   },
 }));
 
 import {
+  DataDirSwitchError,
   authHeaders,
   buildHttpUrl,
   buildMediaUrl,
   buildWsUrl,
+  getDataDir,
   getServerInfo,
   getSidecarStatus,
+  switchToDefaultDataDir,
   onSidecarStatus,
   resetServerInfoForTest,
   restartSidecar,
@@ -29,8 +34,8 @@ const info = { port: 54321, token: 'a+b/c=' };
 
 beforeEach(() => {
   invoke.mockReset();
+  handlers = [];
   resetServerInfoForTest();
-  eventHandler = null;
 });
 
 describe('URL 构造', () => {
@@ -108,11 +113,58 @@ describe('sidecar 状态', () => {
     await getServerInfo();
     const seen: unknown[] = [];
     const un = await onSidecarStatus((s) => seen.push(s));
-    eventHandler!({ payload: { status: 'starting' } });
+    fire({ status: 'starting' });
     expect(seen).toEqual([{ status: 'starting' }]);
     await getServerInfo();
     expect(invoke).toHaveBeenCalledTimes(2); // 缓存已清，重新调用 server_info
     un();
     expect(unlisten).toHaveBeenCalled();
+  });
+});
+
+// 端口缓存不能只靠 SidecarGate 挂着才失效：Gate 之外缓存过的调用方也要拿到新端口。
+describe('端口缓存全局失效', () => {
+  it('没有任何组件订阅时，状态事件也会清掉缓存', async () => {
+    invoke.mockResolvedValue(info);
+    await getServerInfo();
+    await Promise.resolve();
+    expect(handlers.length).toBe(1); // 首次取 info 时注册的全局监听
+    fire({ status: 'starting' });
+    await getServerInfo();
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it('全局监听只注册一次', async () => {
+    invoke.mockResolvedValue(info);
+    await getServerInfo();
+    fire({ status: 'ready' });
+    await getServerInfo();
+    await restartSidecar();
+    await Promise.resolve();
+    expect(handlers.length).toBe(1);
+  });
+});
+
+describe('数据目录', () => {
+  it('getDataDir 调用 get_data_dir', async () => {
+    const dd = { current: '/Volumes/外接盘/喵剧', default: '/Users/a/Library/x', custom: true };
+    invoke.mockResolvedValue(dd);
+    expect(await getDataDir()).toEqual(dd);
+    expect(invoke).toHaveBeenCalledWith('get_data_dir');
+  });
+
+  it('switchToDefaultDataDir 先 set_data_dir(null) 再 restart_sidecar', async () => {
+    invoke.mockResolvedValueOnce({ current: '/d', default: '/d', custom: false });
+    invoke.mockResolvedValueOnce(info);
+    expect(await switchToDefaultDataDir()).toEqual(info);
+    expect(invoke.mock.calls).toEqual([['set_data_dir', { path: null }], ['restart_sidecar']]);
+  });
+
+  it('set_data_dir 失败时不重启', async () => {
+    invoke.mockRejectedValueOnce('无法删除 location.json');
+    const err = await switchToDefaultDataDir().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DataDirSwitchError);
+    expect((err as Error).message).toBe('无法切换到默认数据目录：无法删除 location.json');
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 });

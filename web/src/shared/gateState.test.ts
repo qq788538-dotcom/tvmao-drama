@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gateReducer, initialGateState } from './gateState';
+import { gateReducer, initialGateState, offerDefaultDataDir } from './gateState';
 
 const info = { port: 4001, token: 't' };
 
@@ -38,5 +38,18 @@ describe('gateReducer', () => {
       epoch: 0,
       view: { kind: 'failed', reason: '启动超时' },
     });
+  });
+});
+
+// 失败页上的“改用默认数据目录”：只在数据目录可能是原因时出现。
+describe('offerDefaultDataDir', () => {
+  it('正在用自定义目录时提供', () => {
+    expect(offerDefaultDataDir({ ok: true, info: { current: '/Volumes/x', default: '/d', custom: true } })).toBe(true);
+  });
+  it('用的就是默认目录时不提供（切过去没有意义）', () => {
+    expect(offerDefaultDataDir({ ok: true, info: { current: '/d', default: '/d', custom: false } })).toBe(false);
+  });
+  it('读不出数据目录配置（location.json 损坏）时提供', () => {
+    expect(offerDefaultDataDir({ ok: false })).toBe(true);
   });
 });

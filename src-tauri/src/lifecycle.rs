@@ -2,7 +2,8 @@
 //! - 启动在后台进行，不阻塞主线程；前端 server_info 会等到“不再是启动中”。
 //! - 就绪后 sidecar 崩溃：自动重启一次；距上次自动重启不到 crash_window 又崩 → 失败，由用户点“重试”。
 //! - restart()：前端“重试”或 P4 切换数据目录后调用；清零自动重启计数。
-//! - shutdown()：应用退出时调用，之后不再拉起。
+//! - shutdown()：应用退出时调用，之后不再拉起。先置位 closing（不拿锁），正在进行的启动随即被取消，
+//!   所以退出不会卡在等 READY 上。
 //! 不依赖 Tauri：状态变化通过 Emitter 回调发出（lib.rs 里转成 `sidecar-state` 事件）。
 
 use std::sync::Arc;
@@ -119,12 +120,13 @@ struct Inner {
     /// 每次拉起 +1；退出通知带着自己的代号，不匹配说明已被新进程取代，忽略。
     generation: u64,
     policy: RestartPolicy,
-    closing: bool,
 }
 
 pub struct SidecarManager {
     phase: watch::Sender<Phase>,
     inner: Mutex<Inner>,
+    /// 应用正在退出。独立于 inner 锁：shutdown 要能在启动进行中（持锁）时立即置位并取消启动。
+    closing: watch::Sender<bool>,
     make_spec: SpecFactory,
     emit: Emitter,
     timeouts: Timeouts,
@@ -138,8 +140,8 @@ impl SidecarManager {
                 handle: None,
                 generation: 0,
                 policy: RestartPolicy::default(),
-                closing: false,
             }),
+            closing: watch::Sender::new(false),
             make_spec,
             emit,
             timeouts,
@@ -186,16 +188,22 @@ impl SidecarManager {
 
     /// 应用退出：不再自动重启，优雅关闭当前进程。
     pub async fn shutdown(&self) {
+        // 先置位（不拿锁）：持锁中的 start_locked 会看到并取消正在进行的启动，随后释放锁。
+        self.closing.send_replace(true);
         let mut inner = self.inner.lock().await;
-        inner.closing = true;
         if let Some(h) = inner.handle.take() {
             h.shutdown(self.timeouts.grace).await;
         }
     }
 
+    fn is_closing(&self) -> bool {
+        *self.closing.borrow()
+    }
+
     async fn start_locked(self: &Arc<Self>, inner: &mut Inner) -> Result<ServerInfo, String> {
-        if inner.closing {
-            return Err("应用正在退出".to_string());
+        const CLOSING: &str = "应用正在退出";
+        if self.is_closing() {
+            return Err(CLOSING.to_string());
         }
         if let Some(old) = inner.handle.take() {
             old.shutdown(self.timeouts.grace).await;
@@ -204,13 +212,23 @@ impl SidecarManager {
         let generation = inner.generation;
         self.set_phase(Phase::Starting);
 
-        let launched = async {
+        let launching = async {
             let spec = (self.make_spec)()?;
             let token = new_token();
             let l = launch(&spec, &token, self.timeouts.ready).await?;
             Ok::<_, String>((ServerInfo { port: l.port, token }, l.handle))
-        }
-        .await;
+        };
+        // 退出时取消启动：丢弃 launch 的 future 会一并丢弃子进程句柄，进程被强杀（还没就绪，没有可收尾的数据）。
+        let mut closing = self.closing.subscribe();
+        let launched = tokio::select! {
+            r = launching => r,
+            _ = closing.wait_for(|c| *c) => {
+                // 让还在等 server_info 的调用结束，不要一直挂着
+                self.set_phase(Phase::Failed(CLOSING.to_string()));
+                return Err(CLOSING.to_string());
+            }
+        };
+        // 就绪与退出同时发生：交还给 shutdown 去优雅关闭。
 
         match launched {
             Ok((info, handle)) => {
@@ -241,7 +259,7 @@ impl SidecarManager {
     async fn on_exit(self: &Arc<Self>, generation: u64, info: ExitInfo) {
         let mut inner = self.inner.lock().await;
         // 主动关闭（退出 / 重启）或已被新进程取代：不算崩溃
-        if inner.closing || inner.generation != generation {
+        if self.is_closing() || inner.generation != generation {
             return;
         }
         inner.handle = None;
@@ -460,6 +478,45 @@ mod manager_tests {
         assert_eq!(n.load(Ordering::SeqCst), 3);
         assert_eq!(m.status(), SidecarStatus::Ready);
         m.shutdown().await;
+    }
+
+    // I3：启动卡住（迟迟不 READY）时退出，不能等到 ready 超时，要在 1 秒内返回。
+    #[tokio::test]
+    async fn shutdown_during_slow_launch_returns_within_1s() {
+        let (f, n) = scripted(vec![r#"read t; sleep 30"#]);
+        let (emit, _) = recorder();
+        let slow = Timeouts { ready: Duration::from_secs(20), ..fast() };
+        let m = SidecarManager::new(f, emit, slow);
+        let m2 = m.clone();
+        let starting = tokio::spawn(async move { m2.start().await });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let t0 = Instant::now();
+        tokio::time::timeout(Duration::from_secs(1), m.shutdown()).await.expect("shutdown 应在 1 秒内返回");
+        assert!(t0.elapsed() < Duration::from_secs(1));
+        let r = tokio::time::timeout(Duration::from_secs(1), starting).await.expect("start 应随之结束").unwrap();
+        assert!(r.is_err());
+        assert!(m.inner.lock().await.handle.is_none());
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(n.load(Ordering::SeqCst), 1, "退出后不再拉起");
+    }
+
+    // I3：自动重启进行中退出，同样立即返回。
+    #[tokio::test]
+    async fn shutdown_during_auto_restart_returns_within_1s() {
+        let (f, n) = scripted(vec![CRASH_4003, r#"read t; sleep 30"#]);
+        let (emit, _) = recorder();
+        let slow = Timeouts { ready: Duration::from_secs(20), ..fast() };
+        let m = SidecarManager::new(f, emit, slow);
+        m.start().await.unwrap();
+        for _ in 0..250 {
+            if n.load(Ordering::SeqCst) == 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(n.load(Ordering::SeqCst), 2);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::timeout(Duration::from_secs(1), m.shutdown()).await.expect("shutdown 应在 1 秒内返回");
     }
 
     #[tokio::test]

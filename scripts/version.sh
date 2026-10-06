@@ -40,7 +40,8 @@ case "${1:-}" in
     # 只改 [package] 段的第一行 version（依赖写成 { version = ... }，不以 version 开头）
     sed -i '' "1,/^version = /s/^version = \".*\"$/version = \"$V\"/" src-tauri/Cargo.toml
     # 刷新 Cargo.lock 里本包的版本
-    ( cd src-tauri && cargo update --workspace --offline >/dev/null 2>&1 )
+    ( cd src-tauri && cargo update --workspace --offline --quiet ) \
+      || { echo "刷新 Cargo.lock 失败：请联网后在 src-tauri 下运行 cargo update --workspace" >&2; exit 1; }
     bash scripts/version.sh check
     ;;
   *)

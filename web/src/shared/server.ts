@@ -10,9 +10,30 @@ export interface ServerInfo {
 }
 
 let cached: Promise<ServerInfo> | null = null;
+let invalidatorRegistered = false;
+
+/**
+ * 全局监听状态事件、清端口缓存，不依赖任何组件挂载：sidecar 自动重启后端口和 token 都会变，
+ * Gate 之外（或 Gate 挂载之前）缓存过的调用方下次也能拿到新值。第一次写缓存时注册，只注册一次。
+ */
+function ensureCacheInvalidator(): void {
+  if (invalidatorRegistered) return;
+  invalidatorRegistered = true;
+  try {
+    listen(SIDECAR_STATE_EVENT, () => {
+      cached = null;
+    }).catch(() => {
+      invalidatorRegistered = false;
+    });
+  } catch {
+    // 非 Tauri 环境（纯浏览器调试）没有事件通道
+    invalidatorRegistered = false;
+  }
+}
 
 /** 记入缓存；失败时清掉，下次调用会重试。 */
 function track(pending: Promise<ServerInfo>): Promise<ServerInfo> {
+  ensureCacheInvalidator();
   cached = pending;
   pending.catch(() => {
     if (cached === pending) cached = null;
@@ -51,6 +72,39 @@ export function onSidecarStatus(cb: (s: SidecarStatus) => void): Promise<Unliste
   });
 }
 
+/** 与 src-tauri/src/data_dir.rs 的 DataDirInfo 一致。 */
+export interface DataDirInfo {
+  current: string;
+  default: string;
+  custom: boolean;
+}
+
+/** 当前数据目录。location.json 损坏时 reject（带原因）。 */
+export function getDataDir(): Promise<DataDirInfo> {
+  return invoke<DataDirInfo>('get_data_dir');
+}
+
+/**
+ * 失败页“改用默认数据目录”：删掉自定义目录配置再重启 sidecar。
+ * 只改用哪个目录，不搬、不删原目录里的数据。
+ */
+export async function switchToDefaultDataDir(): Promise<ServerInfo> {
+  try {
+    await invoke<DataDirInfo>('set_data_dir', { path: null });
+  } catch (e) {
+    throw new DataDirSwitchError(String(e));
+  }
+  return restartSidecar();
+}
+
+/** 切换配置这一步失败（此时没有重启）。重启失败则照常是 restart_sidecar 的原因字符串，由失败页显示。 */
+export class DataDirSwitchError extends Error {
+  constructor(reason: string) {
+    super(`无法切换到默认数据目录：${reason}`);
+    this.name = 'DataDirSwitchError';
+  }
+}
+
 export function buildHttpUrl(info: ServerInfo, path: string): string {
   return `http://127.0.0.1:${info.port}${path}`;
 }
@@ -76,4 +130,5 @@ export function authHeaders(info: ServerInfo): { Authorization: string } {
 /** 仅供测试清缓存。 */
 export function resetServerInfoForTest(): void {
   cached = null;
+  invalidatorRegistered = false;
 }

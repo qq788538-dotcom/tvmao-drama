@@ -5,7 +5,8 @@
 ## 1. 工具版本（记录到结果文件）
 
 - `cargo tauri --version`、`rustc --version`、`go version`、`node --version`、`cargo xwin --version`
-- 已知无害警告：（T9 Step 8 的结论写在这里）
+- 需要 `tauri-cli` ≥ 2.12.1（`cargo install tauri-cli --locked`）。2.11.x 交叉编译 Windows 时会出现 `STATIC_VCRUNTIME` 弃用警告；升到 2.12.1 后警告消失，目前没有已知的无害警告。
+- 只能用 `pnpm release`（`scripts/release-macos.sh`）/ `scripts/package-windows.sh` 出包；不要直接跑 `cargo tauri build`，那样得不到带首次打开说明的 dmg。
 
 ## 2. 发版前
 
