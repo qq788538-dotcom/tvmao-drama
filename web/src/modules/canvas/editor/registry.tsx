@@ -4,9 +4,9 @@ import {
   Camera,
   Clapperboard,
   Eye,
-  // HardDrive / Split 只被下面隐藏的「输出」组菜单项引用，恢复时一起放开。
-  // HardDrive,
+  HardDrive,
   Sparkles,
+  // Split 只被下面隐藏的「图片对比」菜单项引用，恢复时一起放开。
   // Split,
   Type,
   Upload,
@@ -70,11 +70,10 @@ export const nodeMenuItems: NodeMenuItem[] = [
   { type: 'gen-audio', label: 'AI 音频', icon: AudioLines, group: 'generate', hint: '调用音频模型' },
   { type: 'script', label: '脚本', icon: Clapperboard, group: 'generate', hint: '分镜脚本 → 批量生视频' },
   { type: 'director-desk', label: '3D导演台', icon: Camera, group: 'generate', hint: '3D 摆位预演 → 机位截图' },
-  // 「输出」组（image-compare / local-save / preview）按用户要求隐藏——只是
-  // 不出现在右键菜单里，不是移除：仍注册在 nodeComponents，存量项目里的这些
-  // 节点照常渲染。ContextMenu 对空分组会跳过标题，所以「输出」标题也随之消失。
-  // 要恢复显示，取消下面三行注释即可。
+  // 「输出」组：「保存到本地」按 spec F2 放回菜单；「图片对比」「预览」按用户要求继续
+  // 隐藏——只是不出现在菜单里，不是移除：仍注册在 nodeComponents，存量项目里的这些
+  // 节点照常渲染。要恢复显示，取消对应行的注释即可。
   // { type: 'image-compare', label: '图片对比', icon: Split, group: 'output', hint: '滑动对比两张图片' },
-  // { type: 'local-save', label: '保存到本地', icon: HardDrive, group: 'output', hint: '下载图片或视频' },
+  { type: 'local-save', label: '保存到本地', icon: HardDrive, group: 'output', hint: '下载图片或视频' },
   // { type: 'preview', label: '预览', icon: Eye, group: 'output', hint: '查看图片或视频' },
 ];
