@@ -59,8 +59,12 @@ export function dataUrlToBytes(dataUrl: string): Uint8Array {
   return new TextEncoder().encode(decodeURIComponent(payload));
 }
 
-/** 把字节交给 Rust：弹保存对话框并写盘。 */
+/** 与 src-tauri/src/media_save.rs 的 MAX_SAVE_BYTES 一致：超出不发给 Rust，免得 IPC 把内存撑爆。 */
+export const MAX_SAVE_BYTES = 2 * 1024 * 1024 * 1024;
+
+/** 把字节交给 Rust：弹保存对话框并写盘。Rust 会按文件头修正扩展名。 */
 export async function saveBytesToDisk(bytes: Uint8Array, suggestedName: string): Promise<SaveResult> {
+  if (bytes.byteLength > MAX_SAVE_BYTES) throw new Error('文件过大（超过 2 GB），无法保存');
   if (!inTauri()) {
     saveAs(new Blob([bytes as BlobPart]), suggestedName);
     return 'fallback';
@@ -174,7 +178,7 @@ export async function saveWithFeedback(
   }
 }
 
-/** 按 URL 粗略推断扩展名，给建议文件名用（生成产物的 key 没有扩展名，调用方应优先自己给）。 */
+/** 按 URL 粗略推断扩展名，给建议文件名用。Tauri 下 Rust 会再按文件头魔数修正成真实扩展名，这里只是兜底。 */
 export function extFromUrl(url: string, fallback: string): string {
   const path = url.split(/[?#]/)[0];
   const m = /\.([a-z0-9]{2,5})$/i.exec(path);

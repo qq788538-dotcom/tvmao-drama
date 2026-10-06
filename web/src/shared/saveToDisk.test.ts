@@ -11,6 +11,8 @@ vi.mock('file-saver', () => ({ saveAs: (...args: unknown[]) => saveAs(...args) }
 
 import {
   FILE_NAME_HEADER,
+  MAX_SAVE_BYTES,
+  saveBytesToDisk,
   dataUrlToBytes,
   extFromUrl,
   isLocalMediaUrl,
@@ -120,6 +122,15 @@ describe('saveBlobToDisk (Tauri)', () => {
     expect(Array.from(body as Uint8Array)).toEqual([80, 75]);
     expect(opts.headers[FILE_NAME_HEADER]).toBe('history-1.zip');
     expect(saveAs).not.toHaveBeenCalled();
+  });
+});
+
+describe('saveBytesToDisk 大小上限', () => {
+  it('超过上限直接报错，不调 invoke（与 Rust MAX_SAVE_BYTES 一致）', async () => {
+    expect(MAX_SAVE_BYTES).toBe(2 * 1024 * 1024 * 1024);
+    const huge = { byteLength: MAX_SAVE_BYTES + 1 } as unknown as Uint8Array;
+    await expect(saveBytesToDisk(huge, 'a.zip')).rejects.toThrow('文件过大');
+    expect(invoke).not.toHaveBeenCalled();
   });
 });
 
