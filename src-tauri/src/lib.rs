@@ -1,6 +1,9 @@
 //! Tauri 薄壳：拉起 Go sidecar、完成 token 握手、把端口和 token 交给前端。
 //! 业务逻辑全部在 sidecar 里，这里不放任何业务代码。
 
+pub mod lifecycle;
+pub mod sidecar; // TEMP STUB，合并时由 T2 真实文件取代
+
 use std::sync::Mutex;
 use std::time::Duration;
 
