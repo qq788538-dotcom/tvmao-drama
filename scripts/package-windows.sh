@@ -9,6 +9,8 @@ bash scripts/version.sh check
 VERSION="$(node -p "require('./package.json').version")"
 
 bash scripts/prebuild.sh "$TARGET"
+# build-sidecar.sh 准备 Python 失败只警告；打包必须有对应平台的内置 Python（含 python.exe），否则报错退出。
+bash scripts/lib/require-python.sh "$TARGET"
 cargo tauri build --runner cargo-xwin --target "$TARGET" --no-bundle
 
 REL="src-tauri/target/$TARGET/release"
@@ -23,9 +25,7 @@ rm -rf "$STAGE" "$ZIP"
 mkdir -p "$STAGE"
 cp "$REL/miaoju.exe" "$REL/sidecar.exe" "$STAGE/"
 
-# 内置 Python：sidecar 在自身所在目录的 python/ 下找解释器，必须是 Windows 版本。
-[ -f src-tauri/resources/python/python.exe ] || { echo "内置 Python 不是 Windows 版本，先运行 scripts/fetch-python.sh $TARGET" >&2; exit 1; }
-
+# 内置 Python：sidecar 在自身所在目录的 python/ 下找解释器（Windows 版本已由 require-python.sh 校验）。
 # --no-bundle 不处理 bundle.resources：按 {源: 目标} 映射复制到 exe 同目录
 while IFS=$'\t' read -r src dest; do
   [ -n "$src" ] || continue

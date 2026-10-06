@@ -39,10 +39,13 @@ build_one() {
   esac
 
   bash scripts/prebuild.sh "$target"
+  # build-sidecar.sh 准备 Python 失败只警告；打包必须有对应架构的内置 Python，否则报错退出。
+  bash scripts/lib/require-python.sh "$target"
   cargo tauri build --target "$target" --bundles app
 
   local app="src-tauri/target/$target/release/bundle/macos/$PRODUCT.app"
   [ -d "$app" ] || { echo "缺少构建产物 $app" >&2; exit 1; }
+  [ -f "$app/Contents/Resources/python/bin/python3" ] || { echo "$app 里缺少内置 Python" >&2; exit 1; }
   # 签名必须完整且是 ad-hoc；资源要在 Tauri 签名前进包，签名后改动包内容会让 macOS 报“已损坏”
   codesign --verify --deep --strict "$app"
   # 先落变量再 grep：管道里 grep -q 提前退出会让 codesign 吃 SIGPIPE，pipefail 下偶发误判
