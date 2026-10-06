@@ -11,7 +11,6 @@ import { stopIfInVideoControls } from './videoControlsGuard';
 import {
   currentProjectId,
   fetchCanvasPostprocessConfig,
-  fetchCanvasPostprocessEstimate,
   pollCanvasTaskUntilDone,
   submitCanvasUpscale,
   submitCanvasWhiteModel,
@@ -33,11 +32,11 @@ import {
 //   1. 核心选项是「分辨率档位」——档位由后端从模型 uiSchema 读出下发，换模型档位跟着换。
 //      转高清后台配多个模型（upscaleModels），节点底部有模型下拉；转白模仍是单模型，不显示下拉；
 //   2. 没有「限时上游直连」分支，只吃对象存储里已落地的视频；
-//   3. 预估要带 resolution（档位影响单价）。
+//   3. 提交要带 resolution（档位）。
 interface TieredVariant {
   /** 可选模型（各带档位），顺序即下拉框顺序，默认选第一个；空 = 未配置。 */
   modelsOf: (cfg: CanvasPostprocessConfig) => CanvasUpscaleModelOption[];
-  /** 是否显示模型下拉。只配一个模型也显示——让用户看得到扣的积分对应哪个模型。 */
+  /** 是否显示模型下拉。只配一个模型也显示——让用户看得到用的是哪个模型。 */
   pickModel: boolean;
   submit: (input: SubmitCanvasTieredInput) => Promise<{ taskId: number; status: string }>;
   /** 提交按钮文案，同时是轮询失败时的默认错误前缀（「转高清失败」）。 */
@@ -97,7 +96,7 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
   const [pickedModelId, setPickedModelId] = useState<string>('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   useEffect(() => {
-    // 默认第一个；后台删掉了当前选中的模型也回落第一个，避免拿白名单外的 modelId 去问价/提交。
+    // 默认第一个；后台删掉了当前选中的模型也回落第一个，避免拿白名单外的 modelId 去提交。
     if (models[0] && !models.some((m) => m.modelId === pickedModelId)) {
       setPickedModelId(models[0].modelId);
     }
@@ -110,7 +109,7 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
   const [resolution, setResolution] = useState<string>('');
   useEffect(() => {
     if (!resolution && resolutions[0]) setResolution(String(resolutions[0].value));
-    // 换模型（或后台改了档位）后：新列表里有同值档位就保留——用户换模型多半是想比同一档的价；
+    // 换模型（或后台改了档位）后：新列表里有同值档位就保留——用户换模型多半还想要同一档；
     // 没有就回落到第一档，避免悬空选中。按 value 比而不是 label。
     else if (resolution && !resolutions.some((o) => String(o.value) === resolution) && resolutions[0]) {
       setResolution(String(resolutions[0].value));
@@ -118,29 +117,7 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolutions]);
 
-  // 预估整份由后端算（含按秒 × 档位）。**不要**从 <video>.duration 取时长自己拼 inputs——
-  // 那是容器声明值，可被篡改；去字幕节点就因此显示过「预计 1 积分」而实际按真实时长结算。
-  // 见后端 CanvasPostprocessHandler.Estimate 的注释。
   const projectId = currentProjectId();
-  const estimateQuery = useQuery({
-    queryKey: ['canvas-postprocess-estimate', projectId, sourceNodeId, modelId, resolution],
-    queryFn: () =>
-      fetchCanvasPostprocessEstimate({
-        projectId: projectId!,
-        sourceNodeId: sourceNodeId!,
-        modelId,
-        resolution,
-      }),
-    enabled: Boolean(projectId && sourceNodeId && modelId && resolution),
-    // 一次预估可能付了「下载源视频 + ffprobe」的代价（老视频首次），别让同一组合反复打。
-    staleTime: 300_000,
-    retry: false,
-  });
-  const estimateLabel = estimateQuery.isPending
-    ? '计算中…'
-    : estimateQuery.isError
-      ? '预计 --'
-      : `预计 ${estimateQuery.data?.credits ?? 0} 积分`;
 
   const isGenerating = node?.status === 'generating';
   const configured = Boolean(modelId) && resolutions.length > 0;
@@ -297,14 +274,6 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
               )}
 
               <div className="flex items-center gap-1.5">
-                {configured && resolution && (
-                  <span
-                    className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-[11px] text-muted-foreground border border-white/10"
-                    title="按当前档位和视频真实时长预估，实际以完成后结算为准"
-                  >
-                    {estimateLabel}
-                  </span>
-                )}
                 {variant.pickModel && configured && (
                   <div className="relative min-w-0">
                     <button

@@ -41,7 +41,7 @@ describe('ScriptGenerator', () => {
     vi.mocked(submitCanvasScriptTask).mockResolvedValue({ taskId: 7, status: 'pending' });
     renderWithQuery(<ScriptGenerator nodeId="s1" />);
     await waitFor(() => expect(screen.getByText('古风')).toBeInTheDocument());
-    expect(screen.getByText('30')).toBeInTheDocument();
+    expect(screen.queryByText('30')).toBeNull();
     const submit = screen.getByTestId('script-generator-submit');
     expect(submit).toBeDisabled();
 
@@ -61,11 +61,11 @@ describe('ScriptGenerator', () => {
     expect(screen.queryByTestId('script-generator-submit')).toBeNull();
   });
 
-  it('切换模型候选后 ⚡ 积分与提交 payload 的 model 同步更新', async () => {
+  it('切换模型候选后提交 payload 的 model 同步更新，且不显示积分', async () => {
     vi.mocked(submitCanvasScriptTask).mockResolvedValue({ taskId: 12, status: 'pending' });
     const { container } = renderWithQuery(<ScriptGenerator nodeId="s1" />);
     await waitFor(() => expect(screen.getByText('古风')).toBeInTheDocument());
-    expect(screen.getByText('30')).toBeInTheDocument();
+    expect(screen.queryByText('30')).toBeNull();
 
     // rc-select 在 `.ant-select-selector` 上监听 mousedown 展开下拉（不是外层
     // aria-label 容器）；风格 Cascader 排第一，秒数 Select 第二，模型 Select 第三。
@@ -73,7 +73,8 @@ describe('ScriptGenerator', () => {
     fireEvent.mouseDown(modelSelector);
     const option = await screen.findByTitle('深度版');
     fireEvent.click(option);
-    await waitFor(() => expect(screen.getByText('50')).toBeInTheDocument());
+    await waitFor(() => expect(modelSelector).toHaveTextContent('深度版'));
+    expect(screen.queryByText('50')).toBeNull();
 
     fireEvent.change(screen.getByTestId('script-generator-input'), { target: { value: '剧本' } });
     fireEvent.click(screen.getByTestId('script-generator-submit'));
@@ -103,7 +104,7 @@ describe('ScriptGenerator', () => {
     });
     renderWithQuery(<ScriptGenerator nodeId="s1" />);
     await waitFor(() => expect(screen.getByText('深度版')).toBeInTheDocument());
-    expect(screen.getByText('50')).toBeInTheDocument();
+    expect(screen.queryByText('50')).toBeNull();
   });
 
   it('节点 settings 预置 gen.model 指向已不在候选里的 slug 时回落第一候选', async () => {
@@ -116,7 +117,7 @@ describe('ScriptGenerator', () => {
     });
     renderWithQuery(<ScriptGenerator nodeId="s1" />);
     await waitFor(() => expect(screen.getByText('快速版')).toBeInTheDocument());
-    expect(screen.getByText('30')).toBeInTheDocument();
+    expect(screen.queryByText('30')).toBeNull();
   });
 
   it('节点 settings 预置 gen.model 非空但候选列表为空时提交按钮禁用', async () => {

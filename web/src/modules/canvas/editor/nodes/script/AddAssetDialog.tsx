@@ -6,8 +6,6 @@ import { useCanvasStore } from '../../store';
 import { persistNodeById } from '../../persistence/canvasMutations';
 import { uploadFileIntoNode } from '../../utils/uploadIntoNode';
 import { buildImageGenerationInputs } from '../../utils/generationInputs';
-import { loadEstimate } from '../../batchQueries';
-import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useScriptSettings } from './useScriptSettings';
 import { createGenAssetNode, createUploadAssetNode, linkExistingAssetNode } from './assetNodeOps';
 import { ScriptSelect } from './ScriptSelect';
@@ -82,16 +80,6 @@ export function AddAssetDialog({
     for (const [key, field] of schemaEntries) out[key] = dyn[key] ?? field.default;
     return out;
   }, [schemaEntries, dyn]);
-
-  const debouncedPrompt = useDebouncedValue(prompt, 400);
-  const estimateQuery = useQuery({
-    queryKey: ['script-asset-gen-estimate', effectiveModelId, debouncedPrompt, dynamicInputs],
-    enabled: !!effectiveModelId,
-    queryFn: () => loadEstimate({
-      modelId: effectiveModelId,
-      inputs: buildImageGenerationInputs({ prompt: debouncedPrompt, fallbackPrompt: '', dynamicInputs, connectedImages: [] }),
-    }),
-  });
 
   const [submitting, setSubmitting] = useState(false);
   const handleGenerate = async () => {
@@ -229,9 +217,6 @@ export function AddAssetDialog({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-3">
-                {typeof estimateQuery.data === 'number' && (
-                  <span className="text-xs text-muted-foreground">⚡ {estimateQuery.data}</span>
-                )}
                 <button
                   type="button"
                   data-testid="asset-gen-confirm"
