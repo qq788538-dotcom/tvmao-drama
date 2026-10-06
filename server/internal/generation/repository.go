@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -47,6 +48,10 @@ var ErrTaskNotTerminal = errors.New("task not terminal")
 // ErrDataURIInput：sink 任务的输入含内联 data URI，Submit 拒绝（HTTP 层映射 400）。
 // 见 v5 §3.1——产品路径全 URL，这是给绕过前端的直连调用方的明确报错，不是兜底。
 var ErrDataURIInput = errors.New("参考图请先上传为素材：不支持内联图片数据(data URI)")
+
+// sqlSecondsOffset 生成 datetime('now', ?) 的修饰串：-90 → "-90 seconds"，30 → "+30 seconds"。
+// 替代 MySQL 的 DATE_SUB/DATE_ADD(NOW(), INTERVAL ? SECOND)；结果与 CURRENT_TIMESTAMP 同格式，可直接比较。
+func sqlSecondsOffset(sec int) string { return fmt.Sprintf("%+d seconds", sec) }
 
 type ListFilter struct {
 	UserID    int64
@@ -215,7 +220,7 @@ func (r *SQLiteRepository) LatestByCanvasNode(userID, projectID int64, nodeID st
 		`SELECT id, user_id, project_id, model_id, status, IFNULL(upstream_task_id, ''), input, output, frozen_cents, cost_cents, IFNULL(audit_flag, ''), IFNULL(error, ''), created_at, updated_at
 		 FROM generation_tasks
 		 WHERE user_id = ? AND project_id = ?
-		   AND sink->>'$.kind' = 'canvas_node' AND sink->>'$.nodeId' = ?
+		   AND json_extract(sink, '$.kind') = 'canvas_node' AND json_extract(sink, '$.nodeId') = ?
 		 ORDER BY id DESC LIMIT 1`,
 		userID, projectID, nodeID,
 	)
@@ -268,7 +273,8 @@ func (r *SQLiteRepository) List(f ListFilter) ([]Task, int64, error) {
 		args = append(args, f.Kind)
 	}
 	if f.Search != "" {
-		conds = append(conds, "JSON_SEARCH(input, 'one', ?) IS NOT NULL")
+		// JSON_SEARCH(input,'one',?) 的 SQLite 等价：递归遍历 input 里所有字符串值做 LIKE（不匹配键名）。
+		conds = append(conds, "EXISTS (SELECT 1 FROM json_tree(generation_tasks.input) jt WHERE jt.type = 'text' AND jt.atom LIKE ?)")
 		args = append(args, "%"+f.Search+"%")
 	}
 	where := strings.Join(conds, " AND ")
@@ -278,8 +284,7 @@ func (r *SQLiteRepository) List(f ListFilter) ([]Task, int64, error) {
 		return nil, 0, err
 	}
 
-	// 两阶段取数：内层子查询只对 id 做 ORDER BY，外层再按主键 join 回来读取完整行。
-	// 保留参考仓的两阶段写法，SQLite 下同样只对 id 排序，排序阶段不搬运宽的 JSON/TEXT 列。
+	// 两阶段取数：内层只对 id 排序分页，外层按主键取宽行。SQLite 下没有 sort buffer 问题，保留写法是为了与参考仓同形。
 	q := `SELECT t.id, t.user_id, t.project_id, t.model_id, t.status, IFNULL(t.output_kind, ''), IFNULL(t.upstream_task_id, ''), t.input, t.output, t.frozen_cents, t.cost_cents, IFNULL(t.audit_flag, ''), IFNULL(t.error, ''), t.created_at, t.updated_at
 		FROM generation_tasks t
 		INNER JOIN (
@@ -370,13 +375,13 @@ func (r *SQLiteRepository) ListProcessing(maxAgeSec, staleSec int) ([]Task, erro
 	q := `SELECT id, user_id, project_id, model_id, status, IFNULL(upstream_task_id, ''), input, output, frozen_cents, cost_cents, IFNULL(audit_flag, ''), IFNULL(error, ''), created_at, updated_at FROM generation_tasks WHERE status IN ('running','processing','settling') AND upstream_task_id IS NOT NULL AND upstream_task_id <> ''`
 	args := []any{}
 	if maxAgeSec > 0 {
-		q += ` AND created_at >= DATE_SUB(NOW(), INTERVAL ? SECOND)`
-		args = append(args, maxAgeSec)
+		q += ` AND created_at >= datetime('now', ?)`
+		args = append(args, sqlSecondsOffset(-maxAgeSec))
 	}
 	// 只取无主、或 heartbeat 已超时的行；staleSec<=0 时退化为原行为（全取）。
 	if staleSec > 0 {
-		q += ` AND (owner_instance IS NULL OR heartbeat_at IS NULL OR heartbeat_at < DATE_SUB(NOW(), INTERVAL ? SECOND))`
-		args = append(args, staleSec)
+		q += ` AND (owner_instance IS NULL OR heartbeat_at IS NULL OR heartbeat_at < datetime('now', ?))`
+		args = append(args, sqlSecondsOffset(-staleSec))
 	}
 	q += ` ORDER BY id ASC`
 	rows, err := r.db.Query(q, args...)
@@ -419,16 +424,14 @@ func (r *SQLiteRepository) ListProcessing(maxAgeSec, staleSec int) ([]Task, erro
 // (ClaimLease 已删除:它无条件覆盖 owner,「接管」在 DB 层面是假的;统一走带代次的
 // ClaimQueued/ClaimStaleRunning。)
 func (r *SQLiteRepository) Heartbeat(taskID, lease int64) (bool, error) {
-	res, err := r.db.Exec(`UPDATE generation_tasks SET heartbeat_at=NOW() WHERE id=? AND lease_version=?`, taskID, lease)
+	res, err := r.db.Exec(`UPDATE generation_tasks SET heartbeat_at=CURRENT_TIMESTAMP WHERE id=? AND lease_version=?`, taskID, lease)
 	if err != nil {
 		return false, err
 	}
 	if n, _ := res.RowsAffected(); n == 1 {
 		return true, nil
 	}
-	// 0 行 ≠ 一定失租:参考仓在 MySQL 上同秒内第二次续租值未变会按「changed rows」报 0
-	// (codex 实施审查 B1:同任务可能有多个心跳循环,误判会 cancel 正在跑的任务)。SQLite
-	// 报的是匹配行数,但复核代次仍是失租的唯一判据,保留这段兜底。
+	// SQLite 的 RowsAffected 是匹配行数，同秒续租也返回 1；保留按代次复核作为失租的唯一判据。
 	var cur int64
 	if err := r.db.QueryRow(`SELECT lease_version FROM generation_tasks WHERE id=?`, taskID).Scan(&cur); err != nil {
 		return false, err
@@ -439,7 +442,7 @@ func (r *SQLiteRepository) Heartbeat(taskID, lease int64) (bool, error) {
 // MarkRunningDirectTx 见接口注释。
 func (r *SQLiteRepository) MarkRunningDirectTx(tx *sql.Tx, taskID int64, instance string) error {
 	_, err := tx.Exec(`UPDATE generation_tasks
-		SET owner_instance=?, heartbeat_at=NOW(), lease_version=1
+		SET owner_instance=?, heartbeat_at=CURRENT_TIMESTAMP, lease_version=1
 		WHERE id=? AND status='running'`, instance, taskID)
 	return err
 }
@@ -486,8 +489,8 @@ func (r *SQLiteRepository) RunningCountByModel(freshSec int) (map[string]int, er
 	rows, err := r.db.Query(`
 		SELECT model_id, COUNT(*) FROM generation_tasks
 		 WHERE status IN ('running','processing','settling') AND heartbeat_at IS NOT NULL
-		   AND heartbeat_at > DATE_SUB(NOW(), INTERVAL ? SECOND)
-		 GROUP BY model_id`, freshSec)
+		   AND heartbeat_at > datetime('now', ?)
+		 GROUP BY model_id`, sqlSecondsOffset(-freshSec))
 	if err != nil {
 		return nil, err
 	}
@@ -528,43 +531,41 @@ func (r *SQLiteRepository) ListQueuedForModel(modelID string, limit int) ([]Task
 	return out, rows.Err()
 }
 
-// ClaimQueued CAS 领取。WHERE status='queued' 保证多个实例同时抢同一行时只有一个成功，
-// 不需要额外的锁——这是队列跨实例安全的全部依赖。
+// ClaimQueued CAS 领取。WHERE status='queued' 保证并发领取恰好一个成功；
+// 新代次取自同一条语句的 RETURNING（替代 MySQL 的 LAST_INSERT_ID(expr)）。
 func (r *SQLiteRepository) ClaimQueued(taskID int64, instance string) (int64, bool, error) {
-	res, err := r.db.Exec(`UPDATE generation_tasks
-		SET status='running', owner_instance=?, heartbeat_at=NOW(),
-		    lease_version = LAST_INSERT_ID(lease_version + 1)
-		WHERE id=? AND status='queued'`, instance, taskID)
+	var lease int64
+	err := r.db.QueryRow(`UPDATE generation_tasks
+		SET status='running', owner_instance=?, heartbeat_at=CURRENT_TIMESTAMP,
+		    lease_version = lease_version + 1
+		WHERE id=? AND status='queued'
+		RETURNING lease_version`, instance, taskID).Scan(&lease)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
 	if err != nil {
 		return 0, false, err
 	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return 0, false, nil
-	}
-	// 代次必须取自同一次 Exec 的 Result.LastInsertId()——LAST_INSERT_ID 是连接级状态，
-	// 连接池下事后 SELECT 会取错，fencing 会被无声打碎(v5 §5.3)。
-	lease, err := res.LastInsertId()
-	return lease, err == nil && lease > 0, err
+	return lease, lease > 0, nil
 }
 
-// ClaimStaleRunning 接管一个心跳超时的 running/processing/settling 任务(统一接管器与
-// 续 poll 共用)：CAS 抢占 + lease_version+1——「接管」在 DB 层面从此是真的，
-// 旧执行者的一切写都会落空。
+// ClaimStaleRunning 接管一个心跳超时的 running/processing/settling 任务：CAS 抢占 + 代次+1，
+// 旧执行者此后的一切写都会落空。
 func (r *SQLiteRepository) ClaimStaleRunning(taskID int64, instance string, staleSec int) (int64, bool, error) {
-	res, err := r.db.Exec(`UPDATE generation_tasks
-		SET owner_instance=?, heartbeat_at=NOW(),
-		    lease_version = LAST_INSERT_ID(lease_version + 1)
+	var lease int64
+	err := r.db.QueryRow(`UPDATE generation_tasks
+		SET owner_instance=?, heartbeat_at=CURRENT_TIMESTAMP,
+		    lease_version = lease_version + 1
 		WHERE id=? AND status IN ('running','processing','settling')
-		  AND (owner_instance IS NULL OR heartbeat_at IS NULL OR heartbeat_at < DATE_SUB(NOW(), INTERVAL ? SECOND))`,
-		instance, taskID, staleSec)
+		  AND (owner_instance IS NULL OR heartbeat_at IS NULL OR heartbeat_at < datetime('now', ?))
+		RETURNING lease_version`, instance, taskID, sqlSecondsOffset(-staleSec)).Scan(&lease)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
 	if err != nil {
 		return 0, false, err
 	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return 0, false, nil
-	}
-	lease, err := res.LastInsertId()
-	return lease, err == nil && lease > 0, err
+	return lease, lease > 0, nil
 }
 
 // MarkUpstreamCalled 必须在真正发出上游请求之前调用。之后即使进程被杀，接管方也能
@@ -572,7 +573,7 @@ func (r *SQLiteRepository) ClaimStaleRunning(taskID int64, instance string, stal
 // 带代次：影响 0 行 = 失租或状态异常，调用方必须中止，绝不能在标记不可靠时调上游。
 func (r *SQLiteRepository) MarkUpstreamCalled(taskID, lease int64) (bool, error) {
 	res, err := r.db.Exec(
-		`UPDATE generation_tasks SET upstream_called_at=NOW() WHERE id=? AND lease_version=? AND upstream_called_at IS NULL`,
+		`UPDATE generation_tasks SET upstream_called_at=CURRENT_TIMESTAMP WHERE id=? AND lease_version=? AND upstream_called_at IS NULL`,
 		taskID, lease)
 	if err != nil {
 		return false, err
@@ -635,11 +636,11 @@ func (r *SQLiteRepository) StatusLiteByIDs(ids []int64) (map[int64]TaskStatusLit
 func (r *SQLiteRepository) MarkRetryPending(taskID, lease int64, maxAttempts, intervalSec int, errMsg string) (bool, error) {
 	res, err := r.db.Exec(`UPDATE generation_tasks
 		SET status='retry_pending', attempt=attempt+1,
-		    next_retry_at=DATE_ADD(NOW(), INTERVAL ? SECOND),
+		    next_retry_at=datetime('now', ?),
 		    error=?, upstream_called_at=NULL, upstream_task_id=NULL,
 		    owner_instance=NULL, heartbeat_at=NULL, lease_version=lease_version+1
 		WHERE id=? AND lease_version=? AND status IN ('running','processing') AND sink IS NOT NULL AND attempt < ?`,
-		intervalSec, errMsg, taskID, lease, maxAttempts)
+		sqlSecondsOffset(intervalSec), errMsg, taskID, lease, maxAttempts)
 	if err != nil {
 		return false, err
 	}
@@ -653,10 +654,13 @@ func (r *SQLiteRepository) PromoteDueRetries(limit int) (int64, error) {
 	if limit <= 0 {
 		limit = 200
 	}
+	// SQLite 不支持 UPDATE … LIMIT：先在子查询里按 id 选出这一批。
 	res, err := r.db.Exec(`UPDATE generation_tasks
 		SET status='queued', owner_instance=NULL, heartbeat_at=NULL, lease_version=lease_version+1
-		WHERE status='retry_pending' AND next_retry_at <= NOW()
-		LIMIT ?`, limit)
+		WHERE id IN (
+			SELECT id FROM generation_tasks
+			 WHERE status='retry_pending' AND next_retry_at <= CURRENT_TIMESTAMP
+			 ORDER BY id LIMIT ?)`, limit)
 	if err != nil {
 		return 0, err
 	}
@@ -668,8 +672,8 @@ func (r *SQLiteRepository) PromoteDueRetries(limit int) (int64, error) {
 func (r *SQLiteRepository) ListStaleRunning(staleSec int) ([]Task, error) {
 	rows, err := r.db.Query(`SELECT `+queueTaskCols+` FROM generation_tasks
 		 WHERE status = 'running'
-		   AND (heartbeat_at IS NULL OR heartbeat_at < DATE_SUB(NOW(), INTERVAL ? SECOND))
-		 ORDER BY id ASC`, staleSec)
+		   AND (heartbeat_at IS NULL OR heartbeat_at < datetime('now', ?))
+		 ORDER BY id ASC`, sqlSecondsOffset(-staleSec))
 	if err != nil {
 		return nil, err
 	}
@@ -688,8 +692,8 @@ func (r *SQLiteRepository) ListStaleRunning(staleSec int) ([]Task, error) {
 func (r *SQLiteRepository) ListQueuedOlderThan(sec int, limit int) ([]Task, error) {
 	rows, err := r.db.Query(`SELECT `+queueTaskCols+` FROM generation_tasks
 		 WHERE status = 'queued' AND sink IS NOT NULL
-		   AND created_at < DATE_SUB(NOW(), INTERVAL ? SECOND)
-		 ORDER BY id ASC LIMIT ?`, sec, limit)
+		   AND created_at < datetime('now', ?)
+		 ORDER BY id ASC LIMIT ?`, sqlSecondsOffset(-sec), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -709,8 +713,8 @@ func (r *SQLiteRepository) ListQueuedOlderThan(sec int, limit int) ([]Task, erro
 func (r *SQLiteRepository) ListQueuedSinkless(sec int, limit int) ([]Task, error) {
 	rows, err := r.db.Query(`SELECT `+queueTaskCols+` FROM generation_tasks
 		 WHERE status = 'queued' AND sink IS NULL
-		   AND created_at < DATE_SUB(NOW(), INTERVAL ? SECOND)
-		 ORDER BY id ASC LIMIT ?`, sec, limit)
+		   AND created_at < datetime('now', ?)
+		 ORDER BY id ASC LIMIT ?`, sqlSecondsOffset(-sec), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -763,58 +767,10 @@ func (r *SQLiteRepository) SinkForTask(taskID int64) (json.RawMessage, error) {
 
 // ---- RepersistStore(补搬 worker 专用,见 repersist.go)----
 
-// repersistTimeLayout persistNextAt 在 output JSON 里的存法:UTC 秒级 RFC3339。
-// 定长、UTC、字典序 == 时间序,查询里可以直接和 now 的同格式字符串比大小。
-const repersistTimeLayout = "2006-01-02T15:04:05Z"
-
-func (r *SQLiteRepository) ListExternalOutputs(sinceDays, maxAttempts, limit int, now time.Time) ([]Task, error) {
-	rows, err := r.db.Query(`
-		SELECT id, user_id, project_id, input, output
-		FROM generation_tasks
-		WHERE status='succeeded'
-		  AND created_at >= DATE_SUB(?, INTERVAL ? DAY)
-		  AND JSON_UNQUOTE(JSON_EXTRACT(output,'$.outputUrls[0]')) LIKE 'http%'
-		  AND IFNULL(JSON_EXTRACT(output,'$.persistAttempts'), 0) < ?
-		  AND (JSON_EXTRACT(output,'$.persistNextAt') IS NULL
-		       OR JSON_UNQUOTE(JSON_EXTRACT(output,'$.persistNextAt')) <= ?)
-		ORDER BY id DESC
-		LIMIT ?`,
-		now, sinceDays, maxAttempts, now.UTC().Format(repersistTimeLayout), limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Task
-	for rows.Next() {
-		var t Task
-		var pid sql.NullInt64
-		var input, output []byte
-		if err := rows.Scan(&t.ID, &t.UserID, &pid, &input, &output); err != nil {
-			return nil, err
-		}
-		if pid.Valid {
-			v := pid.Int64
-			t.ProjectID = &v
-		}
-		t.Status = "succeeded"
-		t.Input = input
-		t.Output = output
-		out = append(out, t)
-	}
-	return out, rows.Err()
-}
-
+// UpdateOutput 整体替换 output JSON；outputKind 非空时同步 output_kind 列。只改仍是 succeeded 的行。
 func (r *SQLiteRepository) UpdateOutput(taskID int64, output json.RawMessage, outputKind string) error {
-	// 只改仍是 succeeded 的行:任务被删/状态被别的路径改过就不动。
 	_, err := r.db.Exec(
-		`UPDATE generation_tasks SET output=?, output_kind=IF(?='', output_kind, ?) WHERE id=? AND status='succeeded'`,
-		[]byte(output), outputKind, outputKind, taskID)
-	return err
-}
-
-func (r *SQLiteRepository) MarkRepersistAttempt(taskID int64, attempts int, nextAt time.Time) error {
-	_, err := r.db.Exec(
-		`UPDATE generation_tasks SET output=JSON_SET(output, '$.persistAttempts', ?, '$.persistNextAt', ?) WHERE id=?`,
-		attempts, nextAt.UTC().Format(repersistTimeLayout), taskID)
+		`UPDATE generation_tasks SET output=?, output_kind=COALESCE(NULLIF(?, ''), output_kind) WHERE id=? AND status='succeeded'`,
+		string(output), outputKind, taskID)
 	return err
 }

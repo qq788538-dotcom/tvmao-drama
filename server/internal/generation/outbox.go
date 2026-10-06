@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"time"
 )
@@ -15,8 +16,7 @@ import (
 // 全部幂等且如实返错(§5.7),重投安全。
 //
 // fencing:delivery_version 每次领取 +1,完成/失败写回必须带对它——租约过期被接管后,
-// 旧 worker 对本行的写全部落空。代次取值只能用同一次 Exec 的 Result.LastInsertId()
-// (LAST_INSERT_ID(expr) 是连接级状态,连接池下事后 SELECT 会取错,fencing 会被无声打碎)。
+// 旧 worker 对本行的写全部落空。代次取自领取语句的 `RETURNING delivery_version`。
 
 // outboxRow 是一行待投递记录。
 type outboxRow struct {
@@ -59,7 +59,7 @@ func (r *SQLiteRepository) InsertOutboxTx(tx *sql.Tx, taskID int64, sink json.Ra
 		return err
 	}
 	_, err = tx.Exec(`INSERT INTO generation_sink_outbox (task_id, sink, payload) VALUES (?, ?, ?)`,
-		taskID, []byte(sink), payload)
+		taskID, string(sink), string(payload))
 	return err
 }
 
@@ -68,8 +68,8 @@ func (r *SQLiteRepository) InsertOutboxTx(tx *sql.Tx, taskID int64, sink json.Ra
 // worker 恰好一个领到。返回已领到的行(带新代次)。
 func (r *SQLiteRepository) claimOutboxDue(limit int) ([]outboxRow, error) {
 	rows, err := r.db.Query(`SELECT id FROM generation_sink_outbox
-		WHERE (state='pending' AND (next_retry_at IS NULL OR next_retry_at <= NOW()))
-		   OR (state='delivering' AND locked_until < NOW())
+		WHERE (state='pending' AND (next_retry_at IS NULL OR next_retry_at <= CURRENT_TIMESTAMP))
+		   OR (state='delivering' AND locked_until < CURRENT_TIMESTAMP)
 		ORDER BY id ASC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -90,20 +90,17 @@ func (r *SQLiteRepository) claimOutboxDue(limit int) ([]outboxRow, error) {
 
 	out := make([]outboxRow, 0, len(ids))
 	for _, id := range ids {
-		res, err := r.db.Exec(`UPDATE generation_sink_outbox
-			SET state='delivering', locked_until = DATE_ADD(NOW(), INTERVAL ? SECOND),
-			    attempt = attempt + 1, delivery_version = LAST_INSERT_ID(delivery_version + 1)
+		var version int64
+		err := r.db.QueryRow(`UPDATE generation_sink_outbox
+			SET state='delivering', locked_until = datetime('now', ?),
+			    attempt = attempt + 1, delivery_version = delivery_version + 1
 			WHERE id = ?
-			  AND ((state='pending' AND (next_retry_at IS NULL OR next_retry_at <= NOW()))
-			    OR (state='delivering' AND locked_until < NOW()))`,
-			outboxLeaseSec, id)
-		if err != nil {
-			return nil, err
-		}
-		if n, _ := res.RowsAffected(); n != 1 {
+			  AND ((state='pending' AND (next_retry_at IS NULL OR next_retry_at <= CURRENT_TIMESTAMP))
+			    OR (state='delivering' AND locked_until < CURRENT_TIMESTAMP))
+			RETURNING delivery_version`, sqlSecondsOffset(outboxLeaseSec), id).Scan(&version)
+		if errors.Is(err, sql.ErrNoRows) {
 			continue // 别的 worker 先领走了
 		}
-		version, err := res.LastInsertId() // 必须取自同一次 Exec——见文件头 fencing 说明
 		if err != nil {
 			return nil, err
 		}
@@ -158,8 +155,8 @@ func (r *SQLiteRepository) failOutbox(id, version int64, attempt int, errMsg str
 		backoff = 600
 	}
 	res, err := r.db.Exec(`UPDATE generation_sink_outbox
-		SET state='pending', locked_until=NULL, next_retry_at = DATE_ADD(NOW(), INTERVAL ? SECOND), last_error=?
-		WHERE id=? AND state='delivering' AND delivery_version=?`, backoff, errMsg, id, version)
+		SET state='pending', locked_until=NULL, next_retry_at = datetime('now', ?), last_error=?
+		WHERE id=? AND state='delivering' AND delivery_version=?`, sqlSecondsOffset(backoff), errMsg, id, version)
 	if err != nil {
 		return false, err
 	}
