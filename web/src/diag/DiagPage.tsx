@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { getServerInfo, type ServerInfo } from '@/shared/server';
 import {
   connectionChecks,
@@ -14,6 +15,7 @@ export function DiagPage() {
   const [startError, setStartError] = useState<string | null>(null);
   const [results, setResults] = useState<CheckResult[]>([]);
   const [busy, setBusy] = useState(false);
+  const [copyStatus, setCopyStatus] = useState('');
 
   useEffect(() => {
     getServerInfo().then(setInfo, (e) => setStartError(String(e)));
@@ -35,6 +37,9 @@ export function DiagPage() {
     setBusy(true);
     try {
       setResults([...(await connectionChecks(info)), ...(await webCodecsChecks())]);
+    } catch (e) {
+      // 单项检查各自捕获异常；走到这里说明检查框架本身出错，也要显示出来而不是静默。
+      setResults([{ name: '运行检查', ok: false, detail: String(e), ms: 0 }]);
     } finally {
       setBusy(false);
     }
@@ -57,7 +62,8 @@ export function DiagPage() {
   const failed = results.filter((r) => !r.ok).length;
 
   return (
-    <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', height: '100vh', overflow: 'auto', boxSizing: 'border-box' }}>
+      <Link to="/">← 返回画布</Link>
       <h2>喵剧AI · 环境诊断</h2>
       <p>本地服务端口：{info.port}</p>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -76,9 +82,18 @@ export function DiagPage() {
             }}
           />
         </label>
-        <button disabled={results.length === 0} onClick={() => void navigator.clipboard.writeText(report)}>
+        <button
+          disabled={results.length === 0}
+          onClick={() => {
+            navigator.clipboard.writeText(report).then(
+              () => setCopyStatus('已复制'),
+              (e: unknown) => setCopyStatus(`复制失败：${String(e)}，请手动选中下方文本复制`),
+            );
+          }}
+        >
           复制结果
         </button>
+        {copyStatus && <span>{copyStatus}</span>}
       </div>
       {results.length > 0 && (
         <p style={{ color: failed ? '#f88' : '#8f8' }}>
