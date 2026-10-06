@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
 	"github.com/james/huabu_studio/apps/api/internal/localauth"
 )
 
@@ -28,6 +29,18 @@ type Deps struct {
 	LibraryItem       *LibraryItemHandler
 	LibraryBridge     *LibraryBridgeHandler
 	AdminGC           *AdminGCHandler
+
+	// ── P1d ──
+	CanvasPostprocess *CanvasPostprocessHandler
+	GenImagePreset    *GenImagePresetHandler
+	MultiAngle        *MultiAngleHandler
+	LightControl      *LightControlHandler
+	AICharacter       *AICharacterHandler
+	// AICharacterImages 包在 /media/* 外面：角色形象图本地没有时先下载缓存（spec F7）。nil = 不包。
+	AICharacterImages *aicharacters.ImageCache
+	Seedance          *SeedanceHandler
+	DirectorModel     *DirectorModelHandler
+	DirectorLibrary   *DirectorLibraryHandler
 }
 
 // MustWire 在启动期校验业务 handler 都已装配，缺一个就 panic。路由按字段注册，漏装配不会编译失败，
@@ -39,7 +52,10 @@ func MustWire(d Deps) {
 		"MediaSigner": d.MediaSigner != nil, "Media": d.Media != nil, "Me": d.Me != nil, "Asset": d.Asset != nil,
 		"Project": d.Project != nil, "CanvasMutation": d.CanvasMutation != nil, "CanvasAssetImport": d.CanvasAssetImport != nil,
 		"LibraryFolder": d.LibraryFolder != nil, "LibraryItem": d.LibraryItem != nil, "LibraryBridge": d.LibraryBridge != nil,
-		"AdminGC": d.AdminGC != nil,
+		"AdminGC":           d.AdminGC != nil,
+		"CanvasPostprocess": d.CanvasPostprocess != nil, "GenImagePreset": d.GenImagePreset != nil,
+		"MultiAngle": d.MultiAngle != nil, "LightControl": d.LightControl != nil, "AICharacter": d.AICharacter != nil,
+		"Seedance": d.Seedance != nil, "DirectorModel": d.DirectorModel != nil, "DirectorLibrary": d.DirectorLibrary != nil,
 	} {
 		if !ok {
 			missing = append(missing, name)
@@ -57,8 +73,15 @@ func NewRouter(d Deps) nethttp.Handler {
 	r.Use(localauth.Middleware(d.Auth))
 
 	// 本地媒体文件：<img>/<video> 直接请求，token 走 ?token=（媒体专用 token 只能访问这里）。
-	r.Get("/media/*", d.Media.Serve)
-	r.Head("/media/*", d.Media.Serve)
+	// 角色形象图本地没有时先下载缓存再交给 Media.Serve（spec F7）。
+	mediaMW := func(next nethttp.Handler) nethttp.Handler {
+		if d.AICharacterImages == nil {
+			return next
+		}
+		return d.AICharacterImages.Middleware(next)
+	}
+	r.With(mediaMW).Get("/media/*", d.Media.Serve)
+	r.With(mediaMW).Head("/media/*", d.Media.Serve)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/ping", func(w nethttp.ResponseWriter, _ *nethttp.Request) {
@@ -122,6 +145,27 @@ func NewRouter(d Deps) nethttp.Handler {
 			})
 			r.Post("/projects/{projectID}/assets/{assetID}/save-to-library", d.LibraryBridge.SaveToLibrary)
 			r.Post("/library/save-from-url", d.LibraryBridge.SaveFromURL)
+
+			// ── P1d：后处理、预设、多角度、打光 ──
+			r.Get("/canvas/postprocess-config", d.CanvasPostprocess.GetConfig)
+			r.Get("/canvas/gen-image-presets", d.GenImagePreset.UserGet)
+			r.Get("/canvas/multi-angle", d.MultiAngle.UserGet)
+			r.Get("/canvas/light-control", d.LightControl.UserGet)
+			r.Post("/canvas-tasks/desub", d.CanvasPostprocess.Desub)
+			r.Post("/canvas-tasks/postprocess-estimate", d.CanvasPostprocess.Estimate)
+			r.Post("/canvas-tasks/upscale", d.CanvasPostprocess.Upscale)
+			r.Post("/canvas-tasks/whitemodel", d.CanvasPostprocess.WhiteModel)
+			// ── P1d：AI 角色库、Seedance 合规 ──
+			r.Get("/canvas/ai-characters", d.AICharacter.List)
+			r.Post("/seedance/verify", d.Seedance.Verify)
+			r.Post("/seedance/status", d.Seedance.Status)
+			r.Get("/seedance/config", d.Seedance.Config)
+			// ── P1d：3D 导演台 ──
+			r.Post("/director/models", d.DirectorModel.Upload)
+			r.Get("/director/models", d.DirectorModel.List)
+			r.Delete("/director/models/{modelID}", d.DirectorModel.Delete)
+			r.Get("/director/library", d.DirectorLibrary.List)
+			// /admin/canvas/* 不在这里注册（P4）。
 
 			// 手动触发孤儿清扫（sidecar 也会在启动时和每天自动跑）。
 			r.Post("/admin/gc", d.AdminGC.Run)

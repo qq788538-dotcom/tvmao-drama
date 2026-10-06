@@ -120,6 +120,8 @@ func run() error {
 	defer cancel()
 	a.cleaner.Start(ctx, projectCleanInterval)
 	a.sweeper.Start(ctx, orphanSweepInterval, library.DefaultGracePeriod)
+	// Seedance 合规对账：未配置时 ReconcileAll 自身 no-op；随根 ctx 退出。
+	go a.seedance.RunWorker(ctx)
 
 	go func() {
 		waitForShutdown(stdin)
