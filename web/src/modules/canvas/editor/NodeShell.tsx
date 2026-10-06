@@ -12,10 +12,7 @@ import {
 import { NodeContextMenu } from './nodes/NodeContextMenu';
 import { standardNodeMenuItems } from './nodes/standardNodeMenuItems';
 import { isInVideoControlsArea } from './nodes/videoControlsGuard';
-import { resolveNodePosition, useCanvasStore } from './store';
-import { beginInteraction, endInteraction } from './interactionRegistry';
-import { resetDragTransientThrottle, sendDragTransient, shouldSendDragTransient } from './transientChannel';
-import { nodeEditingLabel, useCanvasPresenceStore } from './presenceStore';
+import { useCanvasStore } from './store';
 import { useStoryboardMode } from '../storyboard/StoryboardContext';
 import {
   flushNodePatch,
@@ -192,32 +189,11 @@ export function NodeShell({
     (s) => s.connecting != null && s.connecting.fromId !== node.id && s.connecting.hoverTargetId === node.id,
   );
 
-  // 队友拖拽途中的瞬态坐标（覆盖层，见 store 的 applyTransientPositions）。
-  // 渲染取位置的唯一入口就是这里：覆盖层与 node.x/y 是两层，瞬态永远进不了
-  // node 本体——那一层是 persistNodeById 的 diff 面。
-  const transientPosition = useCanvasStore((s) => s.transientPositions[node.id]);
-  const position = resolveNodePosition(node, transientPosition);
-
-  // 队友正在编辑本节点时的角标文案（null=没人）。协作在场信息不在画布 store 里，
-  // 见 presenceStore 的说明。
-  const remoteEditingLabel = useCanvasPresenceStore((s) => nodeEditingLabel(s, node.id));
-
   const dragRef = useRef<{ lastX: number; lastY: number; committed: boolean } | null>(null);
   const resizeRef = useRef<{
     startX: number; startY: number; startW: number; startH: number; committed: boolean;
   } | null>(null);
 
-  // 本次拖拽登记了在途状态的节点（拖多选时是一整批）。
-  //
-  // 为什么要留这个 ref：begin/endInteraction **必须成对**。漏一次 end，该节点上
-  // 挂起的远端 op 就永远不落地——队友之后对它的每一次改动在本端静默消失，只有
-  // 整拉兜底才补得回来。mouseup 是正常出口，卸载（节点被删、切故事板/切项目）
-  // 是另一条出口，两条都得收尾。
-  const dragInteractionRef = useRef<string[]>([]);
-  const releaseDragInteractions = useCallback(() => {
-    for (const id of dragInteractionRef.current) endInteraction(id, 'drag');
-    dragInteractionRef.current = [];
-  }, []);
   // 拖拽/缩放挂在 window 上的那几个监听的摘除函数。卸载时必须摘干净：不摘的话
   // 组件没了、闭包还活着，之后每一次 mousemove 都在给一个不存在的节点算位移
   // （moveNodes 对已删节点是 no-op，但 mouseup 那条路会照常发一次 PATCH）。
@@ -228,8 +204,7 @@ export function NodeShell({
   }, []);
   useEffect(() => () => {
     detachWindowListeners();
-    releaseDragInteractions();
-  }, [detachWindowListeners, releaseDragInteractions]);
+  }, [detachWindowListeners]);
 
   const onMouseDownCapture = useCallback((e: React.MouseEvent) => {
     // 故事板里没有画布坐标系——同下面 onMouseDown 那条早退一样的道理，选中/
@@ -292,18 +267,6 @@ export function NodeShell({
 
     // 开始拖动
     dragRef.current = { lastX: e.clientX, lastY: e.clientY, committed: false };
-    // 登记在途：拖拽期间队友对这些节点的远端几何/内容更新一律挂起到松手
-    // （否则节点会在用户手底下跳位）；同时也让本端收到的远端**瞬态**坐标对
-    // 这些节点直接忽略（store 的 applyTransientPositions）。
-    {
-      const sel = useCanvasStore.getState().selectedIds;
-      const dragging = sel.has(node.id) ? Array.from(sel) : [node.id];
-      releaseDragInteractions();
-      for (const id of dragging) beginInteraction(id, 'drag');
-      dragInteractionRef.current = dragging;
-    }
-    // 前沿节流：让本次拖拽的第一帧立刻发出去，队友那边不会先愣 200ms。
-    resetDragTransientThrottle();
     const handleMove = (ev: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
@@ -316,56 +279,28 @@ export function NodeShell({
       const sel = useCanvasStore.getState().selectedIds;
       const targets = sel.has(node.id) ? Array.from(sel) : [node.id];
       moveNodes(targets, dx, dy);
-      // 瞬态拖拽流：节流后发**绝对**坐标（丢帧无需补偿，下一帧直接覆盖）。
-      // 通道只在团队项目注册，个人项目这里一帧都发不出去。resize 不发——
-      // 缩放不像拖动那样让队友「看不懂节点为什么在动」，松手后的权威
-      // patchPositions 已经够了，不值得再开一条高频流。
-      //
-      // 先问节流再组装：下面这段是「多选数 × 节点数」的线性查找，而 60fps 下
-      // 六帧里有五帧会被 200ms 节流丢掉——个人项目更是每一帧都白算。
-      if (shouldSendDragTransient()) {
-        const moved = useCanvasStore.getState().nodes;
-        sendDragTransient(
-          targets
-            .map((id) => moved.find((n) => n.id === id))
-            .filter((n): n is CanvasNode => Boolean(n))
-            .map((n) => ({ id: n.id, x: n.x, y: n.y })),
-        );
-      }
     };
     const handleUp = () => {
       const committed = dragRef.current?.committed;
       dragRef.current = null;
       detachWindowListeners();
-      // 顺序是有讲究的：**先读落点几何 + 登记落库，最后才解除在途登记**。
-      // 解除登记会立刻 flush 拖拽期间挂起的远端坐标——先解除的话，落点在松手
-      // 瞬间被队友的坐标顶掉，而下面读到的又是被顶掉的值，于是「队友的坐标」
-      // 被当成我的移动 PATCH 回服务端（拖拽期间的挂起保护在最后一步自己丢掉）。
-      // persistNodePositions 会把落点登记为在飞字段，随后的 flush 便会剔掉几何。
-      // finally 保证**每条**早退路径都解除登记——漏解一次这个节点就永久卡住。
-      try {
-        // 拖动过程中只改本地，松手后一次性 PATCH 受影响节点的坐标。没真正
-        // 移动（committed=false，只是点选）就不发请求。
-        if (!committed) return;
-        const pid = currentProjectId();
-        const token = getCanvasOwnerToken();
-        if (!pid || !token) return;
-        const state = useCanvasStore.getState();
-        const targets = state.selectedIds.has(node.id) ? Array.from(state.selectedIds) : [node.id];
-        const patches = targets
-          .map((id) => state.nodes.find((n) => n.id === id))
-          .filter((n): n is CanvasNode => Boolean(n))
-          .map((n) => geometryPatchFromNode(n));
-        persistNodePositions(pid, token, patches);
-      } finally {
-        releaseDragInteractions();
-      }
+      // 拖动过程中只改本地，松手后一次性 PATCH 受影响节点的坐标。没真正
+      // 移动（committed=false，只是点选）就不发请求。
+      if (!committed) return;
+      const pid = currentProjectId();
+      const token = getCanvasOwnerToken();
+      if (!pid || !token) return;
+      const state = useCanvasStore.getState();
+      const targets = state.selectedIds.has(node.id) ? Array.from(state.selectedIds) : [node.id];
+      const patches = targets
+        .map((id) => state.nodes.find((n) => n.id === id))
+        .filter((n): n is CanvasNode => Boolean(n))
+        .map((n) => geometryPatchFromNode(n));
+      persistNodePositions(pid, token, patches);
     };
     // 第三条退出路径：window blur。切标签页/切应用时浏览器**不会**补一个
-    // mouseup——没有它，拖拽状态会一直挂着：在途登记不解除（该节点上挂起的
-    // 远端 op 永久卡住）、瞬态还在发、切回来一动鼠标节点就接着跟手飘。
-    // 按 mouseup 同样处理并**照常落库**：用户切窗前看到的就是这个位置，
-    // 丢掉等于回滚了他刚做的移动。
+    // mouseup——没有它，切回来一动鼠标节点就接着跟手飘。按 mouseup 同样处理并
+    // **照常落库**：用户切窗前看到的就是这个位置，丢掉等于回滚了他刚做的移动。
     // 先摘掉上一轮可能残留的监听，再挂本轮的（同一时刻只该有一组）。
     detachWindowListeners();
     window.addEventListener('mousemove', handleMove);
@@ -376,7 +311,7 @@ export function NodeShell({
       window.removeEventListener('mouseup', handleUp);
       window.removeEventListener('blur', handleUp);
     };
-  }, [node.id, isSelected, selectNode, commit, moveNodes, storyboardMode, releaseDragInteractions, detachWindowListeners]);
+  }, [node.id, isSelected, selectNode, commit, moveNodes, storyboardMode, detachWindowListeners]);
 
   const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -405,8 +340,7 @@ export function NodeShell({
       const token = getCanvasOwnerToken();
       if (!pid || !token) return;
       const current = useCanvasStore.getState().nodes.find((n) => n.id === node.id);
-      // 同拖拽走 persistNodePositions：尺寸在飞期间归本端所有，远端旧坐标/尺寸
-      // 不该顶掉刚松手的结果；成功后顺带推进基线。
+      // 同拖拽走 persistNodePositions：成功后顺带推进基线。
       if (current) persistNodePositions(pid, token, [geometryPatchFromNode(current)]);
     };
     // 先摘掉上一轮可能残留的监听，再挂本轮的（同一时刻只该有一组）。
@@ -441,7 +375,7 @@ export function NodeShell({
         // 按自己的坐标和尺寸绝对定位。
         ...(storyboardMode
           ? { width: '100%', height: '100%' }
-          : { left: position.x, top: position.y, width: node.width, height: node.height, zIndex: isSelected ? 30 : 1 }),
+          : { left: node.x, top: node.y, width: node.width, height: node.height, zIndex: isSelected ? 30 : 1 }),
         borderRadius: radiusPx,
         cursor: dragRef.current ? 'grabbing' : 'default',
         WebkitFontSmoothing: 'antialiased',
@@ -546,19 +480,6 @@ export function NodeShell({
           </button>
         )}
         {titleExtra}
-        {/* 「xx 正在编辑」角标。**只提示，不阻止**（拍板）：字段级 LWW 之下
-            后提交者胜，硬锁住节点反而会把人挡在自己想改的东西外面。挂在名字
-            chip 这一行而不是节点内部——内容区是各节点自己的地盘，塞进去会跟
-            提示词面板/工具条打架。 */}
-        {remoteEditingLabel && !storyboardMode && (
-          <span
-            data-remote-editing={node.id}
-            className="ml-1 px-1.5 py-0.5 rounded text-[10px] leading-none text-primary truncate max-w-[160px]"
-            style={{ backgroundColor: 'rgba(28, 28, 28, 0.95)' }}
-          >
-            {remoteEditingLabel}
-          </span>
-        )}
       </div>
 
       {resizable && !storyboardMode && (

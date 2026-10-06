@@ -8,7 +8,6 @@ import { FileText, Loader2 } from 'lucide-react';
 import { EditorContent } from '@tiptap/react';
 import { useCanvasStore } from '../store';
 import { NodeShell } from '../NodeShell';
-import { useNodeEditingBroadcast } from '../hooks/useNodeEditingBroadcast';
 import { persistNodeById } from '../persistence/canvasMutations';
 import { pollCanvasTaskUntilDone } from '@/shared/api';
 import { readMirror } from '../utils/nodeClipboard';
@@ -147,11 +146,6 @@ export function TextNode({ id }: { id: string }) {
     }
     return undefined;
   }, [node?.status, node?.taskId, id, updateNode, updateNodeSettings]);
-
-  // 广播「我正在编辑这个节点」+ 本地登记在途（队友的远端 patch 挂起到编辑结束，
-  // 否则光标处的文字会被换掉）。放在早退之前——hook 不能有条件地调用。
-  // 展开弹层也算编辑态：内容改的是同一个 settings.text，队友该看到同样的提示。
-  useNodeEditingBroadcast(id, editing && !readOnly);
 
   if (!node) return null;
   const text = (node.settings?.text as string | undefined) ?? '';

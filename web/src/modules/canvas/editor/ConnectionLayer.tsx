@@ -1,16 +1,11 @@
 import { useState } from 'react';
-import { resolveNodePosition, useCanvasStore } from './store';
+import { useCanvasStore } from './store';
 import type { CanvasNode } from './types';
 
 export function ConnectionLayer({ nodes }: { nodes: CanvasNode[] }) {
   const connections = useCanvasStore((s) => s.connections);
   const removeConnection = useCanvasStore((s) => s.removeConnection);
   const selectedIds = useCanvasStore((s) => s.selectedIds);
-  // 队友拖拽途中的瞬态坐标覆盖层。连线必须跟着一起走，否则队友拖一个有连线的
-  // 节点时，节点动而线不动——看上去像连线断了。**只读不写**：坐标只在这里参与
-  // 画路径，绝不回写进 nodes（那会让瞬态中间值进持久化 diff，正是 T4 H1 的坑）。
-  // 个人项目这张表恒为初始空对象，引用不变 → 不产生任何多余渲染。
-  const transientPositions = useCanvasStore((s) => s.transientPositions);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
@@ -25,12 +20,10 @@ export function ConnectionLayer({ nodes }: { nodes: CanvasNode[] }) {
         const to = nodeMap.get(conn.to);
         if (!from || !to) return null;
 
-        const fromAt = resolveNodePosition(from, transientPositions[from.id]);
-        const toAt = resolveNodePosition(to, transientPositions[to.id]);
-        const startX = fromAt.x + from.width;
-        const startY = fromAt.y + from.height / 2;
-        const endX = toAt.x;
-        const endY = toAt.y + to.height / 2;
+        const startX = from.x + from.width;
+        const startY = from.y + from.height / 2;
+        const endX = to.x;
+        const endY = to.y + to.height / 2;
         const dist = Math.abs(endX - startX);
         const dx = Math.max(52, Math.min(180, dist * 0.42));
         const path = `M ${startX} ${startY} C ${startX + dx} ${startY}, ${endX - dx} ${endY}, ${endX} ${endY}`;
