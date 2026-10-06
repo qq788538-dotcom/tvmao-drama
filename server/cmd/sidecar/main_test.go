@@ -337,3 +337,15 @@ func TestBuiltinSeedImportedOnStartup(t *testing.T) {
 		t.Fatalf("models=%d settings=%d, want 47/6", models, settings)
 	}
 }
+
+func TestGoDoneClosesAfterFunc(t *testing.T) {
+	release := make(chan struct{})
+	d := goDone(func() { <-release })
+	if waitDone(30*time.Millisecond, d) {
+		t.Fatal("f 未结束时不应 done")
+	}
+	close(release)
+	if !waitDone(time.Second, d) {
+		t.Fatal("f 结束后应 done")
+	}
+}

@@ -144,12 +144,13 @@ func run() error {
 	a.deps.Agent, a.deps.Skills, a.deps.AdminAgent = agentW.Agent, agentW.Skills, agentW.AdminAgent
 
 	// P6 脚本节点：找不到内置 Python 时只记警告（任务执行时报错），不阻断启动。
-	canvasScript, err := wireCanvasScript(ctx, conn, *dataDir, *pythonHome)
+	canvasScript, scriptWorkers, err := wireCanvasScript(ctx, conn, *dataDir, *pythonHome)
 	if err != nil {
 		ln.Close()
 		return fmt.Errorf("装配脚本节点: %w", err)
 	}
 	a.deps.CanvasScript = canvasScript
+	bgWorkers := append(append([]<-chan struct{}{}, agentW.Workers...), scriptWorkers...)
 	// 生成结果回写画布后经 Agent Hub 推 canvas_changed（P1c 留的注入点）。
 	a.gen.CanvasGen.SetChangeNotifier(agentW.Hub)
 
@@ -168,7 +169,8 @@ func run() error {
 	// 在 READY 之前调用；退出时随 ctx 取消停下，没跑完的任务由下次启动续跑。
 	a.gen.Gen.StartBackground(ctx)
 	// Seedance 合规对账：未配置时 ReconcileAll 自身 no-op；随根 ctx 退出。
-	go a.seedance.RunWorker(ctx)
+	workers = append(workers, goDone(func() { a.seedance.RunWorker(ctx) }))
+	workers = append(workers, bgWorkers...)
 
 	go func() {
 		waitForShutdown(stdin)
@@ -211,6 +213,16 @@ func run() error {
 	}
 	log.Print("sidecar 已关闭")
 	return nil
+}
+
+// goDone 在新 goroutine 里跑 f，返回 f 结束后关闭的通道，供 waitDone 等待。
+func goDone(f func()) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f()
+	}()
+	return done
 }
 
 // waitDone 等 chans 全部关闭，最多等 timeout；全部关闭返回 true。
