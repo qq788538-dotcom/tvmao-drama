@@ -8,6 +8,7 @@ import {
   DataDirSwitchError,
   getDataDir,
   getServerInfo,
+  getSidecarStatus,
   onSidecarStatus,
   restartSidecar,
   switchToDefaultDataDir,
@@ -27,6 +28,13 @@ export function SidecarGate({ children }: { children: (info: ServerInfo) => Reac
       if (disposed) u();
       else unlisten = u;
     });
+    // 迁移数据目录在窗口出现前就开始了，migrating 事件可能早于上面的订阅：挂载时主动问一次。
+    getSidecarStatus().then(
+      (status) => {
+        if (!disposed && status.status === 'migrating') dispatch({ type: 'status', status });
+      },
+      () => undefined,
+    );
     return () => {
       disposed = true;
       unlisten?.();
@@ -73,6 +81,9 @@ export function SidecarGate({ children }: { children: (info: ServerInfo) => Reac
   };
 
   if (state.view.kind === 'starting') {
+    if (state.view.migrating) {
+      return <div style={{ padding: 24 }}>正在迁移数据目录，请勿关闭应用…（数据多时需要几分钟）</div>;
+    }
     return <div style={{ padding: 24 }}>正在启动本地服务…</div>;
   }
   if (state.view.kind === 'failed') {

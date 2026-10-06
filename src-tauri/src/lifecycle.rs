@@ -25,6 +25,8 @@ pub struct ServerInfo {
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum SidecarStatus {
     Starting,
+    /// 启动前正在迁移数据目录（P4）。不是状态机的阶段：由 lib.rs 在迁移期间直接发出 / 返回。
+    Migrating,
     Ready,
     Failed { reason: String },
 }

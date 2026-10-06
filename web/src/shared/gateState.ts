@@ -3,7 +3,7 @@
 import type { DataDirInfo, ServerInfo, SidecarStatus } from './server';
 
 export type GateView =
-  | { kind: 'starting' }
+  | { kind: 'starting'; migrating?: boolean }
   | { kind: 'ready'; info: ServerInfo }
   | { kind: 'failed'; reason: string };
 
@@ -24,6 +24,9 @@ export function gateReducer(s: GateState, e: GateEvent): GateState {
     case 'status':
       if (e.status.status === 'failed') {
         return { epoch: s.epoch + 1, view: { kind: 'failed', reason: e.status.reason } };
+      }
+      if (e.status.status === 'migrating') {
+        return { epoch: s.epoch + 1, view: { kind: 'starting', migrating: true } };
       }
       // starting 和 ready 都先进入“启动中”：ready 事件不带 token，由组件随后调用 getServerInfo 取回
       return { epoch: s.epoch + 1, view: { kind: 'starting' } };

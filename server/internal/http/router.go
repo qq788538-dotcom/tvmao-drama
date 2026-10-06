@@ -54,6 +54,8 @@ type Deps struct {
 
 	// CanvasScript 脚本节点接口（P6）；nil 时不注册，便于只测其他路由。
 	CanvasScript *CanvasScriptHandler
+	// SettingsCenter 是设置页接口（P4，/api/v1/settings/*）的依赖；为 nil 的那部分接口不注册。
+	SettingsCenter SettingsCenterDeps
 }
 
 // MustWire 在启动期校验业务 handler 都已装配，缺一个就 panic。路由按字段注册，漏装配不会编译失败，
@@ -106,6 +108,20 @@ func NewRouter(d Deps) nethttp.Handler {
 		r.Use(LocalIdentity)
 		registerGenerationRoutes(r, d.Generation)
 		registerRepersistRoute(r, d.GenerationRepersist)
+	})
+
+	// P4 设置页：mountSettingsCenter 注册的是 /api/v1/settings 绝对前缀，同样挂在根路由的 LocalIdentity 组上。
+	// DataDir / Version 缺省时取 sidecar 自身的值。
+	sc := d.SettingsCenter
+	if sc.DataDir == "" {
+		sc.DataDir = d.DataDir
+	}
+	if sc.Version == "" {
+		sc.Version = d.Version
+	}
+	r.Group(func(r chi.Router) {
+		r.Use(LocalIdentity)
+		mountSettingsCenter(r, sc)
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {

@@ -62,6 +62,9 @@ func main() {
 }
 
 func run() error {
+	if handled, err := runSubcommand(os.Args[1:], os.Stdout); handled {
+		return err
+	}
 	dataDir := flag.String("data-dir", "", "数据目录（必填）")
 	origins := flag.String("origins", defaultOrigins, "允许的 Origin，逗号分隔")
 	pythonHome := flag.String("python-home", "", "内置 Python 目录（缺省按 sidecar 位置查找）")

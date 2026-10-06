@@ -2,12 +2,14 @@
 //! 业务逻辑全部在 sidecar 里，这里不放任何业务代码。
 
 pub mod data_dir;
+pub mod datadir;
 pub mod lifecycle;
 pub mod native_dialog;
 pub mod sidecar;
 pub mod webview2;
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -56,7 +58,7 @@ fn sidecar_program() -> Result<PathBuf, String> {
     locate_sidecar(dir)
 }
 
-fn default_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn default_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path().app_data_dir().map_err(|e| format!("无法确定数据目录：{e}"))
 }
 
@@ -66,13 +68,47 @@ async fn server_info(m: State<'_, Arc<SidecarManager>>) -> Result<ServerInfo, St
 }
 
 #[tauri::command]
-fn sidecar_status(m: State<'_, Arc<SidecarManager>>) -> SidecarStatus {
+fn sidecar_status(m: State<'_, Arc<SidecarManager>>, dd: State<'_, datadir::DataDirState>) -> SidecarStatus {
+    if dd.migrating.load(Ordering::SeqCst) {
+        return SidecarStatus::Migrating;
+    }
     m.status()
 }
 
 #[tauri::command]
-async fn restart_sidecar(m: State<'_, Arc<SidecarManager>>) -> Result<ServerInfo, String> {
+async fn restart_sidecar(
+    m: State<'_, Arc<SidecarManager>>,
+    dd: State<'_, datadir::DataDirState>,
+) -> Result<ServerInfo, String> {
+    // 迁移进行中不能拉起 sidecar：它会打开正在被复制的数据库。迁移结束后异步启动任务会自己拉起。
+    if dd.migrating.load(Ordering::SeqCst) {
+        return Err("正在迁移数据目录，请稍候".into());
+    }
     m.inner().restart().await
+}
+
+/// 设置页“更改数据目录”（P4 T7）：记下待迁移目录，优雅关闭 sidecar，重启应用；迁移在下次启动时、
+/// 拉起 sidecar 之前进行（见 datadir::run_pending）。path 是 /settings/data-dir/check 返回的路径
+/// （用户所选目录下的 MiaojuData 子目录，或默认目录）。成功时不返回。
+#[tauri::command]
+async fn apply_data_dir_change(
+    app: tauri::AppHandle,
+    m: State<'_, Arc<SidecarManager>>,
+    path: String,
+) -> Result<(), String> {
+    let default = default_data_dir(&app)?;
+    let target = datadir::check_target_shape(&path, &default)?;
+    if data_dir::resolve(&default)?.current == target {
+        return Err("新目录与当前数据目录相同".into());
+    }
+    let pointer = datadir::pointer_path(&default);
+    let mut loc = datadir::read_location(&pointer)?;
+    loc.pending_data_dir = Some(target.to_string_lossy().into_owned());
+    datadir::write_location(&pointer, &loc)?;
+    // app.restart() 直接结束进程、不走 RunEvent::Exit，所以先在这里优雅关闭 sidecar（写 SHUTDOWN、关 stdin、等待）。
+    let manager = m.inner().clone();
+    let _ = tokio::time::timeout(Duration::from_secs(6), manager.shutdown()).await;
+    app.restart();
 }
 
 #[tauri::command]
@@ -103,6 +139,7 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -121,10 +158,31 @@ pub fn run() {
                 let _ = emit_app.emit(SIDECAR_STATE_EVENT, status);
             });
 
-            let manager = SidecarManager::new(make_spec, emit, Timeouts::default());
+            let manager = SidecarManager::new(make_spec, emit.clone(), Timeouts::default());
             app.manage(manager.clone());
+            app.manage(datadir::DataDirState::default());
             // 异步启动：窗口立即出现，前端显示“正在启动本地服务…”。
+            // 有数据目录迁移待办（P4）时先在这里做完，再拉起 sidecar；期间状态为 migrating。
+            let task_app = handle.clone();
             tauri::async_runtime::spawn(async move {
+                if let Ok(default) = default_data_dir(&task_app) {
+                    if datadir::has_pending(&default) {
+                        let dd = task_app.state::<datadir::DataDirState>();
+                        dd.migrating.store(true, Ordering::SeqCst);
+                        emit(SidecarStatus::Migrating);
+                        let r = tauri::async_runtime::spawn_blocking(move || {
+                            let program = sidecar_program()?;
+                            datadir::run_pending(&default, &mut |args| datadir::run_sidecar_once(&program, &args))
+                        })
+                        .await
+                        .map_err(|e| format!("数据目录迁移中断：{e}"))
+                        .and_then(|r| r);
+                        if let Err(e) = r {
+                            *dd.startup_error.lock().unwrap() = Some(e);
+                        }
+                        dd.migrating.store(false, Ordering::SeqCst);
+                    }
+                }
                 let _ = manager.start().await;
             });
             Ok(())
@@ -134,7 +192,10 @@ pub fn run() {
             sidecar_status,
             restart_sidecar,
             get_data_dir,
-            set_data_dir
+            set_data_dir,
+            apply_data_dir_change,
+            datadir::data_dir_status,
+            datadir::dismiss_data_dir_error
         ])
         .build(tauri::generate_context!());
 

@@ -1,6 +1,6 @@
 //! 数据目录（spec S1、S2）。默认在系统应用数据目录；用户在设置里改过则从 location.json 读取。
 //! location.json 永远放在默认数据目录里、和数据库分开：壳在启动 sidecar 之前就要知道数据在哪。
-//! 这个文件只由壳读写（Tauri 命令 get_data_dir / set_data_dir），P4 不要直接写。
+//! 这个文件只由壳读写（Tauri 命令 get_data_dir / set_data_dir，以及启动前迁移 datadir::run_pending）。
 
 use std::path::{Path, PathBuf};
 
@@ -112,9 +112,10 @@ pub fn write_location(default_dir: &Path, target: Option<&Path>) -> Result<DataD
             probe_writable(t)?;
             let json = serde_json::to_string_pretty(&LocationFile { version: 1, data_dir: t.into() })
                 .map_err(|e| format!("无法生成数据目录配置：{e}"))?;
-            let tmp = default_dir.join(format!("{LOCATION_FILE}.tmp"));
-            std::fs::write(&tmp, json).map_err(|e| format!("无法写入 {}：{e}", tmp.display()))?;
-            std::fs::rename(&tmp, &file).map_err(|e| format!("无法写入 {}：{e}", file.display()))?;
+            // 持久化原子写入（P4 审查 I1）：tmp 文件 fsync → 改名 → fsync 父目录。tmp 名为 location.json.tmp，
+            // 与 Go datadir 的 ignorable 一致。
+            crate::datadir::write_durable_file(&file, json.as_bytes())
+                .map_err(|e| format!("无法写入 {}：{e}", file.display()))?;
         }
         _ => match std::fs::remove_file(&file) {
             Ok(()) => {}

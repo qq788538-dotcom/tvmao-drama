@@ -53,3 +53,12 @@ describe('offerDefaultDataDir', () => {
     expect(offerDefaultDataDir({ ok: false })).toBe(true);
   });
 });
+
+describe('gateReducer migrating', () => {
+  it('migrating 进入启动中并标记迁移，随后的 info 照常就绪', () => {
+    const s1 = gateReducer(initialGateState, { type: 'status', status: { status: 'migrating' } });
+    expect(s1.view).toEqual({ kind: 'starting', migrating: true });
+    const s2 = gateReducer(s1, { type: 'info', epoch: s1.epoch, info: { port: 1, token: 't' } });
+    expect(s2.view).toEqual({ kind: 'ready', info: { port: 1, token: 't' } });
+  });
+});

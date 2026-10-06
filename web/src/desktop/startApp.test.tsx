@@ -23,6 +23,7 @@ vi.mock('@/App', () => ({
 // 壳的 IPC：getServerInfo 和状态事件由测试控制。
 const getServerInfo = vi.fn<() => Promise<ServerInfo>>();
 let statusCb: ((s: SidecarStatus) => void) | null = null;
+const getSidecarStatus = vi.fn<() => Promise<SidecarStatus>>(async () => ({ status: 'starting' }));
 vi.mock('@/shared/server', async () => {
   const actual = await vi.importActual<typeof import('@/shared/server')>('@/shared/server');
   return {
@@ -35,6 +36,7 @@ vi.mock('@/shared/server', async () => {
     },
     restartSidecar: vi.fn(() => new Promise(() => undefined)),
     getDataDir: vi.fn(async () => ({ current: '/d', default: '/d', custom: false })),
+    getSidecarStatus: () => getSidecarStatus(),
   };
 });
 
@@ -44,6 +46,8 @@ describe('startApp', () => {
   let root: Root | null = null;
   beforeEach(() => {
     getServerInfo.mockReset();
+    getSidecarStatus.mockReset();
+    getSidecarStatus.mockResolvedValue({ status: 'starting' });
     appMounts.mockReset();
     statusCb = null;
     queryClient.clear();
@@ -77,6 +81,18 @@ describe('startApp', () => {
     expect(getSidecarSession()).toEqual({ port: 50001, token: 't' });
     // REST 拦截器的会话来源已接上 getServerInfo（每个请求现取）。
     expect(await currentSidecarSession()).toEqual({ port: 50001, token: 't' });
+  });
+
+  it('启动前正在迁移数据目录：挂载时主动查询到 migrating，显示“请勿关闭”，迁移完照常进入应用', async () => {
+    let resolve!: (v: ServerInfo) => void;
+    getServerInfo.mockReturnValue(new Promise<ServerInfo>((r) => { resolve = r; }));
+    getSidecarStatus.mockResolvedValue({ status: 'migrating' }); // StrictMode 下 Gate 挂两次
+    act(() => {
+      root = startApp(container());
+    });
+    expect(await screen.findByText(/正在迁移数据目录，请勿关闭应用/)).toBeInTheDocument();
+    await act(async () => resolve({ port: 50003, token: 'm' }));
+    await waitFor(() => expect(screen.getByText('app-routes')).toBeInTheDocument());
   });
 
   it('sidecar 启动失败：显示原因和重试，不渲染应用、不写会话', async () => {
