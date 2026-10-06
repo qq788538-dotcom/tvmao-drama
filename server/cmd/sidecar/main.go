@@ -29,6 +29,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
 	"github.com/james/huabu_studio/apps/api/internal/assets"
 	"github.com/james/huabu_studio/apps/api/internal/builtin"
 	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
@@ -104,6 +105,12 @@ func run() error {
 	// 内置模型和画布配置（spec M9/M11）：首次启动导入，升级后按 model_id 字段级合并。
 	if err := builtin.Apply(conn); err != nil {
 		return fmt.Errorf("导入内置数据: %w", err)
+	}
+	// AI 角色库内置数据：哈希没变则跳过；失败不阻止启动（面板为空，日志里有原因）。
+	if res, err := aicharacters.Import(conn); err != nil {
+		log.Printf("AI 角色库内置数据导入失败: %v", err)
+	} else if !res.Skipped {
+		log.Printf("AI 角色库内置数据: 共 %d、新增 %d、更新 %d、删除 %d", res.Total, res.Inserted, res.Updated, res.Deleted)
 	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
