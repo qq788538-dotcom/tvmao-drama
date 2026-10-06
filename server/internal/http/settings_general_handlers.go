@@ -41,12 +41,13 @@ func registerDataDirCheck(r chi.Router, d SettingsCenterDeps) {
 			scWriteError(w, err)
 			return
 		}
-		cleaned, err := datadir.ValidateChosenFolder(d.DataDir, body.Path)
+		// state：empty → 迁移过去；existing → 已有喵剧数据，前端提供“直接使用该目录（不迁移）”。非空且无关 → 400。
+		t, err := datadir.InspectChosenFolder(d.DataDir, body.Path)
 		if err != nil {
 			scWriteError(w, scValidation("path", err.Error()))
 			return
 		}
-		writeJSON(w, nethttp.StatusOK, map[string]any{"path": cleaned})
+		writeJSON(w, nethttp.StatusOK, map[string]any{"path": t.Path, "state": t.State})
 	})
 }
 

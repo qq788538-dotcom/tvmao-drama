@@ -9,9 +9,11 @@ import {
   dataDirStatus,
   dismissDataDirError,
   errorText,
+  switchToExistingDataDir,
   getGeneral,
   restoreBaseDomain,
   updateUpstream,
+  type DataDirCheck,
   type GeneralSettings,
   type UpstreamUpdate,
 } from '../api';
@@ -36,11 +38,36 @@ type OpenDialog = (o: { directory: true; multiple: false; defaultPath?: string; 
 export async function pickDataDir(
   current: string,
   openDialog: OpenDialog = open as unknown as OpenDialog,
-  check: (p: string) => Promise<{ path: string }> = checkDataDir,
-): Promise<string | null> {
+  check: (p: string) => Promise<DataDirCheck> = checkDataDir,
+): Promise<DataDirCheck | null> {
   const picked = await openDialog({ directory: true, multiple: false, defaultPath: current, title: '选择新的数据目录' });
   if (!picked || Array.isArray(picked)) return null;
-  return (await check(picked)).path;
+  return check(picked);
+}
+
+/** 按所选目录的状态决定确认框（I1）：空目录 → 迁移；已有喵剧数据 → 直接使用（不迁移）。 */
+export function dataDirChangeDialog(t: DataDirCheck): {
+  mode: 'migrate' | 'use-existing';
+  title: string;
+  description: string;
+  okText: string;
+} {
+  if (t.state === 'existing') {
+    return {
+      mode: 'use-existing',
+      title: '使用已有的数据目录',
+      description:
+        '这个文件夹里已经有喵剧AI 的数据（例如之前用过的数据目录）。将直接切换到它，不会复制或删除任何数据；当前目录里的数据保持原样，以后也可以再切回来。本地服务会重启，期间请稍候。',
+      okText: '直接使用该目录（不迁移）',
+    };
+  }
+  return {
+    mode: 'migrate',
+    title: '更改数据目录',
+    description:
+      '将把全部数据（项目、素材、生成结果、设置）复制到这里。应用会立即重启并开始复制，数据多时需要几分钟，期间请不要关闭应用。复制并校验成功后，原目录中的数据会被删除。',
+    okText: '立即重启并迁移',
+  };
 }
 
 export function GeneralPage() {
@@ -100,7 +127,7 @@ export function GeneralPage() {
 
   const changeDir = async () => {
     if (!dirs.data) return;
-    let target: string | null;
+    let target: DataDirCheck | null;
     try {
       target = await pickDataDir(dirs.data.current);
     } catch (e) {
@@ -108,20 +135,22 @@ export function GeneralPage() {
       return;
     }
     if (!target) return;
+    const { path } = target;
+    const d = dataDirChangeDialog(target);
     Modal.confirm({
-      title: '更改数据目录',
+      title: d.title,
       content: (
         <div>
-          <p>将把全部数据（项目、素材、生成结果、设置）复制到：</p>
-          <Typography.Text code>{target}</Typography.Text>
-          <p style={{ marginTop: 12 }}>应用会立即重启并开始复制，数据多时需要几分钟，期间请不要关闭应用。复制并校验成功后，原目录中的数据会被删除。</p>
+          <Typography.Text code>{path}</Typography.Text>
+          <p style={{ marginTop: 12 }}>{d.description}</p>
         </div>
       ),
-      okText: '立即重启并迁移',
+      okText: d.okText,
       cancelText: '取消',
       onOk: async () => {
         try {
-          await applyDataDirChange(target!);
+          if (d.mode === 'use-existing') await switchToExistingDataDir(path);
+          else await applyDataDirChange(path);
         } catch (e) {
           message.error(errorText(e));
         }

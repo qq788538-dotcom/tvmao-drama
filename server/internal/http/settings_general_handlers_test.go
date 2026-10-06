@@ -123,9 +123,19 @@ func TestDataDirCheck(t *testing.T) {
 	os.MkdirAll(picked, 0o755)
 	os.WriteFile(filepath.Join(picked, "x.txt"), []byte("x"), 0o600)
 	code, body := e.do("POST", "/data-dir/check", map[string]any{"path": picked})
-	want, _ := json.Marshal(map[string]string{"path": filepath.Join(picked, datadir.DedicatedSubdir)})
+	want, _ := json.Marshal(map[string]string{"path": filepath.Join(picked, datadir.DedicatedSubdir), "state": "empty"})
 	if code != 200 || strings.TrimSpace(body) != string(want) {
 		t.Fatalf("%d %s", code, body)
+	}
+	// 已有喵剧数据（含有效 data.db）→ state=existing，前端提供“直接使用该目录（不迁移）”
+	had := t.TempDir()
+	hadSub := filepath.Join(had, datadir.DedicatedSubdir)
+	os.MkdirAll(hadSub, 0o700)
+	os.WriteFile(filepath.Join(hadSub, "data.db"), []byte("SQLite format 3\x00rest"), 0o600)
+	code, body = e.do("POST", "/data-dir/check", map[string]any{"path": had})
+	want, _ = json.Marshal(map[string]string{"path": hadSub, "state": "existing"})
+	if code != 200 || strings.TrimSpace(body) != string(want) {
+		t.Fatalf("existing: %d %s", code, body)
 	}
 	// 专用子目录已存在且非空 → 拒绝
 	taken := t.TempDir()

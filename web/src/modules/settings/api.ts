@@ -2,7 +2,7 @@
 // 接口契约见 docs/superpowers/plans/2026-10-06-p4-settings.md「HTTP 接口一览」。
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
-import { authHeaders, buildHttpUrl, getServerInfo } from '@/shared/server';
+import { authHeaders, buildHttpUrl, getServerInfo, restartSidecar } from '@/shared/server';
 
 export class SettingsApiError extends Error {
   constructor(public status: number, message: string, public field?: string) {
@@ -54,7 +54,13 @@ export interface UpstreamUpdate {
 export const getGeneral = () => request<GeneralSettings>('GET', '/general');
 export const updateUpstream = (u: UpstreamUpdate) => request<GeneralSettings>('PUT', '/upstream', u);
 export const restoreBaseDomain = () => request<GeneralSettings>('POST', '/upstream/base-domain/restore-default');
-export const checkDataDir = (path: string) => request<{ path: string }>('POST', '/data-dir/check', { path });
+/** 所选数据目录的状态：empty → 迁移过去；existing → 已有喵剧数据，可直接使用（不迁移）。非空且无关时接口返回 400。 */
+export type DataDirTargetState = 'empty' | 'existing';
+export interface DataDirCheck {
+  path: string;
+  state: DataDirTargetState;
+}
+export const checkDataDir = (path: string) => request<DataDirCheck>('POST', '/data-dir/check', { path });
 
 // ---- 模型中心 ----
 export type UISchema = Record<string, { label?: string; default?: string | number; options?: { label?: string; value: string | number }[] }>;
@@ -138,4 +144,12 @@ export const dataDirStatus = () => invoke<DataDirStatus>('data_dir_status');
 /** 写入待迁移目录并重启应用；成功时应用会直接重启，不会返回。 */
 export const applyDataDirChange = (path: string) => invoke<void>('apply_data_dir_change', { path });
 export const dismissDataDirError = () => invoke<void>('dismiss_data_dir_error');
+/**
+ * 直接使用一个已有喵剧数据的目录（I1）：只改 location.json（壳会校验它确实是喵剧数据目录），再重启本地服务，不迁移。
+ * 切换被拒绝时抛出原因；重启失败由 SidecarGate 的失败页显示（那里有“重试”和“改用默认数据目录”）。
+ */
+export async function switchToExistingDataDir(path: string): Promise<void> {
+  await invoke('set_data_dir', { path });
+  await restartSidecar().catch(() => undefined);
+}
 export const appVersion = () => getVersion();

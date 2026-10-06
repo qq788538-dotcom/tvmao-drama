@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gateReducer, initialGateState, offerDefaultDataDir } from './gateState';
+import { gateReducer, initialGateState, isDataDirBusy, offerDefaultDataDir, startingMessage } from './gateState';
 
 const info = { port: 4001, token: 't' };
 
@@ -60,5 +60,26 @@ describe('gateReducer migrating', () => {
     expect(s1.view).toEqual({ kind: 'starting', migrating: true });
     const s2 = gateReducer(s1, { type: 'info', epoch: s1.epoch, info: { port: 1, token: 't' } });
     expect(s2.view).toEqual({ kind: 'ready', info: { port: 1, token: 't' } });
+  });
+});
+
+// I3：等上一次迁移的锁时与普通迁移区分开
+describe('gateReducer migrating waiting', () => {
+  it('waiting=true 标记等待；随后 waiting=false 回到迁移中', () => {
+    const s1 = gateReducer(initialGateState, { type: 'status', status: { status: 'migrating', waiting: true } });
+    expect(s1.view).toEqual({ kind: 'starting', migrating: true, waitingLock: true });
+    expect(startingMessage(s1.view)).toContain('正在等待上一次数据目录迁移结束');
+    const s2 = gateReducer(s1, { type: 'status', status: { status: 'migrating', waiting: false } });
+    expect(s2.view).toEqual({ kind: 'starting', migrating: true });
+    expect(startingMessage(s2.view)).toContain('正在迁移数据目录');
+    expect(startingMessage({ kind: 'starting' })).toBe('正在启动本地服务…');
+  });
+});
+
+// I4：上一个窗口仍在关闭（数据目录被占用）→ 只需稍后重试，不提供“改用默认数据目录”
+describe('isDataDirBusy', () => {
+  it('识别壳给出的“上一个窗口仍在关闭”原因', () => {
+    expect(isDataDirBusy('本地服务启动失败：上一个窗口仍在关闭，数据目录暂时被它占用。请稍后点“重试”。')).toBe(true);
+    expect(isDataDirBusy('本地服务启动失败：sidecar 未就绪即退出')).toBe(false);
   });
 });

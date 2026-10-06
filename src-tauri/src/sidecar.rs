@@ -16,6 +16,13 @@ use tokio::process::{Child, ChildStderr, ChildStdin, Command};
 use tokio::sync::{oneshot, watch};
 use tokio::task::JoinHandle;
 
+/// sidecar 发现数据目录正被另一个 sidecar 使用时的退出码（Go `exitDataDirBusy`，I4）。
+pub const DATA_DIR_BUSY_EXIT: i32 = 75;
+
+/// 退出码为 DATA_DIR_BUSY_EXIT 时给用户看的原因（失败页上有“重试”按钮）。
+pub const DATA_DIR_BUSY_MSG: &str =
+    "上一个窗口仍在关闭，数据目录暂时被它占用。请稍后点“重试”。";
+
 /// 失败原因里保留的 stderr 行数。
 pub const STDERR_TAIL_LINES: usize = 20;
 
@@ -123,6 +130,14 @@ impl ProcessHandle {
     }
 }
 
+/// 未就绪就退出时的原因：数据目录被占用给固定提示，其他情况带 stderr 尾部。
+fn early_exit_reason(msg: String, info: &ExitInfo) -> String {
+    if info.code == Some(DATA_DIR_BUSY_EXIT) {
+        return DATA_DIR_BUSY_MSG.to_string();
+    }
+    with_tail(msg, &info.stderr_tail)
+}
+
 fn with_tail(msg: String, tail: &str) -> String {
     if tail.is_empty() {
         msg
@@ -205,7 +220,7 @@ pub async fn launch(spec: &LaunchSpec, token: &str, ready_timeout: Duration) -> 
     .await;
     if let Err(e) = wrote {
         let info = handle.kill_now().await;
-        return Err(with_tail(format!("无法向 sidecar 传递 token：{e}"), &info.stderr_tail));
+        return Err(early_exit_reason(format!("无法向 sidecar 传递 token：{e}"), &info));
     }
     handle.stdin = Some(stdin);
 
@@ -232,7 +247,7 @@ pub async fn launch(spec: &LaunchSpec, token: &str, ready_timeout: Duration) -> 
         }
         Ok(None) => {
             let info = handle.kill_now().await;
-            Err(with_tail("sidecar 未就绪即退出".to_string(), &info.stderr_tail))
+            Err(early_exit_reason("sidecar 未就绪即退出".to_string(), &info))
         }
         Err(_) => {
             let info = handle.kill_now().await;
@@ -321,6 +336,14 @@ mod process_tests {
         let l = launch(&spec, TOKEN, Duration::from_secs(5)).await.unwrap();
         assert_eq!(l.port, 1);
         l.handle.shutdown(Duration::from_secs(2)).await;
+    }
+
+    /// I4：数据目录被上一个 sidecar 占着（Go 退出码 75）→ 明确提示“上一个窗口仍在关闭”，可重试。
+    #[tokio::test]
+    async fn data_dir_busy_exit_code_reports_retry_hint() {
+        let spec = sh(r#"read t; echo "2026/01/01 sidecar 启动失败: busy" >&2; exit 75"#);
+        let err = launch(&spec, TOKEN, Duration::from_secs(5)).await.err().unwrap();
+        assert!(err.contains("上一个窗口仍在关闭") && err.contains("重试"), "{err}");
     }
 
     #[tokio::test]

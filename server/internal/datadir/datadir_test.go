@@ -392,14 +392,14 @@ func TestValidateChosenFolderUsesDedicatedSubdir(t *testing.T) {
 	cur := t.TempDir()
 	picked := t.TempDir()
 	mustWrite(t, filepath.Join(picked, "别的文件.txt"), "x")
-	got, err := datadir.ValidateChosenFolder(cur, picked)
-	if err != nil || got != filepath.Join(picked, datadir.DedicatedSubdir) {
-		t.Fatalf("%q %v", got, err)
+	got, err := datadir.InspectChosenFolder(cur, picked)
+	if err != nil || got.Path != filepath.Join(picked, datadir.DedicatedSubdir) {
+		t.Fatalf("%+v %v", got, err)
 	}
-	if _, err := datadir.ValidateChosenFolder(cur, filepath.Join(picked, "不存在")); err == nil || !strings.Contains(err.Error(), "不存在") {
+	if _, err := datadir.InspectChosenFolder(cur, filepath.Join(picked, "不存在")); err == nil || !strings.Contains(err.Error(), "不存在") {
 		t.Fatalf("所选文件夹不存在应报错: %v", err)
 	}
-	if _, err := datadir.ValidateChosenFolder(cur, "  "); err == nil {
+	if _, err := datadir.InspectChosenFolder(cur, "  "); err == nil {
 		t.Fatal("空路径应报错")
 	}
 }

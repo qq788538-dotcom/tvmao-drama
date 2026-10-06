@@ -26,7 +26,8 @@ pub struct ServerInfo {
 pub enum SidecarStatus {
     Starting,
     /// 启动前正在迁移数据目录（P4）。不是状态机的阶段：由 lib.rs 在迁移期间直接发出 / 返回。
-    Migrating,
+    /// waiting：迁移子命令正在等上一次迁移的锁（I3）。
+    Migrating { waiting: bool },
     Ready,
     Failed { reason: String },
 }
@@ -305,6 +306,15 @@ mod tests {
     fn status_serializes_without_token() {
         assert_eq!(serde_json::to_string(&SidecarStatus::Starting).unwrap(), r#"{"status":"starting"}"#);
         assert_eq!(serde_json::to_string(&SidecarStatus::Ready).unwrap(), r#"{"status":"ready"}"#);
+        // I3：等迁移锁时带 waiting=true，前端据此显示“正在等待上一次迁移结束”
+        assert_eq!(
+            serde_json::to_string(&SidecarStatus::Migrating { waiting: true }).unwrap(),
+            r#"{"status":"migrating","waiting":true}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SidecarStatus::Migrating { waiting: false }).unwrap(),
+            r#"{"status":"migrating","waiting":false}"#
+        );
         assert_eq!(
             serde_json::to_string(&SidecarStatus::Failed { reason: "x".into() }).unwrap(),
             r#"{"status":"failed","reason":"x"}"#
