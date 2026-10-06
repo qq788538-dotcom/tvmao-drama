@@ -20,3 +20,9 @@
 - 所有用户数据表
 
 重新导出时沿用同一范围；导出后须再次扫描确认不含密钥。
+
+## 内置到 sidecar
+
+`model_configs.jsonl`、`settings.jsonl` 由 sidecar 通过 `go:embed` 内置（`server/internal/builtin/seeddata/` 是它们的逐字节副本）。修改或重新导出后运行 `scripts/sync-seed.sh`；`go test ./internal/builtin/` 会检查副本与本目录一致。
+
+`seedance_characters.jsonl` 由 `server/internal/aicharacters`（`seeddata/` 副本，同样由 `scripts/sync-seed.sh` 同步）在启动时导入 `seedance_characters` 表：哈希（含 `seedFormatVersion`）记在 `builtin_seed_state`（dataset=`ai_characters`），没变则跳过；变了按 `asset_id` upsert，种子里已删除的角色从表中删除。JSONL 里的 `created_at`/`updated_at` 不导入。

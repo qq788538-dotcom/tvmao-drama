@@ -132,7 +132,7 @@ JSON 结构草案（v2，已作废）：
 | S9 | 媒体垃圾回收 | 照搬参考仓的孤儿回收：删除时记入 `orphan_objects` 表，7 天后由后台任务真正删除（配合撤销） | ✅ 已确认 |
 | S10 | 项目导出、导入 | 不做（第一期和以后都不做）；备份靠拷贝整个数据目录 | ❌ 否决 |
 | S11 | 多窗口 / 多实例 | 单实例、单窗口：再次启动时把已有窗口带到前台（tauri single-instance 插件） | ✅ 已确认 |
-| S12 | 输入媒体如何让上游拿到（上游多数只认公网 URL，本机文件没有公网地址） | 已知事实：Seedance 2.0 图片、音频接受 base64，视频只接受公网 URL 或 `asset://`；new_api（含上游最新 rc.41）没有可用的 `/v1/files`。候选：图片音频走 base64、生成产物复用上游原始地址、视频上传到对象存储（TOS 内网 / R2 等）、上传前压缩、按哈希去重。用户顾虑：服务器或 TOS 流量费过高。详见 `docs/superpowers/plans/p1-research.md` 第 1 节 | ⬜ 待定（用户另找方案，后续补充；P1 先不实现上传，带参考媒体的生成按现状保留 URL 签名逻辑的接口位） |
+| S12 | 输入媒体如何让上游拿到（上游多数只认公网 URL，本机文件没有公网地址） | 已知事实：Seedance 2.0 图片、音频接受 base64，视频只接受公网 URL 或 `asset://`；new_api（含上游最新 rc.41）没有可用的 `/v1/files`。候选：图片音频走 base64、生成产物复用上游原始地址、视频上传到对象存储（TOS 内网 / R2 等）、上传前压缩、按哈希去重。用户顾虑：服务器或 TOS 流量费过高。详见 `docs/superpowers/plans/p1-research.md` 第 1 节 | ⬜ 待定（用户另找方案，后续补充；P1 先不实现上传，带参考媒体的生成按现状保留 URL 签名逻辑的接口位） <br>**2026-10-06 实施期说明**：P1–P8 完成后仍为待定，未做任何输入媒体上传实现 |
 
 ---
 
@@ -143,7 +143,7 @@ JSON 结构草案（v2，已作废）：
 | SEC1 | 本地服务只监听 `127.0.0.1`，端口随机 | 是 | ✅ 已确认 |
 | SEC2 | 每次启动生成随机 token，所有请求校验 token 和 Origin（防止本机网页调用这个端口） | 是 | ✅ 已确认 |
 | SEC3 | 启动 token 的传递 | Tauri 通过 stdin 把启动 token 传给 sidecar，不用命令行参数或环境变量（Key 已按 M3 存 SQLite，不经过 Tauri） | ✅ 已确认 |
-| SEC4 | Tauri 权限与 CSP | capabilities 最小授权（取端口和 token、文件对话框、在访达中显示）；CSP 只放行 `127.0.0.1:<port>` 和 F7 角色库图片域名 | ✅ 已确认 |
+| SEC4 | Tauri 权限与 CSP | capabilities 最小授权（取端口和 token、文件对话框），壳不授 opener 权限；"在访达中显示"由 sidecar 执行（`POST /api/v1/media/reveal`），key 限定在媒体根目录内，只在访达 / 资源管理器中选中文件、不执行文件；CSP 只放行 `127.0.0.1:<port>` 和 F7 角色库图片域名 | ✅ 已确认 |
 
 ---
 
@@ -181,14 +181,14 @@ JSON 结构草案（v2，已作废）：
 | 阶段 | 内容 | 预估 | 状态 |
 |---|---|---|---|
 | P0 | 验证原型。WebCodecs、mediabunny、127.0.0.1 Range 请求已在 2026-09-30 实测通过（见 D7）；剩余：sidecar 启动握手（stdin 传 token、stdout 回端口）、Agent WebSocket、Windows 上跑同一套测试 | 1 天 | ✅ 已完成（2026-09-30 合并到 main）；macOS 诊断 17/17 PASS，Windows 实机验证待补，见 `docs/superpowers/plans/p0-results.md` |
-| P1 | Go sidecar：从参考仓复制画布相关包；MySQL → SQLite（modernc，合并成一份 schema，方言替换）；本地文件存储 + `media://` 转本地 URL；固定本地用户；计费空实现；去掉 Redis、owner 锁、多实例租约；任务恢复；孤儿回收；token + Origin 校验；sidecar 启动入口；Go 测试迁到 SQLite | 2–2.5 周 | ✅ 已确认 |
-| P2 | 内置数据：从生产库导出模型、settings 配置、Skill、Agent 工具目录、AI 角色数据，去掉 Key，go:embed；首次启动导入；升级时按 modelId 字段级合并（M11）；“恢复默认” | 1 周 | ✅ 已确认 |
-| P3 | 前端迁移：复制画布模块和 shared；删除协作、发布、分享、计费、登录、ChatPanel；启动直接进画布（F9）；“返回”改“所有项目”；“保存到本地”节点放回菜单；右键“在访达中显示”；下载失败提示与重试（S5）；字体本地化；vitest 测试迁移 | 1.5–2 周 | ✅ 已确认 |
-| P4 | 设置页：把参考仓后台的模型中心和各配置页搬进客户端并调整 UI；只开放安全字段（M10）；base_domain 和 Key 填写；Agent 模型切换（A2）；数据目录修改与迁移（S2）；版本号显示 | 1–1.5 周 | ✅ 已确认 |
-| P5 | Agent：Eino 运行时接入、WebSocket、内置 Skill；隐藏 Skill 创建和 Skill JSON 导入导出；能力清单一致性测试 | 0.5–1 周 | ✅ 已确认 |
-| P6 | 脚本节点“剧本生成分镜”：内置独立 Python 运行时、命令白名单、任务工作区隔离、Windows 无 bash 的处理（X6） | 1–1.5 周 | ✅ 已确认 |
-| P7 | Seedance 合规与 AI 角色库走 newapi（X5、F7）：客户端侧先按约定的接口形态实现，newapi 接口补齐后联调 | 0.5 周 + 联调 | ✅ 已确认 |
-| P8 | Tauri 壳与打包：sidecar 生命周期、单实例、capabilities 和 CSP、WebView2 检测；macOS dmg（ad-hoc 签名）、Windows zip；首次打开放行说明 | 0.5–1 周 | ✅ 已确认 |
+| P1 | Go sidecar：从参考仓复制画布相关包；MySQL → SQLite（modernc，合并成一份 schema，方言替换）；本地文件存储 + `media://` 转本地 URL；固定本地用户；计费空实现；去掉 Redis、owner 锁、多实例租约；任务恢复；孤儿回收；token + Origin 校验；sidecar 启动入口；Go 测试迁到 SQLite | 2–2.5 周 | ✅ 已确认 <br>**实施进度（2026-10-06）**：P1a ✅（SQLite 数据层，已合 main）；P1b ✅（存储、媒体、HTTP）；P1c ✅（生成管线，迁移 0004）；P1d ✅（其余接口）；均已并入 integration 866ef9c；S12 仍待定，带 URL-only 参考媒体的模型在调上游前报错 |
+| P2 | 内置数据：从生产库导出模型、settings 配置、Skill、Agent 工具目录、AI 角色数据，去掉 Key，go:embed；首次启动导入；升级时按 modelId 字段级合并（M11）；“恢复默认” | 1 周 | ✅ 已确认 <br>**实施进度**：P2a ✅（47 模型 / 6 设置内置导入、M10/M11 合并与恢复默认，已并入 integration）；Skill、Agent 工具目录随 P5 导入 |
+| P3 | 前端迁移：复制画布模块和 shared；删除协作、发布、分享、计费、登录、ChatPanel；启动直接进画布（F9）；“返回”改“所有项目”；“保存到本地”节点放回菜单；右键“在访达中显示”；下载失败提示与重试（S5）；字体本地化；vitest 测试迁移 | 1.5–2 周 | ✅ 已确认 <br>**实施进度**：P3a ✅（画布迁移、启动入口、sidecar 重启刷新，已并入 integration；GUI 手动清单待人工）；P3b/P3c ✅（估价 UI、协作残留清理、下载失败角标与重试，T1–T11 完成，已完成并合入 integration；Tauri GUI 验收待人工）；修下载及各并行小修 ✅（已完成并合入 integration） |
+| P4 | 设置页：把参考仓后台的模型中心和各配置页搬进客户端并调整 UI；只开放安全字段（M10）；base_domain 和 Key 填写；Agent 模型切换（A2）；数据目录修改与迁移（S2）；版本号显示 | 1–1.5 周 | ✅ 已确认 <br>**实施进度**：T1–T14 ✅（修复轮 f5a176e，已合 p4-int）；T15（适配器接线、移除 /admin/canvas 写接口）✅（已完成并合入 integration）；`app.restart()` 与单实例共存待人工验证 |
+| P5 | Agent：Eino 运行时接入、WebSocket、内置 Skill；隐藏 Skill 创建和 Skill JSON 导入导出；能力清单一致性测试 | 0.5–1 周 | ✅ 已确认 <br>**实施进度**：✅ 后端 T1–T9（修复轮 1434004）与前端 T10 均已并入 integration |
+| P6 | 脚本节点“剧本生成分镜”：内置独立 Python 运行时、命令白名单、任务工作区隔离、Windows 无 bash 的处理（X6） | 1–1.5 周 | ✅ 已确认 <br>**实施进度**：T1–T8 ✅（内置 Python 运行时三目标、命令白名单、工作区隔离；T2–T7 已并入 integration，T1/T8 在 p6-t1 分支）；打包回归待人工 |
+| P7 | Seedance 合规与 AI 角色库走 newapi（X5、F7）：客户端侧先按约定的接口形态实现，newapi 接口补齐后联调 | 0.5 周 + 联调 | ✅ 已确认 <br>**实施进度**：挂起，未开始（同 2026-09-30 决定） |
+| P8 | Tauri 壳与打包：sidecar 生命周期、单实例、capabilities 和 CSP、WebView2 检测；macOS dmg（ad-hoc 签名）、Windows zip；首次打开放行说明 | 0.5–1 周 | ✅ 已确认 <br>**实施进度**：T1–T11 ✅（并入 integration）；T10 图标为占位图；T12 实机演练待人工，见 `docs/manual-acceptance-checklist.md` |
 
 合计约 8–11 周（一个人全职）。比最初估计的 5–7 周多出的部分主要来自：X6 第一期就做（+1–1.5 周）、设置页搬迁（+1–1.5 周）、内置数据与升级合并（+0.5 周）、测试迁移。
 
@@ -287,3 +287,61 @@ JSON 结构草案（v2，已作废）：
 | 2026-09-30 | P0–P8 | ✅ 实施阶段确认 | P7 挂起 |
 | 2026-09-30 | P0 | ✅ 完成并合并到 main；macOS 诊断 17/17 PASS | Windows 实机验证待补（用户决定不等） |
 | 2026-10-06 | S12 | ⬜ 新增待定项：输入媒体公网 URL 方案 | 用户另找低流量费方案，P1 先不实现上传 |
+
+---
+
+## 附录：实施期裁定
+
+开发过程中由控制器（controller）裁定、偏离或补充 spec 的决定，来自各计划 SDD 账本（`.superpowers/sdd/<计划目录>/progress.md`）里的 Ruling 行，以及 `integration-report.md`。原有决策条目不改；与上文冲突时以本附录为准。S12 仍为 ⬜ 待定。
+
+| 阶段 | 决定 | 原因 | 出处账本 |
+|---|---|---|---|
+| P0 | `.gitignore` 追加 `.superpowers/`、`.worktrees/` | SDD 工作区与 worktree 不应入库 | p0 账本 Ruling 1 |
+| P0 | 先拦裸 `OPTIONS`：只有 `OPTIONS + Origin + Access-Control-Request-Method` 免 token | 约束原文是"除 CORS 预检外都带 token" | p0 账本 Ruling 6 |
+| P0 | setup 里等 READY 加 20 秒超时，超时 kill 子进程并报"启动超时" | 避免 sidecar 卡住时窗口永远不出现 | p0 账本 Ruling 8 |
+| P0 | READY 后 sidecar 崩溃、失败页真重试，转 P8 | 需要状态机，是设计问题 | p0 账本 Ruling 9、11 |
+| P0 | CSP 加 `worker-src 'self' blob:`；删 android/ios 图标目录 | P3 才会踩到；目标平台用不到 | p0 账本 Ruling 12、14 |
+| P1a | `db.Open` 拒绝含 `?` 与 `file:` 开头的路径 | modernc 在 `?` 处截断 DSN，库静默建到别处且外键、WAL 失效；S2 允许任意目录 | p1a 账本 Ruling 2 |
+| P1a | `go.mod` 接受 go 1.26.0 | modernc v1.60.1 要求 | p1a 账本 Ruling 3 |
+| P1a | 迁移事务内外键处理等一轮修复；0001 给 JSON 列加 `typeof='text'` CHECK；Minor 小修一并做 | 0001 尚未发布，趁未冻结做完 | p1a 账本 Ruling 4 |
+| P1a | 触发器在无变化 UPDATE 上也刷新 `updated_at`，接受不修 | 只影响排序，修复要逐表列比较 | p1a 账本 Ruling 5 |
+| P1b | SEC4"在访达中显示"由 sidecar 执行（`POST /api/v1/media/reveal`），不由壳执行 | key 不可逃逸、不执行文件；spec SEC4 文字已改 | p1b 账本 Ruling |
+| P1b | 数据目录 0700、仅 debug 放行 Vite 来源、EOF 优雅退出等 P0 转来项并入 T12 修复轮 | p0-carryover 带入 P1 项 | p1b 账本（Fix round 1） |
+| P1b | 不单独复审 T12 修复，由整合审查覆盖 | 速度优先 | p1b 账本 Ruling |
+| P1c | 6 项计划作者决定全部采纳：本地媒体只认 URL 的模型调上游前报错、不打包 ffprobe、S5 内联重试加 repersist、estimate 恒 0、去 drama 三列、TEXT 先扫 `[]byte` | 与"照搬参考仓、去计费团队"一致，S12 留接口位 | p1c 账本 Ruling |
+| P1c | 迁移编号改为 `0004_generation.sql` | 与 P1b 0002、P2a 0003 避免冲突 | p1c 账本（T10）、integration-report |
+| P1d | T5 被拒的 router.go 改动不重做，T8 合并时自然消解 | 权限被拒不绕过；其他分支已做同样删除 | p1d 账本 Ruling 1 |
+| P1d | T7 把 p1b-t8 合入后继续 | 缺 readUploadForm 等前置 | p1d 账本 Ruling |
+| P1d | T5 两项 Important 修复并入 T8 首个提交；导演台上传加 32MB 上限（413） | T5 分支单独不编译；防无上限上传 | p1d 账本 Ruling、Fix I1 |
+| P2a | 种子 `base_domain` 保留生产 IP `http://115.191.35.118:3000` | 用户授权；与参考仓一致，设置里可改；发布前换域名只改 seed 一行 | p2a 账本 Ruling |
+| P2a | 打光/多角度 template 视为"预设提示词"，允许用户编辑（M5、M10 的解释） | 用户确认 | p2a 账本 Ruling |
+| P2a | `subtitleRemovalModels`、`modelCandidates` 不允许增删条目，不允许改 id/model | M8"只能改不能增删" | p2a 账本 Ruling M4 |
+| P2a | 列表按新种子条目对齐，保留留存条目的用户修改（M11 的细化） | 比整份作废更护用户数据 | p2a 账本 Ruling M3 |
+| P2a / P5 | `agent_tools.source_model_id` 外键由 RESTRICT 改为 **CASCADE** | `builtin.Apply` 升级会删/改模型主键；用户不能删内置模型，CASCADE 只在升级时触发 | p2a 账本 Ruling I1、p5 账本 Ruling |
+| P3a | 采纳计划切法：估价 UI 归 P3b、协作残留归 P3c；`ownerToken=local`、sidecar 返回完整媒体 URL 加 CORS、轮询回填、vite `base='/'`、lastProject 存 localStorage | 与照搬参考仓一致 | p3a 账本 Ruling |
+| P3a | 修复轮加入 sidecar 重启后 REST/Agent WS 刷新端口与 token | 原为 P5 T10 已知限制 | p3a 账本 Fix round 1 |
+| P3b/c | 下载问题另开 P8 小任务 side-dl；"未保存"按"成功且 http 外链"认定；任务 8 照常执行并单独审查；计费类型字段保留；角标与重试放节点名行 | 5 条推荐全部采纳 | p3bc 账本 Ruling |
+| P3b/c | SegmentReshootBar/VideoContinuationBar tooltip 去掉"不扣积分"字样 | 桌面端无积分（X3） | p3bc 账本 Ruling |
+| P4 | 白名单外字段静默忽略；请求体顶层未知字段 400；不注册 P1d `/admin/canvas/*` 写接口；`seedance_compliance_config`、`ai_character_image_base_url` 推迟到 P7 | M10"只改安全字段" | p4 账本 Ruling |
+| P4 | 重试次数最小值 1、缺省显示 1 | 照搬参考仓语义（0=默认 1 次），用户无法关闭重试 | p4 账本 Ruling I5 |
+| P4 | `app.restart()` 与单实例共存留待人工验证，不行则退化为"请手动重开" | 需 GUI | p4 账本 Ruling I4 |
+| P4 | 白名单强制由 T15 适配器负责并补测试；绘图预设 `models:[]` 保持可保存；不单独复审 | I7；按参考仓语义 | p4 账本 Ruling I7 等 |
+| P4 | 自定义数据目录迁移时在所选目录下建 0700 专用子目录再传给 `set_data_dir` | P8 修复后不再强制 0700 | p4 账本 Note |
+| P5 | 用户不能删除模型（内置），故 CASCADE 无数据风险 | 见 P2a/P5 CASCADE 条 | p5 账本 Ruling |
+| P5 | 合并规则：保留 P1b 的 Open/Migrate/Close；`wireAgent` 在 `builtin.Apply` 后；路由进 LocalIdentity 组；删 `zz_p5_contract.go`；回显挪到 `/diag/ws` | 避免与 P1b 冲突 | p5 账本、integration-report |
+| P6 | Python 运行时三个目标都准备（darwin arm64/x64、windows x64） | P8 已定"x64 单独出 dmg"，计划建议只发 arm64 与其冲突，以 P8 为准 | p6 账本 Ruling 1 |
+| P6 | T1 被拒的命令由用户手动执行 `fetch-python.sh` | 权限被拒不绕过 | p6 账本 |
+| P8 | 图标先用程序生成的 1024 占位图，正式稿到后重跑 `gen-icons.sh` | 用户授权"临时帮我确定" | p8 账本 Ruling |
+| P8 | 全局 tauri-cli 保留 2.12.1 | STATIC_VCRUNTIME 警告消失；有兼容问题回退 2.11.5 | p8 账本 Ruling |
+| P8 | T10 挂起、T12 实机演练交用户、T5 不等 T2、T6 最后派；逐任务审查改按批次审查 | 用户要求最大并行、速度优先 | p8 账本 Ruling 1、2 |
+| P8 | "崩溃 60 秒内只自动重启一次" | 计划所定 | p8 账本 Ruling |
+| 整合 | `lib.rs` 整份取 P8 版，并在 `ProcessHandle::shutdown` 补写 `SHUTDOWN` 行（最多等 500ms，再关 stdin） | brief：Rust 以 P8 为准，确认 SHUTDOWN 握手仍在 | integration-report 二 |
+| 整合 | 额外接线 `CanvasGen.SetChangeNotifier(agentW.Hub)` | 不接则生成回写画布后不推送 `canvas_changed` | integration-report 二 |
+| 整合 | `/api/v1/models` 只返回启用且未隐藏的模型（冒烟 29/47） | 与参考仓 `repo.List(true)` 一致，不是缺陷 | integration-report 四 |
+| 整合 | 迁移编号：0001 / 0002_library / 0003_builtin_overrides / 0004_generation / 0010–0012（P1d）/ 0050_agent / 0060_canvas_script_tasks | 无重号，满足外键依赖 | integration-report 三 |
+| side | side-go（cdeffd0 + b469cbe）：关闭等待 Seedance、Agent 刷新、脚本节点；generation Drain 纳入 workers | 整合遗留问题 2、5 | integration-report-ledger |
+| side | side-py（1480052）：Rust 壳传 `--python-home`，resources 映射 | 整合遗留问题 3 | integration-report-ledger |
+| side | side-ui（9bdf93e）：SidecarGate 主题色、非 Tauri 环境友好提示 | P3a parked 项 | integration-report-ledger |
+| 终审 | I-4：CSP 放行 https 图片和媒体，与参考仓直接显示上游外链一致（`img-src`、`media-src` 加 `https:`；`connect-src` 不放行 https） | 终审裁定，S5 回退保留的上游地址需能预览 | final-review-spec I-4 |
+
+人工验收项汇总见 `docs/manual-acceptance-checklist.md`。

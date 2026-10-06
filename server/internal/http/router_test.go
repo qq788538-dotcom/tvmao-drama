@@ -81,7 +81,7 @@ func TestWebSocketEcho(t *testing.T) {
 	srv := newTestServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/v1/agent/ws?token=" + testToken
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/v1/diag/ws?token=" + testToken
 	c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
 		HTTPHeader: nethttp.Header{"Origin": []string{"tauri://localhost"}},
 	})
@@ -105,7 +105,7 @@ func TestWebSocketRejectsWithoutToken(t *testing.T) {
 	srv := newTestServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/v1/agent/ws"
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/v1/diag/ws"
 	_, resp, err := websocket.Dial(ctx, url, nil)
 	if err == nil {
 		t.Fatal("没带 token 也连上了")
@@ -189,6 +189,38 @@ func TestDiagMediaRejectsOtherNames(t *testing.T) {
 		resp.Body.Close()
 		if resp.StatusCode != nethttp.StatusNotFound {
 			t.Fatalf("%s: code = %d, want 404", name, resp.StatusCode)
+		}
+	}
+}
+
+// P0 遗留：WebSocket 握手的外来 Origin 必须被 localauth 挡下，哪怕 token 正确。
+func TestWebSocketRejectsForeignOrigin(t *testing.T) {
+	srv := newTestServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/v1/agent/ws?token=" + testToken
+	_, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+		HTTPHeader: nethttp.Header{"Origin": []string{"https://evil.example"}},
+	})
+	if err == nil {
+		t.Fatal("外来 Origin 也连上了")
+	}
+	if resp == nil || resp.StatusCode != nethttp.StatusForbidden {
+		t.Fatalf("resp = %v, want 403", resp)
+	}
+}
+
+// 业务路由挂在 localauth 之内：没有 token 一律 401（不会因为 handler 未装配而 panic）。
+func TestBusinessRoutesRequireToken(t *testing.T) {
+	srv := newTestServer(t)
+	for _, p := range []string{"/api/v1/me", "/api/v1/projects", "/media/u1/a.png"} {
+		resp, err := nethttp.Get(srv.URL + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != nethttp.StatusUnauthorized {
+			t.Fatalf("%s: code = %d, want 401", p, resp.StatusCode)
 		}
 	}
 }

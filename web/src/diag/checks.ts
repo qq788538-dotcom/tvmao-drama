@@ -8,6 +8,7 @@ import {
   buildWsUrl,
   type ServerInfo,
 } from '@/shared/server';
+import { redactSecrets } from '@/shared/redact';
 
 export interface CheckResult {
   name: string;
@@ -19,10 +20,11 @@ export interface CheckResult {
 async function run(name: string, fn: () => Promise<string>): Promise<CheckResult> {
   const start = performance.now();
   try {
-    const detail = await fn();
+    const detail = redactSecrets(await fn());
     return { name, ok: true, detail, ms: Math.round(performance.now() - start) };
   } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
+    // 错误文字可能带完整的媒体 / WS 地址（含 token），报告是给人复制转发的，统一脱敏。
+    const detail = redactSecrets(e instanceof Error ? e.message : String(e));
     return { name, ok: false, detail, ms: Math.round(performance.now() - start) };
   }
 }
@@ -50,7 +52,7 @@ export async function connectionChecks(info: ServerInfo): Promise<CheckResult[]>
   out.push(
     await run('WebSocket 回显', () => {
       return new Promise<string>((resolve, reject) => {
-        const ws = new WebSocket(buildWsUrl(info, '/api/v1/agent/ws'));
+        const ws = new WebSocket(buildWsUrl(info, '/api/v1/diag/ws'));
         const timer = setTimeout(() => {
           ws.close();
           reject(new Error('5 秒内未收到回显'));
@@ -65,6 +67,12 @@ export async function connectionChecks(info: ServerInfo): Promise<CheckResult[]>
         ws.onerror = () => {
           clearTimeout(timer);
           reject(new Error('连接失败'));
+        };
+        // 服务端在回显之前就关了连接（例如 Origin 被拒）：立刻判失败，不必干等 5 秒。
+        // 已经 resolve 过的话（onmessage 里主动 close 也会触发这里），reject 是空操作。
+        ws.onclose = (ev) => {
+          clearTimeout(timer);
+          reject(new Error(`连接在回显前关闭（code ${ev.code}）`));
         };
       });
     }),
@@ -132,10 +140,15 @@ export async function uploadSample(info: ServerInfo, file: File): Promise<string
   return ((await resp.json()) as { name: string }).name;
 }
 
+/** 诊断媒体的接口路径。文件名来自 sidecar，可能含空格或中文，必须编码。 */
+export function diagMediaPath(name: string): string {
+  return `/api/v1/diag/media/${encodeURIComponent(name)}`;
+}
+
 /** 用参考仓画布同样的 mediabunny 调用方式，对 sidecar 返回的媒体跑一遍。 */
 export async function mediaChecks(info: ServerInfo, name: string): Promise<CheckResult[]> {
   const mb = await import('mediabunny');
-  const url = buildMediaUrl(info, `/api/v1/diag/media/${name}`);
+  const url = buildMediaUrl(info, diagMediaPath(name));
   const out: CheckResult[] = [];
 
   const convert = async (options: Record<string, unknown>, wav = false): Promise<string> => {
@@ -189,5 +202,6 @@ export async function mediaChecks(info: ServerInfo, name: string): Promise<Check
 export function formatReport(results: CheckResult[]): string {
   const lines = [`UA: ${navigator.userAgent}`];
   for (const r of results) lines.push(`${r.ok ? 'PASS' : 'FAIL'} ${r.name} — ${r.detail} (${r.ms}ms)`);
-  return lines.join('\n');
+  // 调用方也会塞进自己构造的结果（如上传失败的 String(e)），出口处再统一脱敏一次。
+  return redactSecrets(lines.join('\n'));
 }

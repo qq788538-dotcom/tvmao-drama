@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "commonFields": {
+    "name": {
+      "access": "open",
+      "type": "string",
+      "desc": "Node display label shown on the canvas."
+    },
+    "assetId": {
+      "access": "readonly",
+      "type": "string",
+      "desc": "Library asset bound to this node. Written by the upload pipeline."
+    },
+    "mimeType": {
+      "access": "readonly",
+      "type": "string",
+      "desc": "MIME type of the bound asset."
+    },
+    "status": {
+      "access": "machine",
+      "type": "string",
+      "desc": "Generation lifecycle state."
+    },
+    "agentMeta": {
+      "access": "machine",
+      "type": "object",
+      "desc": "Artifact provenance written when an agent creates the node."
+    },
+    "genHistory": {
+      "access": "machine",
+      "type": "array",
+      "desc": "Server-side generation bookkeeping."
+    }
+  },
+  "nodeTypes": {
+    "gen-image": {
+      "dynamicFieldsFrom": "modelUiSchema",
+      "fields": {
+        "modelId": {
+          "access": "open",
+          "type": "string",
+          "desc": "Selected image model. Must be a modelId from list_canvas_models (type=image).",
+          "resetsDynamicFields": true
+        },
+        "prompt": {
+          "access": "open",
+          "type": "string",
+          "desc": "Generation prompt."
+        },
+        "promptPreset": {
+          "access": "open",
+          "type": "string",
+          "desc": "Preset key. Only the key is stored; the full preset prompt lives server-side and is never exposed."
+        },
+        "presetParams": {
+          "access": "open",
+          "type": "object",
+          "desc": "Per-dimension option keys for the selected preset."
+        },
+        "history": { "access": "machine", "type": "array", "desc": "Multi-version generation history." },
+        "historyIndex": { "access": "machine", "type": "number", "desc": "Which history entry is displayed." },
+        "pendingGen": { "access": "machine", "type": "object", "desc": "Input snapshot taken when generate was clicked." }
+      }
+    },
+    "gen-video": {
+      "dynamicFieldsFrom": "modelUiSchema",
+      "fields": {
+        "modelId": {
+          "access": "open",
+          "type": "string",
+          "desc": "Selected video model. Must be a modelId from list_canvas_models (type=video).",
+          "resetsDynamicFields": true
+        },
+        "videoPrompt": {
+          "access": "open",
+          "type": "string",
+          "desc": "Generation prompt. Note the field name differs from gen-image (browser storage name is authoritative)."
+        },
+        "scriptRowId": {
+          "access": "readonly",
+          "type": "string",
+          "desc": "Back-reference to the script node row this node was spawned for."
+        },
+        "history": { "access": "machine", "type": "array", "desc": "Multi-version generation history." },
+        "historyIndex": { "access": "machine", "type": "number", "desc": "Which history entry is displayed." },
+        "pendingGen": { "access": "machine", "type": "object", "desc": "Input snapshot taken when generate was clicked." }
+      }
+    },
+    "gen-audio": {
+      "dynamicFieldsFrom": "modelUiSchema",
+      "fields": {
+        "modelId": {
+          "access": "open",
+          "type": "string",
+          "desc": "Selected audio model. Must be a modelId from list_canvas_models (type=audio).",
+          "resetsDynamicFields": true
+        },
+        "prompt": {
+          "access": "open",
+          "type": "string",
+          "desc": "Generation prompt."
+        },
+        "history": { "access": "machine", "type": "array", "desc": "Multi-version generation history." },
+        "historyIndex": { "access": "machine", "type": "number", "desc": "Which history entry is displayed." },
+        "pendingGen": { "access": "machine", "type": "object", "desc": "Input snapshot taken when generate was clicked." },
+        "sourceGenAudioId": { "access": "readonly", "type": "string", "desc": "Source gen node this audio came from." }
+      }
+    },
+    "text-node": {
+      "fields": {
+        "text": {
+          "access": "open",
+          "type": "string",
+          "desc": "Body markdown. This is what downstream generation nodes read as fallback prompt."
+        },
+        "genPrompt": {
+          "access": "open",
+          "type": "string",
+          "desc": "Instruction for AI-generating the body. Distinct from text (the body itself)."
+        },
+        "modelId": {
+          "access": "open",
+          "type": "string",
+          "desc": "Model used for AI body generation. Must be a modelId from list_canvas_models (type=text)."
+        }
+      }
+    },
+    "preview": {
+      "fields": {
+        "kind": { "access": "machine", "type": "string", "desc": "Media kind marker (image/video/audio)." },
+        "sourceGenImageId": { "access": "readonly", "type": "string", "desc": "Which gen-image node produced this preview." },
+        "sourceGenVideoId": { "access": "readonly", "type": "string", "desc": "Which gen-video node produced this preview." },
+        "sourceGenAudioId": { "access": "readonly", "type": "string", "desc": "Which gen-audio node produced this preview." }
+      }
+    },
+    "input-image": {
+      "fields": {
+        "autoFittedFor": { "access": "machine", "type": "string", "desc": "Which image URL the node box was already fitted to." }
+      }
+    },
+    "input-audio": { "fields": {} },
+    "video-input": {
+      "fields": {
+        "videoMeta": { "access": "readonly", "type": "object", "desc": "Probed duration and dimensions." },
+        "frames": { "access": "machine", "type": "array", "desc": "Extracted frames." },
+        "selectedKeyframes": { "access": "machine", "type": "array", "desc": "Keyframe selection state." },
+        "extractingFrames": { "access": "machine", "type": "boolean", "desc": "Frame extraction in progress." },
+        "videoExpanded": { "access": "machine", "type": "boolean", "desc": "Panel expand state (pure view)." }
+      }
+    },
+    "subtitle-erase": {
+      "fields": {
+        "upstreamExpire": { "access": "readonly", "type": "string", "desc": "RFC3339 deadline after which the upstream asset is no longer reachable. Determines whether the limited desubtitle option is available." }
+      }
+    },
+    "video-upscale": { "fields": {} },
+    "video-whitemodel": { "fields": {} },
+    "image-compare": { "fields": {} },
+    "local-save": { "fields": {} },
+    "script": {
+      "fields": {
+        "rows": {
+          "access": "open",
+          "type": "array",
+          "desc": "Shot table. Each row: {id?, name, duration, prompt, colorMark}. Send the WHOLE table, not a partial one.",
+          "wholeReplace": true,
+          "idManaged": true
+        },
+        "scriptPrompt": {
+          "access": "open",
+          "type": "string",
+          "desc": "Instruction used when generating the shot table."
+        },
+        "assets": {
+          "access": "readonly",
+          "type": "object",
+          "desc": "Character/scene/prop library. Read-only but VISIBLE on purpose: row prompts reference assets by name via @[kind-name] tokens, so writing rows correctly requires knowing what exists here.",
+          "fullValue": true
+        },
+        "globalStyle": {
+          "access": "readonly",
+          "type": "string",
+          "desc": "Global style string prefixed onto every row prompt."
+        },
+        "durationSec": {
+          "access": "readonly",
+          "type": "number",
+          "desc": "Master cut duration. Upper bound for per-row duration; changing it would leave existing rows out of range."
+        },
+        "gen": { "access": "machine", "type": "object", "desc": "Shot-table generation task state." }
+      }
+    },
+    "director-desk": {
+      "fields": {
+        "directorProject": { "access": "machine", "type": "object", "desc": "Entire 3D director project document. Not a config field." }
+      }
+    }
+  }
+}
