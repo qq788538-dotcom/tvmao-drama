@@ -6,4 +6,5 @@ cd "$(dirname "$0")/.."
 for f in model_configs.jsonl settings.jsonl; do
   cp "seed/$f" "server/internal/builtin/seeddata/$f"
 done
+cp seed/seedance_characters.jsonl server/internal/aicharacters/seeddata/seedance_characters.jsonl
 echo "已同步内置种子到 server/internal/builtin/seeddata/"
