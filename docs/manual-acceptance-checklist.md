@@ -145,7 +145,7 @@
 
 ## 四、下载（side-dl）
 
-side-dl 合入后执行（本轮 integration 尚未合入 side-dl）。
+side-dl（5156c50 + 审查修复 fc8356a）已在 integration 第四轮合入（594e023），可以执行。
 
 ### D1 打包版各下载入口弹系统保存对话框
 - 步骤：macOS 打包版（`tauri build`）里分别点：图片 / 视频 / 音频工具条、预览角标、Lightbox、保存到本地节点（单个 + 全部）、生成历史（右键 + 批量 ZIP）、导演台截图和 JSON 导出。
@@ -168,15 +168,20 @@ side-dl 合入后执行（本轮 integration 尚未合入 side-dl）。
 - 出处：side-dl-report 第 6 节第 4 条。
 
 ### D5 建议文件名的扩展名
-- 步骤：保存 jpg/webp 格式的生成图片、非 mp4 的视频、非 mp3 的音频。
-- 预期：记录建议文件名的扩展名是否与实际格式一致（目前按 image→png、video→mp4、audio→mp3 兜底）；不一致时考虑按 MIME 推断。
-- 出处：side-dl-report 第 6 节第 5 条。
+- 步骤：保存 jpg/webp 格式的生成图片、mov/webm 视频、wav/m4a 音频，以及 Rust 识别不了的格式（avif/heic/ogg/flac/mkv 任选）。
+- 预期：能识别的格式，对话框默认名按文件头修正为真实扩展名（fc8356a 的 sniff_media_ext）；识别不了的沿用 image→png、video→mp4、audio→mp3 兜底（已知遗留，记录即可）。
+- 出处：side-dl-report 第 6 节第 5 条；side-dl-review 第二节、第五节第 2 条。
 
 ### D6 浏览器回退：导演台多张截图打成 ZIP
 - 步骤：在纯浏览器（非 Tauri）里导出导演台四/十二方位截图。
 - 预期：下载一个 ZIP，而不是逐张下载（行为变化，确认可接受）。
 - 出处：side-dl-report 第 6 节第 6 条。
 
+### D7 最终文件名的扩展名修正与不覆盖（macOS + Windows 打包版）
+- 步骤：在 macOS 和 Windows 打包版里各保存一个 jpg 或 webp 产物：① 看对话框默认名；② 在对话框里把扩展名改成错误的值（如 `.png`）后确认；③ 目标文件夹里先放一个与“修正后文件名”同名的文件，再重复 ②。
+- 预期：① 默认名就是正确扩展名；② 落盘文件是正确扩展名；③ 已有文件不被覆盖，新文件名自动加序号。
+- 出处：side-dl-review 第五节第 4 条。
+
 ## 条目统计
 
-macOS 5 项、Windows 9 项、通用 10 项、下载 6 项，共 30 项（C8、C9 内部另含子项）。
+macOS 5 项、Windows 9 项、通用 10 项、下载 7 项，共 31 项（C8、C9 内部另含子项）。
