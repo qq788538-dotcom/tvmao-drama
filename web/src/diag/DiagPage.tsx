@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Button } from 'antd';
 import { Link } from 'react-router-dom';
 import { getServerInfo, type ServerInfo } from '@/shared/server';
 import {
@@ -20,6 +21,8 @@ export function DiagPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [results, setResults] = useState<CheckResult[]>([]);
   const [busy, setBusy] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
+  const [fileName, setFileName] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getServerInfo().then(setInfo, (e) => setStartError(String(e)));
@@ -76,23 +79,35 @@ export function DiagPage({ embedded = false }: { embedded?: boolean } = {}) {
       {!embedded && <Link to="/">← 返回画布</Link>}
       {!embedded && <h2>喵剧AI · 环境诊断</h2>}
       <p>本地服务端口：{info.port}</p>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <button disabled={busy} onClick={runBasic}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Button type="primary" disabled={busy} loading={busy} onClick={runBasic}>
           1. 运行连接与编解码检查
-        </button>
-        <label>
-          2. 选择一个带声音的 mp4 测试视频：
+        </Button>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span>2. 选择一个带声音的 mp4 测试视频：</span>
           <input
+            ref={fileRef}
             type="file"
             accept=".mp4,.mov,.webm"
+            data-testid="diag-file-input"
+            style={{ display: 'none' }}
             disabled={busy}
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) void runMedia(file);
+              if (file) {
+                setFileName(file.name);
+                void runMedia(file);
+              }
+              // 清空 value，允许重复选择同一个文件再次检查。
+              e.target.value = '';
             }}
           />
-        </label>
-        <button
+          <Button disabled={busy} onClick={() => fileRef.current?.click()}>
+            选择文件
+          </Button>
+          <span style={{ opacity: 0.75 }}>{fileName || '未选择文件'}</span>
+        </span>
+        <Button
           disabled={results.length === 0}
           onClick={() => {
             navigator.clipboard.writeText(report).then(
@@ -102,7 +117,7 @@ export function DiagPage({ embedded = false }: { embedded?: boolean } = {}) {
           }}
         >
           复制结果
-        </button>
+        </Button>
         {copyStatus && <span>{copyStatus}</span>}
       </div>
       {results.length > 0 && (

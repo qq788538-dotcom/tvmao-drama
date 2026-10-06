@@ -70,4 +70,18 @@ describe('DiagPage', () => {
     expect(screen.queryByText('← 返回画布')).toBeNull();
     expect(screen.queryByText('喵剧AI · 环境诊断')).toBeNull();
   });
+
+  it('使用 antd 按钮，选择文件后显示文件名', async () => {
+    renderPage();
+    const btn = (await screen.findByText('选择文件')).closest('button')!;
+    expect(btn).toHaveClass('ant-btn');
+    expect(screen.getByText('1. 运行连接与编解码检查').closest('button')).toHaveClass('ant-btn');
+    expect(screen.getByText('复制结果').closest('button')).toHaveClass('ant-btn');
+    expect(screen.getByText('未选择文件')).toBeInTheDocument();
+    const input = screen.getByTestId('diag-file-input') as HTMLInputElement;
+    expect(input).toHaveStyle({ display: 'none' });
+    fireEvent.change(input, { target: { files: [new File(['x'], 'demo.mp4', { type: 'video/mp4' })] } });
+    expect(await screen.findByText('demo.mp4')).toBeInTheDocument();
+    expect(screen.queryByText('未选择文件')).toBeNull();
+  });
 });
