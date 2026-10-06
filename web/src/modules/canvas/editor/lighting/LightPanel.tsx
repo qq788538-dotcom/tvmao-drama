@@ -175,7 +175,7 @@ export function LightPanel({ sourceNodeId, onClose }: Props) {
   const handleSubmit = async () => {
     if (submitting || !dirty) return;
     if (!effectiveModelId) {
-      message.warning('后台未配置打光模型');
+      message.warning('请在设置中配置打光模型');
       return;
     }
     const st = useCanvasStore.getState();

@@ -965,7 +965,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
                     clientRef.current?.abort(sendingThreadId, sendingActionIdRef.current);
                   }
                 }}
-                title="停止生成（已提交的任务会继续执行并正常扣费）"
+                title="停止生成（已提交的任务会继续执行）"
               >
                 <Square size={12} fill="currentColor" />
               </button>

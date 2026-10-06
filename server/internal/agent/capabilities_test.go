@@ -267,7 +267,7 @@ func TestCreateGenNodeTool_EmitsPrefilledNodeArtifact(t *testing.T) {
 		t.Fatalf("prompt/title mismatch: %+v", got[0])
 	}
 	// 铁律：这条链路绝不自动扣积分——返回值必须引导 LLM 告知用户手动生成。
-	if !strings.Contains(out, "未生成、未扣积分") || !strings.Contains(out, "手动点击生成") {
+	if !strings.Contains(out, "未生成）") || !strings.Contains(out, "手动点击生成") {
 		t.Fatalf("tool result must state no-generation semantics, got %q", out)
 	}
 

@@ -183,8 +183,8 @@ JSON 结构草案（v2，已作废）：
 | P0 | 验证原型。WebCodecs、mediabunny、127.0.0.1 Range 请求已在 2026-09-30 实测通过（见 D7）；剩余：sidecar 启动握手（stdin 传 token、stdout 回端口）、Agent WebSocket、Windows 上跑同一套测试 | 1 天 | ✅ 已完成（2026-09-30 合并到 main）；macOS 诊断 17/17 PASS，Windows 实机验证待补，见 `docs/superpowers/plans/p0-results.md` |
 | P1 | Go sidecar：从参考仓复制画布相关包；MySQL → SQLite（modernc，合并成一份 schema，方言替换）；本地文件存储 + `media://` 转本地 URL；固定本地用户；计费空实现；去掉 Redis、owner 锁、多实例租约；任务恢复；孤儿回收；token + Origin 校验；sidecar 启动入口；Go 测试迁到 SQLite | 2–2.5 周 | ✅ 已确认 <br>**实施进度（2026-10-06）**：P1a ✅（SQLite 数据层，已合 main）；P1b ✅（存储、媒体、HTTP）；P1c ✅（生成管线，迁移 0004）；P1d ✅（其余接口）；均已并入 integration 866ef9c；S12 仍待定，带 URL-only 参考媒体的模型在调上游前报错 |
 | P2 | 内置数据：从生产库导出模型、settings 配置、Skill、Agent 工具目录、AI 角色数据，去掉 Key，go:embed；首次启动导入；升级时按 modelId 字段级合并（M11）；“恢复默认” | 1 周 | ✅ 已确认 <br>**实施进度**：P2a ✅（47 模型 / 6 设置内置导入、M10/M11 合并与恢复默认，已并入 integration）；Skill、Agent 工具目录随 P5 导入 |
-| P3 | 前端迁移：复制画布模块和 shared；删除协作、发布、分享、计费、登录、ChatPanel；启动直接进画布（F9）；“返回”改“所有项目”；“保存到本地”节点放回菜单；右键“在访达中显示”；下载失败提示与重试（S5）；字体本地化；vitest 测试迁移 | 1.5–2 周 | ✅ 已确认 <br>**实施进度**：P3a ✅（画布迁移、启动入口、sidecar 重启刷新，已并入 integration；GUI 手动清单待人工）；P3b/P3c ✅（估价 UI、协作残留清理、下载失败角标与重试，T1–T11 完成，尚未并入 integration；Tauri GUI 验收待人工） |
-| P4 | 设置页：把参考仓后台的模型中心和各配置页搬进客户端并调整 UI；只开放安全字段（M10）；base_domain 和 Key 填写；Agent 模型切换（A2）；数据目录修改与迁移（S2）；版本号显示 | 1–1.5 周 | ✅ 已确认 <br>**实施进度**：T1–T14 ✅（修复轮 f5a176e，已合 p4-int）；T15（适配器接线、移除 /admin/canvas 写接口）待基于 integration 执行；`app.restart()` 与单实例共存待人工验证 |
+| P3 | 前端迁移：复制画布模块和 shared；删除协作、发布、分享、计费、登录、ChatPanel；启动直接进画布（F9）；“返回”改“所有项目”；“保存到本地”节点放回菜单；右键“在访达中显示”；下载失败提示与重试（S5）；字体本地化；vitest 测试迁移 | 1.5–2 周 | ✅ 已确认 <br>**实施进度**：P3a ✅（画布迁移、启动入口、sidecar 重启刷新，已并入 integration；GUI 手动清单待人工）；P3b/P3c ✅（估价 UI、协作残留清理、下载失败角标与重试，T1–T11 完成，已完成并合入 integration；Tauri GUI 验收待人工）；修下载及各并行小修 ✅（已完成并合入 integration） |
+| P4 | 设置页：把参考仓后台的模型中心和各配置页搬进客户端并调整 UI；只开放安全字段（M10）；base_domain 和 Key 填写；Agent 模型切换（A2）；数据目录修改与迁移（S2）；版本号显示 | 1–1.5 周 | ✅ 已确认 <br>**实施进度**：T1–T14 ✅（修复轮 f5a176e，已合 p4-int）；T15（适配器接线、移除 /admin/canvas 写接口）✅（已完成并合入 integration）；`app.restart()` 与单实例共存待人工验证 |
 | P5 | Agent：Eino 运行时接入、WebSocket、内置 Skill；隐藏 Skill 创建和 Skill JSON 导入导出；能力清单一致性测试 | 0.5–1 周 | ✅ 已确认 <br>**实施进度**：✅ 后端 T1–T9（修复轮 1434004）与前端 T10 均已并入 integration |
 | P6 | 脚本节点“剧本生成分镜”：内置独立 Python 运行时、命令白名单、任务工作区隔离、Windows 无 bash 的处理（X6） | 1–1.5 周 | ✅ 已确认 <br>**实施进度**：T1–T8 ✅（内置 Python 运行时三目标、命令白名单、工作区隔离；T2–T7 已并入 integration，T1/T8 在 p6-t1 分支）；打包回归待人工 |
 | P7 | Seedance 合规与 AI 角色库走 newapi（X5、F7）：客户端侧先按约定的接口形态实现，newapi 接口补齐后联调 | 0.5 周 + 联调 | ✅ 已确认 <br>**实施进度**：挂起，未开始（同 2026-09-30 决定） |
@@ -342,5 +342,6 @@ JSON 结构草案（v2，已作废）：
 | side | side-go（cdeffd0 + b469cbe）：关闭等待 Seedance、Agent 刷新、脚本节点；generation Drain 纳入 workers | 整合遗留问题 2、5 | integration-report-ledger |
 | side | side-py（1480052）：Rust 壳传 `--python-home`，resources 映射 | 整合遗留问题 3 | integration-report-ledger |
 | side | side-ui（9bdf93e）：SidecarGate 主题色、非 Tauri 环境友好提示 | P3a parked 项 | integration-report-ledger |
+| 终审 | I-4：CSP 放行 https 图片和媒体，与参考仓直接显示上游外链一致（`img-src`、`media-src` 加 `https:`；`connect-src` 不放行 https） | 终审裁定，S5 回退保留的上游地址需能预览 | final-review-spec I-4 |
 
 人工验收项汇总见 `docs/manual-acceptance-checklist.md`。

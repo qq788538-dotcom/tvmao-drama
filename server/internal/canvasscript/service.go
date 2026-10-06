@@ -399,12 +399,12 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	}
 	baseDomain, err := s.settings.Get("base_domain")
 	if err != nil || strings.TrimSpace(baseDomain) == "" {
-		fail("服务未配置上游地址，请联系管理员", "base_domain 未配置")
+		fail("服务未配置上游地址，请在设置中配置", "base_domain 未配置")
 		return
 	}
 	sk, err := s.keys.Resolve(t.UserID)
 	if err != nil || strings.TrimSpace(sk) == "" {
-		fail("上游 API Key 未配置，请联系管理员", "上游 API Key 未配置")
+		fail("上游 API Key 未配置，请在设置中配置", "上游 API Key 未配置")
 		return
 	}
 

@@ -112,7 +112,7 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
   const handleSubmit = async () => {
     if (submitting) return;
     if (!effectiveModelId) {
-      message.warning('后台未配置多角度模型');
+      message.warning('请在设置中配置多角度模型');
       return;
     }
     const st = useCanvasStore.getState();

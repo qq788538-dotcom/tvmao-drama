@@ -151,7 +151,7 @@ describe('ImageActionsBar 全景', () => {
     await waitFor(() => expect(fetchGenImagePresets).toHaveBeenCalled());
     await userEvent.click(gridBtn);
 
-    expect(await screen.findByText('后台未配置绘图预设')).toBeInTheDocument();
+    expect(await screen.findByText('请在设置中配置绘图预设')).toBeInTheDocument();
     expect(useCanvasStore.getState().nodes).toHaveLength(1);
   });
 
@@ -160,7 +160,7 @@ describe('ImageActionsBar 全景', () => {
     renderBar();
     await clickPanorama();
 
-    expect(await screen.findByText('后台未配置 720全景 预设')).toBeInTheDocument();
+    expect(await screen.findByText('请在设置中配置 720全景 预设')).toBeInTheDocument();
     expect(useCanvasStore.getState().nodes).toHaveLength(1);
     expect(useCanvasStore.getState().connections).toHaveLength(0);
   });
@@ -191,7 +191,7 @@ describe('ImageActionsBar 全景', () => {
     await waitFor(() => expect(fetchGenImagePresets).toHaveBeenCalled());
     await userEvent.click(btn);
 
-    expect(await screen.findByText('后台未配置 人像质感调节 预设')).toBeInTheDocument();
+    expect(await screen.findByText('请在设置中配置 人像质感调节 预设')).toBeInTheDocument();
     expect(useCanvasStore.getState().nodes).toHaveLength(1);
   });
 
