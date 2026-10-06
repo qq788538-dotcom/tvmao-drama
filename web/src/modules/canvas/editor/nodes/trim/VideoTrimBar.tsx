@@ -11,6 +11,7 @@
 //
 // 定位方案同 VideoActionsBar(inv-zoom 反缩放,屏幕尺寸恒定),那边注释有
 // 逐行解释。
+import { redactSecrets } from '@/shared/redact';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as AntApp } from 'antd';
 import { Check, Keyboard, Loader2, Magnet, X } from 'lucide-react';
@@ -92,7 +93,7 @@ export function VideoTrimBar({ nodeId, url }: { nodeId: string; url: string }) {
       })
       .catch((e) => {
         if (!alive) return;
-        message.error(e?.message || '视频加载失败,无法剪辑');
+        message.error(e?.message ? redactSecrets(String(e.message)) : '视频加载失败,无法剪辑');
         useCanvasStore.getState().setTrimmingNode(null);
       });
     return () => {

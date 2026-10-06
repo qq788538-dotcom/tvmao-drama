@@ -81,6 +81,8 @@ vi.mock('@/modules/canvas/editor/store', () => {
 });
 
 vi.mock('@/modules/canvas/editor/persistence/canvasMutations', () => ({
+  // owner 失权提示的订阅（M2），本文件不关心；失权提示的测试在 CanvasEditorPage.errors.test.tsx。
+  onCanvasOwnerLost: () => () => undefined,
   configureCanvasPersistence: (...args: Parameters<typeof configureCanvasPersistence>) => configureCanvasPersistence(...args),
   setCanvasOwnerToken: (...args: Parameters<typeof setCanvasOwnerToken>) => setCanvasOwnerToken(...args),
   flushCanvasMutations: (...args: Parameters<typeof flushCanvasMutations>) => flushCanvasMutations(...args),

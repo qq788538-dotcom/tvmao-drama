@@ -11,6 +11,7 @@
 //   切片自动异步提交 Seedance 合规校验,结果走节点角标显示;
 // - 提交只铺节点,不扣积分——生成由用户在每个 gen-video 节点上手动点
 //   (批量入口绝不自动扣积分的铁律)。
+import { redactSecrets } from '@/shared/redact';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as AntApp } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -93,7 +94,7 @@ export function SegmentReshootBar({ nodeId, url }: { nodeId: string; url: string
       })
       .catch((e) => {
         if (!alive) return;
-        message.error(e?.message || '视频加载失败,无法重拍');
+        message.error(e?.message ? redactSecrets(String(e.message)) : '视频加载失败,无法重拍');
         useCanvasStore.getState().setReshootNode(null);
       });
     return () => {

@@ -2,7 +2,7 @@ import axios, { type AxiosError } from 'axios';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { App as AntApp, Tooltip } from 'antd';
+import { App as AntApp, Button, Result, Tooltip } from 'antd';
 import { BotMessageSquare, LayoutGrid, LayoutPanelLeft, Save, Waypoints } from 'lucide-react';
 import { BrandLogo } from '@/shared/BrandLogo';
 import { CanvasEditor } from '@/modules/canvas/editor/CanvasEditor';
@@ -15,6 +15,7 @@ import { useCanvasStore } from '@/modules/canvas/editor/store';
 import {
   configureCanvasPersistence,
   flushCanvasMutations,
+  onCanvasOwnerLost,
   persistNodeById,
   resetCanvasPersistence,
   seedCanvasBaselines,
@@ -266,7 +267,8 @@ export function CanvasEditorPage() {
     staleTime: Infinity,
     retry: (failureCount, error) => {
       const status = error.response?.status;
-      if (status === 403 || status === 404) return false;
+      // 401 = 本地服务 token 对不上（sidecar 换过会话），自动重试也不会好，直接进错误页。
+      if (status === 401 || status === 403 || status === 404) return false;
       return failureCount < 1;
     },
   });
@@ -374,13 +376,19 @@ export function CanvasEditorPage() {
     setCanvasOwnerToken(LOCAL_OWNER_TOKEN);
     loadedProjectRef.current = pid;
     setReady(true);
+    // 记住「上一次打开的项目」，下次启动直接进它（spec F9）。放在这里而不是挂在
+    // ready 上：只有这个项目的快照真的载入了才记——打不开的项目（已删除 / 不存在）
+    // 不该被当成上一次；同一页面里 pid 变了而 ready 还是 true 时也不会提前记。
+    saveLastProjectId(pid);
   }, [snapshotQuery.data, load, pid, ready, message]);
 
-  // 记住「上一次打开的项目」，下次启动直接进它（spec F9）。只在快照真的载入
-  // 之后记：打不开的项目（已删除 / 不存在）不该被当成上一次。
-  useEffect(() => {
-    if (ready) saveLastProjectId(pid);
-  }, [ready, pid]);
+  // 本地 sidecar 的 owner 校验恒放行（spec X2），正常不会失权。万一被拒（实现偏差、
+  // 以后重新引入锁），canvasMutations 只发事件、不走 onError——没人听的话结构性改动
+  // 会被静默丢弃，「已保存」时间戳停住，用户以为保存了。至少弹个提示。
+  useEffect(
+    () => onCanvasOwnerLost(() => message.error('保存失败：本地服务拒绝写入，请重新打开画布')),
+    [message],
+  );
 
   // 离开画布时清干净持久化运行态（owner-token、心跳队列、debounce 计时器、
   // 事件监听）。切项目由 configureCanvasPersistence 内部处理，这里兜卸载。
@@ -408,12 +416,34 @@ export function CanvasEditorPage() {
     return <div className="p-8 text-white">无效的项目 ID</div>;
   }
 
-  if (snapshotQuery.isPending || snapshotStatus === 401 || snapshotStatus === 403 || snapshotStatus === 404) {
+  // 403/404 由上面的 effect 跳回项目列表，跳转前这一帧仍显示 Loading。
+  if (snapshotQuery.isPending || snapshotStatus === 403 || snapshotStatus === 404) {
     return <div className="p-8 text-white">Loading...</div>;
   }
 
   if (snapshotQuery.isError) {
-    return <div className="p-8 text-white">加载画布失败，请稍后重试</div>;
+    // 401 不能再归进 Loading：参考仓靠「401 → 跳登录」兜底，桌面端没有登录，
+    // 归进 Loading 就成了没有出口的死胡同。
+    const sessionLost = snapshotStatus === 401;
+    return (
+      <Result
+        status="error"
+        title={sessionLost ? '本地服务会话已失效' : '加载画布失败'}
+        subTitle={
+          sessionLost
+            ? '本地服务可能刚重启过。请点「重试」；仍然失败的话，请重启应用或运行环境诊断。'
+            : '请点「重试」；仍然失败的话，请运行环境诊断查看原因。'
+        }
+        extra={[
+          <Button key="retry" type="primary" onClick={() => void snapshotQuery.refetch()}>
+            重试
+          </Button>,
+          <Button key="diag" onClick={() => navigate('/diag')}>
+            环境诊断
+          </Button>,
+        ]}
+      />
+    );
   }
 
   if (!ready) {

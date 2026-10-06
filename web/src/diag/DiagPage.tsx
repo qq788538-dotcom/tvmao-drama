@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { SidecarGate } from '@/shared/SidecarGate';
-import type { ServerInfo } from '@/shared/server';
+import { getServerInfo, type ServerInfo } from '@/shared/server';
 import {
   connectionChecks,
   formatReport,
@@ -12,13 +11,27 @@ import {
 } from './checks';
 
 export function DiagPage() {
-  return <SidecarGate>{(info) => <DiagBody info={info} />}</SidecarGate>;
-}
-
-function DiagBody({ info }: { info: ServerInfo }) {
+  const [info, setInfo] = useState<ServerInfo | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const [results, setResults] = useState<CheckResult[]>([]);
   const [busy, setBusy] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
+
+  useEffect(() => {
+    getServerInfo().then(setInfo, (e) => setStartError(String(e)));
+  }, []);
+
+  // sidecar 没起来：显示原因和提示，而不是白屏（壳不会自动重启 sidecar，重试无意义）。
+  if (startError) {
+    return (
+      <div style={{ padding: 24 }}>
+        <h2>本地服务未启动</h2>
+        <pre style={{ whiteSpace: 'pre-wrap', color: '#f88' }}>{startError}</pre>
+        <p>请退出并重新打开应用。</p>
+      </div>
+    );
+  }
+  if (!info) return <div style={{ padding: 24 }}>正在连接本地服务…</div>;
 
   const runBasic = async () => {
     setBusy(true);
