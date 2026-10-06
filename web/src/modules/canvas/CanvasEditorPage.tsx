@@ -534,14 +534,6 @@ export function CanvasEditorPage() {
             <LayoutGrid size={14} />
             所有项目
           </button>
-          {/* 「设置」（P4）：上游地址与 Key、模型中心、画布配置、数据目录、环境诊断。离开前同样先 flush。 */}
-          <button
-            className="flex items-center gap-1.5 px-2 py-1 text-sidebar-foreground hover:text-foreground text-xs rounded bg-transparent border-none cursor-pointer"
-            onClick={() => requestNavigate('/settings')}
-          >
-            <Settings size={14} />
-            设置
-          </button>
           <div className="h-5 w-px bg-accent" />
           {nameDraft !== null ? (
             <input
@@ -658,6 +650,24 @@ export function CanvasEditorPage() {
         >
           <BotMessageSquare size={16} />
           Agent
+        </button>
+
+        {/* 「设置」（P4）：放在顶栏最右侧、Agent 之后。上游地址与 Key、模型中心、画布配置、
+            数据目录、环境诊断。离开前同样先 flush。 */}
+        <button
+          type="button"
+          onClick={() => requestNavigate('/settings')}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-foreground cursor-pointer shadow-xl shadow-black/40 pointer-events-auto transition-colors bg-[rgba(28,28,28,0.95)] hover:bg-accent"
+          style={{
+            borderWidth: 1,
+            borderStyle: 'solid',
+            borderColor: 'rgba(255, 255, 255, 0.10)',
+            backdropFilter: 'blur(24px)',
+            WebkitBackdropFilter: 'blur(24px)',
+          }}
+        >
+          <Settings size={16} />
+          设置
         </button>
       </div>
 
