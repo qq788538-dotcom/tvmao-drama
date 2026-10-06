@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/james/huabu_studio/apps/api/internal/db"
 )
 
 const testToken = "0123456789abcdef0123456789abcdef"
@@ -311,5 +313,27 @@ func TestStartupFailuresExitOneWithStderr(t *testing.T) {
 		if strings.TrimSpace(stderr.String()) == "" {
 			t.Fatalf("%s: stderr 为空", c.name)
 		}
+	}
+}
+
+// 首次启动在打印 READY 之前就已把内置模型和配置导入 data.db（spec M9）。
+func TestBuiltinSeedImportedOnStartup(t *testing.T) {
+	bin := buildSidecar(t)
+	dataDir := t.TempDir()
+	startSidecar(t, bin, dataDir)
+	conn, err := db.Open(filepath.Join(dataDir, "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	var models, settings int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM model_configs`).Scan(&models); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM settings WHERE "key" IN ('base_domain', 'canvas_light_control', 'canvas_multi_angle', 'canvas_postprocess_config', 'canvas_script_config', 'gen_image_prompt_presets')`).Scan(&settings); err != nil {
+		t.Fatal(err)
+	}
+	if models != 47 || settings != 6 {
+		t.Fatalf("models=%d settings=%d, want 47/6", models, settings)
 	}
 }
