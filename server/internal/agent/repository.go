@@ -60,11 +60,11 @@ type Repository interface {
 	LoadedSkillIDs(threadID string) ([]string, error)
 }
 
-type mysqlRepo struct{ db *sql.DB }
+type sqliteRepo struct{ db *sql.DB }
 
-func NewRepository(db *sql.DB) Repository { return &mysqlRepo{db: db} }
+func NewRepository(db *sql.DB) Repository { return &sqliteRepo{db: db} }
 
-func (r *mysqlRepo) CreateThread(t Thread) error {
+func (r *sqliteRepo) CreateThread(t Thread) error {
 	if t.AgentName == "" {
 		t.AgentName = "planner"
 	}
@@ -78,7 +78,7 @@ func (r *mysqlRepo) CreateThread(t Thread) error {
 	return err
 }
 
-func (r *mysqlRepo) GetThread(id string) (*Thread, error) {
+func (r *sqliteRepo) GetThread(id string) (*Thread, error) {
 	row := r.db.QueryRow(`SELECT id, parent_thread_id, project_id, user_id, title, status, agent_name, summary, created_at, updated_at
 		FROM agent_threads WHERE id=?`, id)
 	var t Thread
@@ -93,7 +93,7 @@ func (r *mysqlRepo) GetThread(id string) (*Thread, error) {
 	return &t, nil
 }
 
-func (r *mysqlRepo) ListThreadsByProject(projectID int64) ([]Thread, error) {
+func (r *sqliteRepo) ListThreadsByProject(projectID int64) ([]Thread, error) {
 	rows, err := r.db.Query(`SELECT id, parent_thread_id, project_id, user_id, title, status, agent_name, summary, created_at, updated_at
 		FROM agent_threads WHERE project_id=? ORDER BY updated_at DESC`, projectID)
 	if err != nil {
@@ -113,38 +113,38 @@ func (r *mysqlRepo) ListThreadsByProject(projectID int64) ([]Thread, error) {
 	return out, rows.Err()
 }
 
-func (r *mysqlRepo) UpdateThreadStatus(id, status string) error {
+func (r *sqliteRepo) UpdateThreadStatus(id, status string) error {
 	_, err := r.db.Exec(`UPDATE agent_threads SET status=? WHERE id=?`, status, id)
 	return err
 }
 
-func (r *mysqlRepo) UpdateThreadTitle(id, title string) error {
+func (r *sqliteRepo) UpdateThreadTitle(id, title string) error {
 	_, err := r.db.Exec(`UPDATE agent_threads SET title=? WHERE id=?`, title, id)
 	return err
 }
 
-func (r *mysqlRepo) DeleteThread(id string) error {
+func (r *sqliteRepo) DeleteThread(id string) error {
 	_, err := r.db.Exec(`DELETE FROM agent_threads WHERE id=?`, id)
 	return err
 }
 
-func (r *mysqlRepo) UpdateThreadSummary(threadID, summary string) error {
+func (r *sqliteRepo) UpdateThreadSummary(threadID, summary string) error {
 	_, err := r.db.Exec(`UPDATE agent_threads SET summary=? WHERE id=?`, summary, threadID)
 	return err
 }
 
-func (r *mysqlRepo) AppendMessage(m Message) error {
+func (r *sqliteRepo) AppendMessage(m Message) error {
 	if len(m.ContentBlocks) == 0 {
 		m.ContentBlocks = json.RawMessage(`[]`)
 	}
 	_, err := r.db.Exec(`INSERT INTO agent_messages
-		(id, thread_id, action_id, role, content_blocks, stop_reason)
-		VALUES (?,?,?,?,?,?)`,
-		m.ID, m.ThreadID, m.ActionID, m.Role, []byte(m.ContentBlocks), m.StopReason)
+		(id, thread_id, action_id, role, content_blocks, stop_reason, created_at)
+		VALUES (?,?,?,?,?,?,?)`,
+		m.ID, m.ThreadID, m.ActionID, m.Role, string(m.ContentBlocks), m.StopReason, agentMicroNow())
 	return err
 }
 
-func (r *mysqlRepo) ListMessages(threadID string) ([]Message, error) {
+func (r *sqliteRepo) ListMessages(threadID string) ([]Message, error) {
 	rows, err := r.db.Query(`SELECT id, thread_id, action_id, role, content_blocks, stop_reason, created_at, summarized_at
 		FROM agent_messages WHERE thread_id=? AND summarized_at IS NULL ORDER BY created_at ASC, id ASC`, threadID)
 	if err != nil {
@@ -164,13 +164,14 @@ func (r *mysqlRepo) ListMessages(threadID string) ([]Message, error) {
 	return out, rows.Err()
 }
 
-// LoadedSkillIDs 只捞真正带 skill block 的那几行（JSON_SEARCH 过滤在 SQL 侧），
+// LoadedSkillIDs 只捞真正带 skill block 的那几行（json_each 过滤在 SQL 侧），
 // 而不是把整个 thread 的消息拉回内存扫——buildHistory 随后还要再全量读一次，
 // 这里再读一遍纯属浪费。绝大多数 thread 命中 0~2 行。
-func (r *mysqlRepo) LoadedSkillIDs(threadID string) ([]string, error) {
+func (r *sqliteRepo) LoadedSkillIDs(threadID string) ([]string, error) {
 	rows, err := r.db.Query(`SELECT content_blocks FROM agent_messages
 		WHERE thread_id=? AND summarized_at IS NULL
-		  AND JSON_SEARCH(content_blocks, 'one', 'skill', NULL, '$[*].type') IS NOT NULL`, threadID)
+		  AND EXISTS (SELECT 1 FROM json_each(agent_messages.content_blocks)
+		              WHERE json_extract(json_each.value, '$.type') = 'skill')`, threadID)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +187,7 @@ func (r *mysqlRepo) LoadedSkillIDs(threadID string) ([]string, error) {
 	return out, rows.Err()
 }
 
-func (r *mysqlRepo) ListMessagesPageBefore(threadID, beforeID string, limit int) ([]Message, bool, error) {
+func (r *sqliteRepo) ListMessagesPageBefore(threadID, beforeID string, limit int) ([]Message, bool, error) {
 	if limit <= 0 {
 		return nil, false, errors.New("limit must be positive")
 	}
@@ -200,26 +201,22 @@ func (r *mysqlRepo) ListMessagesPageBefore(threadID, beforeID string, limit int)
 		rows, err = r.db.Query(cols+` WHERE thread_id=? AND summarized_at IS NULL
 			ORDER BY created_at DESC, id DESC LIMIT ?`, threadID, limit+1)
 	} else {
-		// 游标是消息 id（客户端手里现成的），先解析出它的 created_at 再做
-		// (created_at, id) 双键 keyset——双键与排序键完全一致，微秒同刻的多条
-		// 消息也不会重复或漏掉。游标查询带 thread_id，顺带核验了归属；带
-		// summarized_at IS NULL 是因为游标必须指向**活跃**消息——压缩不折叠带
-		// skill block 的消息，被折叠的游标之前完全可能还有活跃行，不过滤的话
-		// 「已折叠游标=失效返回空页」的接口契约（也是 inMemRepo fake 的行为）
-		// 在这里会悄悄变成「照常返回一页」。
-		var curAt time.Time
-		err = r.db.QueryRow(`SELECT created_at FROM agent_messages WHERE id=? AND thread_id=? AND summarized_at IS NULL`,
-			beforeID, threadID).Scan(&curAt)
+		// 游标必须是本线程的活跃消息；查不到（已压缩 / 被删）按契约返回空页。
+		var one int
+		err = r.db.QueryRow(`SELECT 1 FROM agent_messages WHERE id=? AND thread_id=? AND summarized_at IS NULL`,
+			beforeID, threadID).Scan(&one)
 		if errors.Is(err, sql.ErrNoRows) {
 			return []Message{}, false, nil
 		}
 		if err != nil {
 			return nil, false, err
 		}
+		// 行值比较直接比库内定宽微秒文本 + id，与排序键完全一致；不把时间扫进 Go 再绑回去
+		// （modernc 会把 time.Time 写成带时区的另一种格式，比较就错了）。
 		rows, err = r.db.Query(cols+` WHERE thread_id=? AND summarized_at IS NULL
-			AND (created_at < ? OR (created_at = ? AND id < ?))
+			AND (created_at, id) < (SELECT created_at, id FROM agent_messages WHERE id=?)
 			ORDER BY created_at DESC, id DESC LIMIT ?`,
-			threadID, curAt, curAt, beforeID, limit+1)
+			threadID, beforeID, limit+1)
 	}
 	if err != nil {
 		return nil, false, err
@@ -250,7 +247,7 @@ func (r *mysqlRepo) ListMessagesPageBefore(threadID, beforeID string, limit int)
 	return out, hasMore, nil
 }
 
-func (r *mysqlRepo) MarkMessagesSummarized(messageIDs []string) error {
+func (r *sqliteRepo) MarkMessagesSummarized(messageIDs []string) error {
 	if len(messageIDs) == 0 {
 		return nil
 	}
@@ -264,7 +261,7 @@ func (r *mysqlRepo) MarkMessagesSummarized(messageIDs []string) error {
 		placeholders = append(placeholders, '?')
 		args = append(args, id)
 	}
-	q := "UPDATE agent_messages SET summarized_at=NOW(6) WHERE id IN (" + string(placeholders) + ")"
-	_, err := r.db.Exec(q, args...)
+	q := "UPDATE agent_messages SET summarized_at=? WHERE id IN (" + string(placeholders) + ")"
+	_, err := r.db.Exec(q, append([]any{agentMicroNow()}, args...)...)
 	return err
 }
