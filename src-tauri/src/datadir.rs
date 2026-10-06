@@ -22,6 +22,15 @@ use crate::data_dir;
 /// 与 Go `datadir.PointerFileName` 一致。
 pub const POINTER_FILE: &str = "data-location.json";
 
+/// 迁移 / 清理子命令持有的排他锁文件，与 Go `datadir.MigrateLockFileName` 一致，放在默认数据目录。
+/// 锁由 sidecar 子进程自己拿（flock / LockFileEx），进程退出即释放：壳在迁移中途退出时子进程可能作为孤儿
+/// 继续跑，下次启动的子进程会等它结束（最多 10 分钟）再开始，两个迁移不会并行。
+pub const MIGRATE_LOCK_FILE: &str = ".miaoju-migrate.lock";
+
+pub fn migrate_lock_path(default_dir: &Path) -> PathBuf {
+    default_dir.join(MIGRATE_LOCK_FILE)
+}
+
 /// 用户所选目录下的专用子目录名，与 Go `datadir.DedicatedSubdir` 一致。
 pub const DEDICATED_SUBDIR: &str = "MiaojuData";
 
@@ -228,6 +237,7 @@ pub fn run_pending(
     run: &mut dyn FnMut(Vec<String>) -> Result<(), String>,
 ) -> Result<(), String> {
     let pointer = pointer_path(default_dir);
+    let lock = migrate_lock_path(default_dir).to_string_lossy().into_owned();
     let mut loc = read_location(&pointer)?;
     loop {
         let current = data_dir::resolve(default_dir)?.current;
@@ -241,6 +251,8 @@ pub fn run_pending(
                         from.to_string_lossy().into_owned(),
                         "--to".into(),
                         to.to_string_lossy().into_owned(),
+                        "--lock".into(),
+                        lock.clone(),
                     ])
                 });
                 // 复制校验成功后才切换 location.json（与 set_data_dir 同一个函数），再记待清理。
@@ -258,6 +270,8 @@ pub fn run_pending(
                     old.to_string_lossy().into_owned(),
                     "--new".into(),
                     new.to_string_lossy().into_owned(),
+                    "--lock".into(),
+                    lock.clone(),
                 ]);
                 after_cleanup(&loc, r)
             }
@@ -460,6 +474,9 @@ mod tests {
         let mut calls: Vec<String> = vec![];
         run_pending(&def, &mut |args| {
             calls.push(args[0].clone());
+            // 每个子命令都带默认数据目录下的迁移锁，由子进程持有（防止两个迁移并行）
+            let i = args.iter().position(|a| a == "--lock").expect("子命令应带 --lock");
+            assert_eq!(Path::new(&args[i + 1]), def.join(MIGRATE_LOCK_FILE));
             if args[0] == "migrate-data-dir" {
                 assert!(Path::new(&args[4]).is_dir(), "子命令之前已建好专用子目录");
                 assert_eq!(data_dir::resolve(&def).unwrap().current, def, "复制完成前不切换");

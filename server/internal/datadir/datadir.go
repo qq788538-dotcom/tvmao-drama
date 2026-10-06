@@ -42,6 +42,7 @@ var ignorable = map[string]bool{
 	"System Volume Information": true, "$RECYCLE.BIN": true,
 	PointerFileName: true, PointerFileName + ".tmp": true,
 	LocationFileName: true, LocationFileName + ".tmp": true,
+	MigrateLockFileName: true,
 }
 
 // notCopied 是复制时跳过的顶层条目：数据库单独用 VACUUM INTO 复制。
