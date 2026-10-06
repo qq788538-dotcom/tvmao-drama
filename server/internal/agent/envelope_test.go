@@ -80,4 +80,3 @@ func TestFrameUnmarshal_UserMessageWithSkillID(t *testing.T) {
 		t.Fatalf("got %q", f.SkillID)
 	}
 }
-

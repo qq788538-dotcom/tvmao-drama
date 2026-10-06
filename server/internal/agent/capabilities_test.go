@@ -63,8 +63,8 @@ func (r *stubSkillsRepo) Get(id string) (*Skill, error) {
 	}
 	return nil, errors.New("not found")
 }
-func (r *stubSkillsRepo) Create(Skill) error { return nil }
-func (r *stubSkillsRepo) Update(Skill) error { return nil }
+func (r *stubSkillsRepo) Create(Skill) error  { return nil }
+func (r *stubSkillsRepo) Update(Skill) error  { return nil }
 func (r *stubSkillsRepo) Delete(string) error { return nil }
 func (r *stubSkillsRepo) List() ([]Skill, error) {
 	out := make([]Skill, 0, len(r.byID))
@@ -74,9 +74,9 @@ func (r *stubSkillsRepo) List() ([]Skill, error) {
 	return out, nil
 }
 func (r *stubSkillsRepo) ListPublicByCategory(string) ([]Skill, error) { return nil, nil }
-func (r *stubSkillsRepo) ListForUser(int64) ([]Skill, error)          { return nil, nil }
-func (r *stubSkillsRepo) ListFeatured() ([]Skill, error)              { return nil, nil }
-func (r *stubSkillsRepo) IncrementUseCount(string) error              { return nil }
+func (r *stubSkillsRepo) ListForUser(int64) ([]Skill, error)           { return nil, nil }
+func (r *stubSkillsRepo) ListFeatured() ([]Skill, error)               { return nil, nil }
+func (r *stubSkillsRepo) IncrementUseCount(string) error               { return nil }
 
 func TestLoadSkillTool_LoadsByIDOrName(t *testing.T) {
 	repo := &stubSkillsRepo{byID: map[string]*Skill{

@@ -1,5 +1,5 @@
 // Package agent — tools_canvas_ops.go：让 planner 直接操作画布的一组内置工具
-//（用户拍板：agent 拥有画布完整操作权，设计见 docs/2026-08-13-agent-canvas-ops-design.md）。
+// （用户拍板：agent 拥有画布完整操作权，设计见 docs/2026-08-13-agent-canvas-ops-design.md）。
 //
 // 架构：读走服务端（直读 workflow_snapshots 最新快照，浏览器局部 mutation 秒级
 // 同步上来，滞后可忽略）；写走前端（emit artifact → onAgentArtifact 调 store
@@ -8,9 +8,9 @@
 // 互相覆盖。前端执行天然获得 UI 实时可见 + undo 可回退 + 既有持久化路。
 //
 // 两条数据完整性红线（与权限无关）：
-//   1. 机器管理字段（status / agentMeta / genHistory）不可写——直写会伪造
-//      「生成中」的假 UI 状态、破坏产物溯源；
-//   2. 画布操作本身绝不隐式触发生成/扣费——生成走 planner 已有的计费工具。
+//  1. 机器管理字段（status / agentMeta / genHistory）不可写——直写会伪造
+//     「生成中」的假 UI 状态、破坏产物溯源；
+//  2. 画布操作本身绝不隐式触发生成/扣费——生成走 planner 已有的计费工具。
 //
 // V1 是盲发：工具 emit 后立即返回，前端执行成败 agent 不知道。所有写操作的
 // 返回文案统一为「已提交…」而非「已完成」，避免 planner 过度承诺。
@@ -23,9 +23,9 @@ import (
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
-	"github.com/james/huabu_studio/apps/api/internal/agent/canvasmanifest"
 	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
+	"github.com/james/huabu_studio/apps/api/internal/agent/canvasmanifest"
 )
 
 // CanvasSnapshotReader 是 read_canvas 需要的最小能力（projects.MySQLRepository
@@ -168,7 +168,7 @@ func (t *ReadCanvasTool) InvokableRun(ctx context.Context, _ string, _ ...tool.O
 			Prompt: truncate(prompt, 200), Text: truncate(s.Text, 100),
 			HasMedia: n.Content != "", Status: n.Status,
 			Settings: visibleScalarSettings(n.Type, n.Settings),
-			X: n.X, Y: n.Y, W: n.Width, H: n.Height,
+			X:        n.X, Y: n.Y, W: n.Width, H: n.Height,
 		})
 	}
 	for _, c := range doc.Connections {
@@ -367,7 +367,7 @@ func (t *UpdateNodeTool) InvokableRun(ctx context.Context, argsJSON string, _ ..
 	emitCanvasOp(ctx, "node_update_info", args.NodeID, map[string]any{
 		"node_id": args.NodeID, "node_name": snapshotNodeName(ctx, t.Reader, args.NodeID),
 		"settings": settings,
-		"x": args.X, "y": args.Y, "width": args.Width, "height": args.Height,
+		"x":        args.X, "y": args.Y, "width": args.Width, "height": args.Height,
 	})
 	return fmt.Sprintf("已提交修改节点 %s。%s%s", args.NodeID, strippedNote(stripped), opSubmittedSuffix), nil
 }

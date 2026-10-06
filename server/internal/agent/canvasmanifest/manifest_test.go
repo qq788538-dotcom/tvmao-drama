@@ -116,7 +116,7 @@ func TestPromptFieldNamesMatchBrowser(t *testing.T) {
 }
 
 // rows 的两条语义声明缺一不可：整体替换（数组合并没有意义）+ id 执行侧接管
-//（锚断了会让批量铺节点的防重复计数失效，用户重复扣费）。
+// （锚断了会让批量铺节点的防重复计数失效，用户重复扣费）。
 func TestScriptRowsSemantics(t *testing.T) {
 	spec, ok := Field("script", "rows")
 	if !ok {
