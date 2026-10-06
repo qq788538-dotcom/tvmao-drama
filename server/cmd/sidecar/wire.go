@@ -29,6 +29,8 @@ type app struct {
 	cleaner *apphttp.ProjectCleaner
 	sweeper *library.OrphanSweeper
 	gen     *genWiring
+	// assets 交给 main 里的 wireAgent（附件查找）。
+	assets *assets.SQLiteRepository
 	// seedance 是 Seedance 合规校验服务，main 用根 ctx 起它的对账 worker（未配置时自身 no-op）。
 	seedance *library.SeedanceService
 }
@@ -114,7 +116,7 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	deps.DirectorLibrary = apphttp.NewDirectorLibraryHandler(directorlibrary.NewSQLiteRepository(conn), signer)
 
 	cleaner := apphttp.NewProjectCleaner(projectsRepo, assetsRepo, usersRepo, genTasks, orphans, conn)
-	return &app{deps: deps, cleaner: cleaner, sweeper: sweeper, gen: genW, seedance: librarySeedanceSvc}, nil
+	return &app{deps: deps, cleaner: cleaner, sweeper: sweeper, gen: genW, assets: assetsRepo, seedance: librarySeedanceSvc}, nil
 }
 
 // charImageStore 把 assets.Storage 适配成 aicharacters.ObjectStore（角色形象图缓存用）。

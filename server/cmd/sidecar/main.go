@@ -121,6 +121,29 @@ func run() error {
 		ln.Close()
 		return err
 	}
+
+	// ctx 是整个进程的关闭信号（stdin SHUTDOWN/EOF、系统信号都会 cancel 它）。
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// P5 Agent：在 builtin.Apply 之后装配（agentseed 引用内置模型），ctx 用上面的关闭 ctx，
+	// 进行中的 Run 随 sidecar 退出取消。Keys 必须是真正的 LocalStorage（ExtractKey），否则拒绝装配。
+	agentW, err := wireAgent(ctx, agentWiringDeps{
+		DB:      conn,
+		Signer:  a.deps.MediaSigner,
+		Keys:    storage,
+		Objects: storage,
+		Assets:  a.assets,
+		Gen:     a.gen.Gen,
+	})
+	if err != nil {
+		ln.Close()
+		return fmt.Errorf("装配 Agent: %w", err)
+	}
+	a.deps.Agent, a.deps.Skills, a.deps.AdminAgent = agentW.Agent, agentW.Skills, agentW.AdminAgent
+	// 生成结果回写画布后经 Agent Hub 推 canvas_changed（P1c 留的注入点）。
+	a.gen.CanvasGen.SetChangeNotifier(agentW.Hub)
+
 	apphttp.MustWire(a.deps)
 	srv := &nethttp.Server{
 		Handler: apphttp.NewRouter(a.deps),
@@ -128,8 +151,6 @@ func run() error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	workers := []<-chan struct{}{
 		a.cleaner.Start(ctx, projectCleanInterval),
 		a.sweeper.Start(ctx, orphanSweepInterval, library.DefaultGracePeriod),
