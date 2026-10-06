@@ -49,6 +49,7 @@ func ProbeDurationMsFile(ctx context.Context, path string) (int64, error) {
 		"-select_streams", "v:0",
 		"-show_entries", "packet=pts_time,duration_time",
 		"-of", "json", path)
+	hideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return 0, fmt.Errorf("ffprobe: %w", err)
