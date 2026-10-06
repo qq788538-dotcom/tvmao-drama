@@ -8,12 +8,7 @@ export type FrameType =
   // canvas_changed 不属于 agent 会话流：它是画布快照被改动后的广播（Hub 按
   // (userID, projectID) 分发），团队观看端据此重拉快照。之所以复用 agent WS
   // 而不是另开一条连接——同一条 socket 已经按项目建好了，多路复用零成本。
-  | 'canvas_changed'
-  // 瞬态层（二期并发编辑）。canvas_transient 是**双向**的：客户端发出去，
-  // 服务端原样转播给同项目的其余连接（不回发送者）；canvas_presence 只由
-  // 服务端下发。两者都不落库、断线即失，权威状态永远只看 canvas_changed。
-  | 'canvas_transient'
-  | 'canvas_presence';
+  | 'canvas_changed';
 
 export interface SkillDraft {
   id: string;
@@ -144,31 +139,6 @@ export interface Frame {
    *  **可选**——一期客户端忽略它继续整拉；摘要序列化失败时后端也不带，
    *  接收端一律退回整拉兜底。 */
   op?: CanvasOpFramePayload;
-  /** canvas_transient 专用：瞬态种类（'drag' | 'node_editing'）。后端**不做
-   *  白名单**（种类还会增长），前端同样按「不认识就忽略」处理，不当闭合枚举。 */
-  kind?: string;
-  /** canvas_transient 专用：发帧的真人成员 id。**服务端覆写**，客户端自报的
-   *  会被丢弃——名册与角标都靠它认人，可伪造就等于可冒名。 */
-  actor_user_id?: number;
-  /** canvas_transient(kind=drag)：拖拽途中的绝对坐标批。 */
-  positions?: TransientPositionFramePayload[];
-  /** canvas_transient(kind=node_editing)：哪个节点、进入还是退出编辑。 */
-  node_id?: string;
-  editing?: boolean;
-  /** canvas_presence：项目下的在线成员**全量**名册（有人进出就整份重发）。 */
-  members?: PresenceMemberFramePayload[];
-}
-
-/** 线格式。桌面端前端不再消费瞬态帧（协作已删除，spec X2），类型保留只为与 Agent WebSocket 线格式对齐。 */
-export interface TransientPositionFramePayload {
-  id: string;
-  x: number;
-  y: number;
-}
-
-export interface PresenceMemberFramePayload {
-  actor_user_id: number;
-  email?: string;
 }
 
 /**

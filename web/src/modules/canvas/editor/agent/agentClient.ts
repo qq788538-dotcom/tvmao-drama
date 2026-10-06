@@ -133,20 +133,6 @@ export class AgentClient {
     return this.send({ type: 'user_message', ...p });
   }
 
-  // 瞬态帧（拖拽实时流 / 「正在编辑」提示）。单独开一个口子而不是把 send 放开：
-  // 帧类型一旦公开，任何调用方都能从这条 agent 连接上发任意帧；这里只放行
-  // 服务端明确会转播的那一种。返回是否真的发上网——WS 非 OPEN 时瞬态帧直接丢，
-  // 不排队（排到重连后再发的是一批**过时**坐标，会让队友的节点跳回去）。
-  sendCanvasTransient(p: {
-    project_id: number;
-    kind: string;
-    positions?: { id: string; x: number; y: number }[];
-    node_id?: string;
-    editing?: boolean;
-  }): boolean {
-    return this.send({ type: 'canvas_transient', ...p });
-  }
-
   abort(thread_id: string, action_id: string) {
     this.send({ type: 'abort', thread_id, action_id });
   }
