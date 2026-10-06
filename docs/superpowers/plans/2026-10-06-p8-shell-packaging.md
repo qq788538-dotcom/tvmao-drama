@@ -1,5 +1,8 @@
 # P8 Tauri 壳加固与打包 Implementation Plan
 
+> **实施后注（2026-10-06，正文未改）**
+> - 实际决定：1024 图标为程序生成的占位图（正式稿到后重跑 `gen-icons.sh`）；全局 tauri-cli 升到 2.12.1；`sidecarGate.ts` 改名 `gateState.ts`（避免大小写不敏感文件系统冲突）；"崩溃 60 秒内只自动重启一次"；自定义数据目录不再强制 0700；T12（实机演练）交用户，见 `docs/manual-acceptance-checklist.md`。整合后 `ProcessHandle::shutdown` 先写 `SHUTDOWN` 行再关 stdin。出处：p8 账本、integration-report.md。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 P0 的 Tauri 薄壳加固成可发版的状态：sidecar 生命周期状态机（异步启动、崩溃发现与重启、重试命令、优雅退出）、数据目录可迁移（S2）、Windows WebView2 检测（E8）、版本号单一来源、正式图标，以及一键产出 `out/喵剧AI_<ver>_aarch64.dmg`、`out/喵剧AI_<ver>_x64.dmg`、`out/miaoju-windows-x64-<ver>.zip`（都带首次打开说明）和发版检查清单。

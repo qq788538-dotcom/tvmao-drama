@@ -1,5 +1,8 @@
 # P6 脚本节点“剧本生成分镜”（内置 Python + 命令白名单）Implementation Plan
 
+> **实施后注（2026-10-06，正文未改）**
+> - Python 运行时三个目标（darwin arm64、darwin x64、windows x64）都准备（与 P8 "x64 单独出 dmg"保持一致，计划里"macOS 只发 arm64"的建议未采纳）。整合时：`--python-home` 由 Rust 壳传入（side-py 1480052）、`settingsKeyResolver` 换成 P1c 的 `settingsUpstreamKey`、迁移编号 `0060_canvas_script_tasks.sql`、数据目录创建让位给 0700 的 `ensurePrivateDir`。T8 的打包回归（dmg 隔离属性、Windows/macOS 14/15）待人工。出处：p6 账本、integration-report.md。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让桌面端脚本节点“剧本生成分镜”在 macOS 与 Windows 上都能跑通：sidecar 用内置的独立 Python 执行 Skill 自带校验脚本，命令经白名单解析后直接 exec（不经过 bash），只能写本次任务工作区。

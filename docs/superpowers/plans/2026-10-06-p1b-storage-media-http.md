@@ -1,5 +1,8 @@
 # P1b 本地存储、媒体与画布 HTTP 接口 Implementation Plan
 
+> **实施后注（2026-10-06，正文未改）**
+> - T12 修复轮 9a456ec 后：媒体 key 中的 `%`/`#` 往返、素材库上传加大小上限、关闭先停 worker 再关库、数据目录 0700、EOF 优雅退出；SEC4 改为"在访达中显示"由 sidecar 执行（`POST /api/v1/media/reveal`）。整合后 sidecar 还补了写入 `SHUTDOWN` 行的握手。迁移文件 `0002_library.sql`。出处：p1b 账本、integration-report.md。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让 sidecar 成为一个可用的单用户画布后端：媒体文件存在本机数据目录、以 `media://` 落库并在出口换成 `http://127.0.0.1:<端口>/media/…` 本地 URL，项目、画布、上传、素材库、孤儿回收和“在访达中显示”这些 `/api/v1` 接口在 SQLite 上跑通。

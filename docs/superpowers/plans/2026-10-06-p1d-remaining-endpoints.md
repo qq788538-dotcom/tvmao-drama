@@ -1,5 +1,8 @@
 # P1d 其余画布接口与 P1 收尾 Implementation Plan
 
+> **实施后注（2026-10-06，正文未改）**
+> - T8 里的 `p1c_contract*.go` 契约桩与 `pendingGeneration` 已在整合时按 P1d 合并规则删除、替换为真实生成服务，并补了 `WithRealPersonResolver`；迁移编号为 0010/0011/0012（P1d 三个文件），`mediaprobe/probe.go` 取 P1d 版（含按文件探测）。出处：integration-report.md 第二节。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把画布剩下的服务端接口搬进 sidecar 并在 SQLite 上跑通：后处理（去字幕 / 转高清 / 转白模 / 预估 / 配置）、绘图预设、多角度、打光、AI 角色库（含形象图在线加载 + 本地缓存）、Seedance 合规校验（改走 newapi）、3D 导演台模型库，最后接进路由和 sidecar 装配；顺手清掉 P1a 留下的几个测试小项。

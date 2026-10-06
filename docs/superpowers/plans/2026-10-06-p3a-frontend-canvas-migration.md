@@ -1,5 +1,8 @@
 # P3a 前端画布迁移（搬运、删减、接 sidecar、启动入口）Implementation Plan
 
+> **实施后注（2026-10-06，正文未改）**
+> - 最终审查修复轮（d7052bd）新增：401/加载失败不再卡 Loading、诊断报告不带 token、StrictMode 不重复建项目、生产包去掉测试钩子、sidecar 重启后 REST/Agent WS 刷新端口与 token。整合时 `DiagPage.tsx` 保留 P8 的 `SidecarGate` 写法并补"← 返回画布"链接；`sidecarWsUrl` 已无调用方。出处：p3a 账本、integration-report.md。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把参考仓的自由画布模块搬进 `web/`，删掉发布/分享/协作/登录/ChatPanel，让所有 REST、WebSocket 请求改走本机 sidecar，启动直接进画布（F9），字体本地化，参考仓 vitest 测试在 jsdom 下全部通过。
