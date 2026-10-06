@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主窗口的最小权限：只有核心能力和自定义命令 server_info",
+  "description": "主窗口的最小权限：core:default（含事件监听、getVersion）。自定义命令 server_info / sidecar_status / restart_sidecar / get_data_dir / set_data_dir 由本应用注册，默认只对本应用窗口开放。文件对话框、在访达中显示等权限由后续阶段按需添加（SEC4）。",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

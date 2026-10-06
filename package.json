@@ -3,10 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "scripts/build-sidecar.sh && cargo tauri dev",
-    "build": "scripts/build-sidecar.sh && cargo tauri build",
+    "dev": "bash scripts/build-sidecar.sh && cargo tauri dev",
+    "build": "bash scripts/release-macos.sh aarch64",
+    "release:mac": "bash scripts/release-macos.sh all",
+    "release:win": "bash scripts/package-windows.sh",
+    "release": "bash scripts/release-macos.sh all && bash scripts/package-windows.sh",
+    "version:check": "bash scripts/version.sh check",
     "test:web": "pnpm --dir web test",
     "test:server": "cd server && go test ./...",
-    "test:tauri": "cd src-tauri && cargo test"
+    "test:tauri": "cd src-tauri && cargo test",
+    "test:scripts": "node --test scripts/lib/*.test.mjs"
   }
 }
