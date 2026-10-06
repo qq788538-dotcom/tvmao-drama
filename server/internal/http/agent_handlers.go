@@ -206,6 +206,10 @@ func (h *AgentHandler) CreateThread(w http.ResponseWriter, r *http.Request) {
 	if err := h.Repo.CreateThread(agent.Thread{
 		ID: id, ProjectID: projectID, UserID: uid, Title: body.Title,
 	}); err != nil {
+		if errors.Is(err, agent.ErrProjectNotFound) {
+			writeError(w, http.StatusNotFound, "project not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

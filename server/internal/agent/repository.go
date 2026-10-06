@@ -9,6 +9,9 @@ import (
 
 var ErrThreadNotFound = errors.New("agent thread not found")
 
+// ErrProjectNotFound：CreateThread 的目标项目不存在（handler 映射 404，而不是外键失败的 500）。
+var ErrProjectNotFound = errors.New("project not found")
+
 type Thread struct {
 	ID             string    `json:"id"`
 	ParentThreadID string    `json:"parent_thread_id"`
@@ -71,11 +74,19 @@ func (r *sqliteRepo) CreateThread(t Thread) error {
 	if t.Status == "" {
 		t.Status = "active"
 	}
-	_, err := r.db.Exec(`INSERT INTO agent_threads
+	// 项目存在性与插入在同一条语句里判断：不存在时插 0 行，返回 ErrProjectNotFound，
+	// 不靠外键报错（调用方分不清是哪条外键、只能回 500）。
+	res, err := r.db.Exec(`INSERT INTO agent_threads
 		(id, parent_thread_id, project_id, user_id, title, status, agent_name)
-		VALUES (?,?,?,?,?,?,?)`,
-		t.ID, t.ParentThreadID, t.ProjectID, t.UserID, t.Title, t.Status, t.AgentName)
-	return err
+		SELECT ?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM projects WHERE id = ?)`,
+		t.ID, t.ParentThreadID, t.ProjectID, t.UserID, t.Title, t.Status, t.AgentName, t.ProjectID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return ErrProjectNotFound
+	}
+	return nil
 }
 
 func (r *sqliteRepo) GetThread(id string) (*Thread, error) {
