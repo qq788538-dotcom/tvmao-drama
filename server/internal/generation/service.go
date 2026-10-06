@@ -127,6 +127,10 @@ type Service struct {
 	leaseStaleSec     int
 	// tmpDir 参考图/multipart/产物的临时落盘目录（SetTempDir 注入）。
 	tmpDir string
+	// lifecycle 仅测试注入（见 tracker）；生产为 nil，用 lifecycle.Default。
+	taskTracker *lifecycle.Tracker
+	// finishSuccessHook 仅测试注入：替换 finishSuccessDurable 内部的单次收口。
+	finishSuccessHook func(ctx context.Context, taskID, lease int64, out finishOutcome) (bool, error)
 	// queueStuckSecCfg 排队滞留兜底秒数，0=用默认 6 小时。
 	queueStuckSecCfg int
 	pollRetryBase    time.Duration
@@ -391,7 +395,7 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	if err != nil {
 		return nil, fmt.Errorf("interpolate template: %w", err)
 	}
-	if err := s.ensureNoLocalMedia(payload); err != nil {
+	if err := s.ensureNoLocalMediaForRequest(model, payload, preparedImages); err != nil {
 		removePreparedFiles(preparedImages)
 		return nil, err
 	}
@@ -465,7 +469,7 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	// processing，前端靠轮询 task 状态拿结果。用独立 ctx：HTTP 一返回，请求的 ctx 就被取消，
 	// 后台不能跟着断。
 	if input.ForceAsync {
-		lifecycle.Go(func() {
+		s.tracker().Go(func() {
 			bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 			defer func() {
@@ -549,8 +553,9 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 		return nil, err
 	}
 
+	// 每次调用用局部 client：曾经回写 s.upstream，并发任务同写一个字段是数据竞争（M2），
+	// 且该字段无人读取。
 	client := upstream.NewClient(upstream.ClientOptions{BaseURL: baseDomain, TempDir: s.tempDir()})
-	s.upstream = client
 	result, err := s.callUpstream(ctx, client, apiKey, model, payload, preparedImages)
 	if err != nil {
 		// §2 分类:提交调用错误一律保守终败退款(权威拒绝无随机性重试无意义;
@@ -589,7 +594,7 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 		// 把并发名额的释放转交给 completeAsync：名额要持有到上游真出片(轮询结束)才归还,
 		// 不能在本函数返回 processing 时就释放(那样"限并发"形同虚设)。
 		releasedToAsync = true
-		lifecycle.Go(func() {
+		s.tracker().Go(func() {
 			defer release()
 			s.completeAsync(taskID, lease, model, apiKey, baseDomain, result.TaskID, userID, projectID, freezeAmt, inputs, note, time.Now())
 		})
@@ -668,7 +673,7 @@ func (s *Service) finalize(ctx context.Context, taskID, lease int64, model *mode
 	durMs := durationMsFromInputs(reqInputs)
 	persistedURLs, assetIDs, mimes, perr := s.persistOutputs(ctx, userID, taskID, projectID, result.OutputURLs, durMs)
 	if perr != nil {
-		// 只有 file:// 槽位会走到这里（persistOutputs 注释）。上游已出图、钱已冻结,
+		// 只有 file:// / data: 槽位会走到这里（persistOutputs 注释）。上游已出图、钱已冻结,
 		// 但产物没法交付——保守退款,与「上游调用错误」同一收口。
 		_, _ = s.finishFailureTx(context.Background(), taskID, lease, "产物保存失败，已退款，请重试", note)
 		return nil, perr
@@ -716,7 +721,8 @@ func (s *Service) finalize(ctx context.Context, taskID, lease int64, model *mode
 
 	// 原子收口:终态 CAS + SettleTx + 插 outbox 同一事务(v5 §5.2)。
 	// persistOutputs 在其之前执行——崩在两者之间时,接管重放靠槽位幂等不产生重复资产。
-	won, err := s.finishSuccessTx(ctx, taskID, lease, finishOutcome{
+	// I3：收口不随执行 ctx 取消，瞬时错误有界重试（finishSuccessDurable）。
+	won, err := s.finishSuccessDurable(ctx, taskID, lease, finishOutcome{
 		output:        outputBytes,
 		outputKind:    outputKind,
 		actualCredits: actualCredits,
@@ -752,6 +758,9 @@ func (s *Service) finalize(ctx context.Context, taskID, lease int64, model *mode
 // 重启杀掉了它们的 goroutine），并为每个重新拉起完成 goroutine。
 // 可以安全地在启动时从一个 goroutine 调用。
 func (s *Service) ResumeOrphanedTasks() {
+	if s.draining() {
+		return
+	}
 	tasks, err := s.repo.ListProcessing(0, s.staleSec())
 	if err != nil {
 		log.Printf("generation: ResumeOrphanedTasks list failed: %v", err)
@@ -800,7 +809,7 @@ func (s *Service) ResumeOrphanedTasks() {
 			_, _ = s.finishFailureTx(context.Background(), task.ID, lease, "orphaned: model no longer configured for polling", ledgerNote(model, inputCapture.Note))
 			continue
 		}
-		lifecycle.Go(func() {
+		s.tracker().Go(func() {
 			s.completeAsync(task.ID, lease, model, apiKey, baseDomain, task.UpstreamTaskID, task.UserID, task.ProjectID, task.FrozenCents, reqInputs, ledgerNote(model, inputCapture.Note), task.CreatedAt)
 		})
 		resumed++
@@ -1350,7 +1359,10 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 		}
 		stored, assetID, mime, err := s.persistSlotWithRetry(ctx, userID, taskID, pid, i, rawURL, durationMs)
 		if err != nil {
-			if strings.HasPrefix(rawURL, "file://") {
+			// file:// 与 data: 都是"内容只在本进程手里"的产物：没有上游地址可留、也无从
+			// 手动重试，落盘失败只能判失败退款。data: 绝不能原样写进 output/画布（M4）：
+			// 几 MB base64 会撑大快照，且节点没有重试入口。
+			if strings.HasPrefix(rawURL, "file://") || strings.HasPrefix(rawURL, "data:") {
 				log.Printf("generation: persist local output failed task=%d idx=%d: %v", taskID, i, err)
 				return nil, nil, nil, fmt.Errorf("%w: %v", errLocalPersist, err)
 			}
@@ -1450,7 +1462,11 @@ func (s *Service) openSlotSource(ctx context.Context, rawURL string) (io.ReadClo
 		}
 		return io.NopCloser(bytes.NewReader(body)), int64(len(body)), mime, nil
 	}
-	f, err := os.Open(strings.TrimPrefix(rawURL, "file://"))
+	path, err := s.resolveSpillOutputPath(strings.TrimPrefix(rawURL, "file://"))
+	if err != nil {
+		return nil, 0, "", err
+	}
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("open local output: %w", err)
 	}

@@ -195,6 +195,13 @@ func (s *Service) pumpOutboxOnce() {
 			_, _ = repo.failOutbox(row.ID, row.DeliveryVersion, outboxMaxAttempt, "payload 损坏: "+err.Error())
 			continue
 		}
+		// M3：成功结果投递前用任务当前 output 覆盖产物地址。首投失败退避期间用户可能已手动
+		// 「保存到本地」（RepersistTask 改写了 output），payload 里还是收口时的上游外链。
+		if p.Err == "" && len(p.OutputURLs) > 0 {
+			if urls, ids, ok := repo.currentTaskOutputs(row.TaskID); ok && len(urls) == len(p.OutputURLs) {
+				p.OutputURLs, p.AssetIDs = urls, ids
+			}
+		}
 		err := dispatchSink(context.Background(), row.Sink, SinkResult{
 			TaskID:       row.TaskID,
 			ModelID:      p.ModelID,
@@ -216,4 +223,21 @@ func (s *Service) pumpOutboxOnce() {
 			log.Printf("[gen-outbox] 行 %d 失租(代次已被接管),放弃写回", row.ID)
 		}
 	}
+}
+
+// currentTaskOutputs 读成功任务当前 output 里的 outputUrls / assetIds。读不到或不是成功态时 ok=false，
+// 调用方沿用 payload 原值。
+func (r *SQLiteRepository) currentTaskOutputs(taskID int64) ([]string, []int64, bool) {
+	var raw sql.NullString
+	if err := r.db.QueryRow(`SELECT output FROM generation_tasks WHERE id=? AND status='succeeded'`, taskID).Scan(&raw); err != nil || !raw.Valid {
+		return nil, nil, false
+	}
+	var out struct {
+		OutputURLs []string `json:"outputUrls"`
+		AssetIDs   []int64  `json:"assetIds"`
+	}
+	if err := json.Unmarshal([]byte(raw.String), &out); err != nil || len(out.OutputURLs) == 0 {
+		return nil, nil, false
+	}
+	return out.OutputURLs, out.AssetIDs, true
 }

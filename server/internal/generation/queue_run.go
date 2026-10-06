@@ -41,6 +41,9 @@ func (s *Service) RunQueueWorker(ctx context.Context) {
 // pumpQueueOnce 领取一轮。领到就丢后台执行，本函数不阻塞在生成上——
 // 否则一个慢任务会拖住整轮领取。
 func (s *Service) pumpQueueOnce() {
+	if s.draining() {
+		return // 正在关闭：不再领取（M1）
+	}
 	// 到点的 retry_pending 先放回 queued（v5 §4.2：并入同一次 pump，不新增 worker），
 	// 本轮领取立刻能把它们抢走。
 	if n, err := s.repo.PromoteDueRetries(200); err != nil {
@@ -59,6 +62,9 @@ func (s *Service) pumpQueueOnce() {
 	}
 	candidates := pickupCandidates(s.repo, models, s.modelConcurrencyLimits(models), runningFreshSec)
 	for _, task := range candidates {
+		if s.draining() {
+			return
+		}
 		lease, won, err := s.repo.ClaimQueued(task.ID, lifecycle.InstanceID())
 		if err != nil {
 			log.Printf("[gen-queue] 领取 task=%d 失败: %v", task.ID, err)
@@ -69,7 +75,7 @@ func (s *Service) pumpQueueOnce() {
 		}
 		t := task
 		l := lease
-		lifecycle.Go(func() { s.runQueuedTask(t, l) })
+		s.tracker().Go(func() { s.runQueuedTask(t, l) })
 	}
 }
 
@@ -127,6 +133,9 @@ func (s *Service) failQueuedTask(task Task, lease int64, reason string) {
 //   - 没调过 + 无 sink（直连任务）：无投递通道，接管者无法代为完成同步语义
 //     → 失败退款（自轮询的调用方按终态各自处理）
 func (s *Service) RecoverStaleQueueTasks() {
+	if s.draining() {
+		return
+	}
 	tasks, err := s.repo.ListStaleRunning(s.staleSec())
 	if err != nil {
 		log.Printf("[gen-queue] 扫描过期 running 失败: %v", err)

@@ -51,6 +51,9 @@ const (
 	shutdownTimeout      = 3 * time.Second
 	projectCleanInterval = 30 * time.Second
 	orphanSweepInterval  = 24 * time.Hour
+	// genDrainTimeout 关闭时等在途生成任务收尾的上限。壳只给 3 秒（src-tauri SHUTDOWN_GRACE），
+	// 与 HTTP Shutdown 并行，留出余量；没跑完的由下次启动接管续跑。
+	genDrainTimeout = 2 * time.Second
 )
 
 func main() {
@@ -200,10 +203,16 @@ func run() error {
 		return err
 	case <-ctx.Done():
 	}
-	// 关闭顺序：ctx 已取消（worker 不再开始新一轮）→ 停 HTTP → 等 worker 退出 → 关数据库（defer）。
-	// 必须等 worker 退出再关库：sql.DB.Close 不会等事务以外的后续语句，worker 剩下的步骤只会拿到
-	// "sql: database is closed"。
+	// 关闭顺序：ctx 已取消（worker 不再开始新一轮）→ 生成管线 Drain（停止领取、等在途任务收口，P1c M1）
+	// 与停 HTTP 并行 → 等 worker 退出 → 等 Drain 结束 → 关数据库（defer）。
+	// 必须等 worker 和 Drain 结束再关库：sql.DB.Close 不会等事务以外的后续语句，剩下的步骤只会拿到
+	// "sql: database is closed"。Drain 自带 2 秒上限，整体仍受 shutdownTimeout 约束。
 	deadline := time.Now().Add(shutdownTimeout)
+	drained := make(chan struct{})
+	go func() {
+		a.gen.Gen.Drain(genDrainTimeout)
+		close(drained)
+	}()
 	sctx, scancel := context.WithDeadline(context.Background(), deadline)
 	defer scancel()
 	if err := srv.Shutdown(sctx); err != nil {
@@ -211,6 +220,11 @@ func run() error {
 	}
 	if !waitDone(time.Until(deadline), workers...) {
 		log.Print("等待后台任务退出超时，直接关闭数据库")
+	}
+	select {
+	case <-drained:
+	case <-time.After(time.Until(deadline)):
+		log.Print("等待生成任务收口超时，直接关闭数据库（未完成的任务下次启动续跑）")
 	}
 	log.Print("sidecar 已关闭")
 	return nil

@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type Client struct {
@@ -125,7 +126,8 @@ func (e *CallError) Error() string {
 	case e == nil:
 		return ""
 	case e.StatusCode > 0:
-		return fmt.Sprintf("upstream %d: %s", e.StatusCode, e.Body)
+		// Body 字段保留全文供分类判断；文本形态会进任务 error 和日志，折叠截断（I2）。
+		return fmt.Sprintf("upstream %d: %s", e.StatusCode, truncateUpstreamLog([]byte(e.Body)))
 	case e.Err != nil:
 		return fmt.Sprintf("upstream call: %v", e.Err)
 	default:
@@ -185,8 +187,9 @@ func (c *Client) Call(ctx context.Context, apiKey, method, path string, payload 
 	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
-	// 详细日志：打渲染后的请求 url+payload(不打 Authorization/sk)。response 在下方拿到再打。
-	log.Printf("[upstream →] %s %s body=%s", method, url, truncateUpstreamLog(payload))
+	// 请求只记方法、地址、字节数：请求体里有用户提示词、保密的绘图预设正文、参考图
+	// base64，一律不进日志（I2）。Authorization 头同样不打。
+	log.Printf("[upstream →] %s %s bytes=%d", method, url, len(payload))
 	resp, err := c.http.Do(req)
 	if err != nil {
 		log.Printf("[upstream ✗] %s %s transport error: %v", method, url, err)
@@ -218,7 +221,7 @@ func (c *Client) Call(ctx context.Context, apiKey, method, path string, payload 
 	if err != nil {
 		return nil, &CallError{Err: err}
 	}
-	log.Printf("[upstream ←] %s status=%d body=%s", url, resp.StatusCode, truncateUpstreamLog(raw))
+	logUpstreamResponse(url, resp.StatusCode, raw)
 	if resp.StatusCode >= 400 {
 		(&CallResult{SpillFiles: spilled}).RemoveSpillFiles()
 		return nil, &CallError{StatusCode: resp.StatusCode, Body: string(raw)}
@@ -342,7 +345,7 @@ func (c *Client) CallMultipart(ctx context.Context, apiKey, method, path string,
 	if err != nil {
 		return nil, &CallError{Err: err}
 	}
-	log.Printf("[upstream ←] %s status=%d body=%s", url, resp.StatusCode, truncateUpstreamLog(raw))
+	logUpstreamResponse(url, resp.StatusCode, raw)
 	if resp.StatusCode >= 400 {
 		(&CallResult{SpillFiles: spilled}).RemoveSpillFiles()
 		return nil, &CallError{StatusCode: resp.StatusCode, Body: string(raw)}
@@ -356,15 +359,38 @@ func escapeQuotes(s string) string {
 	return strings.NewReplacer("\\", "\\\\", `"`, "\\\"").Replace(s)
 }
 
-// upstreamLogCap 上游请求/响应 body 日志最多打这么多字节，超出截断。
-const upstreamLogCap = 4096
+// upstreamLogCap 失败响应体日志最多留这么多字节（折叠 data URI 之后再截断）。
+const upstreamLogCap = 512
 
-// truncateUpstreamLog 把上游 body 转成日志字符串，超长截断并标注剩余字节数。
-func truncateUpstreamLog(b []byte) string {
-	if len(b) <= upstreamLogCap {
-		return string(b)
+// logUpstreamResponse 只记状态码和字节数；非 2xx 额外附折叠截断后的前 512 字节，
+// 便于排查。2xx 响应体不打：成功响应常回显 revised_prompt 等，可能带出预设正文。
+func logUpstreamResponse(url string, status int, raw []byte) {
+	if status >= 200 && status < 300 {
+		log.Printf("[upstream ←] %s status=%d bytes=%d", url, status, len(raw))
+		return
 	}
-	return string(b[:upstreamLogCap]) + fmt.Sprintf("…(+%d bytes)", len(b)-upstreamLogCap)
+	log.Printf("[upstream ←] %s status=%d bytes=%d head=%s", url, status, len(raw), truncateUpstreamLog(raw))
+}
+
+// dataURIPayloadRegex 匹配 data URI 的 base64 正文部分（保留 "data:<mime>;base64," 前缀）。
+var dataURIPayloadRegex = regexp.MustCompile(`(data:[a-zA-Z0-9.+/_-]+;base64,)[A-Za-z0-9+/=_-]+`)
+
+// foldDataURIs 把 data URI 的正文折叠成 "…"，避免截断后的日志仍是一屏 base64。
+func foldDataURIs(s string) string {
+	return dataURIPayloadRegex.ReplaceAllString(s, "${1}…")
+}
+
+// truncateUpstreamLog 先折叠 data URI，再截到 upstreamLogCap 字节并标注剩余字节数。
+func truncateUpstreamLog(b []byte) string {
+	s := foldDataURIs(string(b))
+	if len(s) <= upstreamLogCap {
+		return s
+	}
+	cut := upstreamLogCap
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + fmt.Sprintf("…(+%d bytes)", len(s)-cut)
 }
 
 var (
