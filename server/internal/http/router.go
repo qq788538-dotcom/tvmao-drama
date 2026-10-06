@@ -28,6 +28,11 @@ type Deps struct {
 	LibraryItem       *LibraryItemHandler
 	LibraryBridge     *LibraryBridgeHandler
 	AdminGC           *AdminGCHandler
+
+	// Generation 是 P1c 生成链路的 HTTP 入口（nil 字段不注册对应路由）。
+	Generation GenerationRoutes
+	// GenerationRepersist 是节点「未保存到本地」的重试接口（spec S5）。
+	GenerationRepersist *GenerationRepersistHandler
 }
 
 // MustWire 在启动期校验业务 handler 都已装配，缺一个就 panic。路由按字段注册，漏装配不会编译失败，
@@ -39,7 +44,10 @@ func MustWire(d Deps) {
 		"MediaSigner": d.MediaSigner != nil, "Media": d.Media != nil, "Me": d.Me != nil, "Asset": d.Asset != nil,
 		"Project": d.Project != nil, "CanvasMutation": d.CanvasMutation != nil, "CanvasAssetImport": d.CanvasAssetImport != nil,
 		"LibraryFolder": d.LibraryFolder != nil, "LibraryItem": d.LibraryItem != nil, "LibraryBridge": d.LibraryBridge != nil,
-		"AdminGC": d.AdminGC != nil,
+		"AdminGC":              d.AdminGC != nil,
+		"Generation.CanvasGen": d.Generation.CanvasGen != nil, "Generation.Generation": d.Generation.Generation != nil,
+		"Generation.Apply": d.Generation.Apply != nil, "Generation.Models": d.Generation.Models != nil,
+		"GenerationRepersist": d.GenerationRepersist != nil,
 	} {
 		if !ok {
 			missing = append(missing, name)
@@ -59,6 +67,15 @@ func NewRouter(d Deps) nethttp.Handler {
 	// 本地媒体文件：<img>/<video> 直接请求，token 走 ?token=（媒体专用 token 只能访问这里）。
 	r.Get("/media/*", d.Media.Serve)
 	r.Head("/media/*", d.Media.Serve)
+
+	// P1c 生成链路：registerGenerationRoutes / registerRepersistRoute 注册的是 /api/v1/... 绝对路径，
+	// 所以挂在根路由的 Group 上（与下面 /api/v1 子路由里的业务路由同样套 LocalIdentity）。
+	// chi 先匹配静态段，这些路径不会被 /api/v1 子路由的通配吞掉。
+	r.Group(func(r chi.Router) {
+		r.Use(LocalIdentity)
+		registerGenerationRoutes(r, d.Generation)
+		registerRepersistRoute(r, d.GenerationRepersist)
+	})
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/ping", func(w nethttp.ResponseWriter, _ *nethttp.Request) {
