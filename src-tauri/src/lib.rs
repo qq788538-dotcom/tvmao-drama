@@ -2,6 +2,7 @@
 //! 业务逻辑全部在 sidecar 里，这里不放任何业务代码。
 
 pub mod data_dir;
+pub mod lifecycle;
 pub mod native_dialog;
 pub mod sidecar;
 pub mod webview2;
