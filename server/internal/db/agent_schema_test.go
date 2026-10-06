@@ -71,23 +71,6 @@ func TestAgentJSONColumnsRejectBlob(t *testing.T) {
 	}
 }
 
-// 工具引用的模型不能被物理删除（参考仓 ON DELETE RESTRICT）。
-func TestAgentToolsRestrictModelDelete(t *testing.T) {
-	conn := dbtest.Open(t)
-	res, err := conn.Exec(`INSERT INTO model_configs (type, name, model_id, base_path, request_template) VALUES ('image','x','m-x','/x','{}')`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mid, _ := res.LastInsertId()
-	if _, err := conn.Exec(`INSERT INTO agent_tools (tool_name, category, source_model_id, tool_description, params_schema, default_params)
-		VALUES ('gen_x','image',?,'d','{}','{}')`, mid); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conn.Exec(`DELETE FROM model_configs WHERE id=?`, mid); err == nil {
-		t.Fatal("被工具引用的模型删除应失败")
-	}
-}
-
 func TestAgentUpdatedAtTriggers(t *testing.T) {
 	conn := dbtest.Open(t)
 	if _, err := conn.Exec(`INSERT INTO skill_categories (name, updated_at) VALUES ('c', '2000-01-01 00:00:00')`); err != nil {
@@ -100,5 +83,67 @@ func TestAgentUpdatedAtTriggers(t *testing.T) {
 	_ = conn.QueryRow(`SELECT CAST(updated_at AS TEXT) FROM skill_categories WHERE name='c'`).Scan(&s)
 	if s == "2000-01-01 00:00:00" {
 		t.Fatal("updated_at 触发器未生效")
+	}
+}
+
+// P2a builtin.Apply 升级内置数据时会删除模型行、或把模型行挪到新主键
+// （先挪到负数临时 id 再写回）。被 Agent 工具引用的模型行不能因此触发外键失败，
+// 否则 sidecar 启动直接退出。
+func TestAgentToolsFollowModelConfigDeleteAndRekey(t *testing.T) {
+	conn := dbtest.Open(t)
+	insertModel := func(id int64, slug string) {
+		t.Helper()
+		if _, err := conn.Exec(`INSERT INTO model_configs (id, type, name, model_id, base_path, request_template)
+			VALUES (?, 'image', 'm', ?, '/x', '{}')`, id, slug); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insertTool := func(name string, modelID int64) {
+		t.Helper()
+		if _, err := conn.Exec(`INSERT INTO agent_tools (tool_name, category, source_model_id, tool_description, params_schema, default_params)
+			VALUES (?, 'image', ?, 'd', '{}', '{}')`, name, modelID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insertModel(1, "m-1")
+	insertModel(2, "m-2")
+	insertTool("t1", 1)
+	insertTool("t2", 2)
+
+	// 改主键：和 builtin.moveModelID 一样经过负数临时 id。
+	if _, err := conn.Exec(`UPDATE model_configs SET id = -7 WHERE id = 1`); err != nil {
+		t.Fatalf("改主键到临时 id 失败: %v", err)
+	}
+	if _, err := conn.Exec(`UPDATE model_configs SET id = 7 WHERE id = -7`); err != nil {
+		t.Fatalf("改主键失败: %v", err)
+	}
+	var ref int64
+	if err := conn.QueryRow(`SELECT source_model_id FROM agent_tools WHERE tool_name='t1'`).Scan(&ref); err != nil {
+		t.Fatal(err)
+	}
+	if ref != 7 {
+		t.Fatalf("工具引用应跟随新主键，得到 %d", ref)
+	}
+
+	// 删除：和 builtin.deleteModelRow 一样按 model_id 删。
+	if _, err := conn.Exec(`DELETE FROM model_configs WHERE model_id = 'm-2'`); err != nil {
+		t.Fatalf("删除被工具引用的模型失败: %v", err)
+	}
+	var n int
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM agent_tools WHERE tool_name='t2'`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("模型删除后工具应级联删除，剩 %d", n)
+	}
+	var fkErrs int
+	rows, err := conn.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		fkErrs++
+	}
+	rows.Close()
+	if fkErrs != 0 {
+		t.Fatalf("foreign_key_check 报 %d 处违规", fkErrs)
 	}
 }

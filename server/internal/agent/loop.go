@@ -61,6 +61,8 @@ type Agent struct {
 	// MediaResolver 把发给 planner 的 image_url 换成上游拿得到的地址（S12 接缝）。
 	// nil = 不改写（参考仓行为）。只影响出网请求，不影响落库内容。
 	MediaResolver LLMMediaResolver
+	// MaxInlineImageBytes 是单次 LLM 请求里内联图片（data URI）的总字节上限；0 = 20MB。
+	MaxInlineImageBytes int64
 
 	// PlannerContextWindow 是 planner backbone 的总 context-window 预算（单位 token）。
 	// 每次 Run 开头由 CompressIfNeeded 使用。为 0 时关闭自动压缩。

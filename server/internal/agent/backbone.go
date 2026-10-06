@@ -10,10 +10,12 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"time"
+	"unicode/utf8"
 
-	"github.com/cloudwego/eino/components/model"
 	openai "github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/components/model"
 
 	"github.com/james/huabu_studio/apps/api/internal/billing"
 	"github.com/james/huabu_studio/apps/api/internal/models"
@@ -299,12 +301,15 @@ func buildModelForUser(ctx context.Context, userID int64, role string, deps Plan
 		return nil, nil, noBilling, fmt.Errorf("%s backbone: upstream_api_key is not configured", role)
 	}
 	// backbone 没有自己的计费字段：按 backbone.ModelName 去 model_configs 取计费配置。
-	// 匹配不到 → 拒绝（和 chat 一致，不允许免费白嫖）。
-	mcfg, err := deps.Models.GetByModelID(cfg.ModelName)
-	if err != nil || mcfg == nil {
-		return nil, nil, noBilling, fmt.Errorf("%s backbone: no billing config for backbone model %q: %v", role, cfg.ModelName, err)
+	// 桌面端计费是空实现（NoopBilling），查不到时降级成零值计费继续运行——参考仓在这里
+	// 拒绝 Run（防白嫖），桌面端照搬会让 Agent 依赖模型种子是否恰好含这个 model_id，
+	// 设置页切过去的模型被种子删掉后 Agent 就永久不可用。
+	mb := noBilling
+	if mcfg, merr := deps.Models.GetByModelID(cfg.ModelName); merr != nil || mcfg == nil {
+		log.Printf("%s backbone: model_configs 里没有 %q 的计费配置，按无计费继续: %v", role, cfg.ModelName, merr)
+	} else {
+		mb = mcfg.BillingConfig()
 	}
-	mb := mcfg.BillingConfig()
 	baseURL := normaliseNewapiBaseURL(baseDomain)
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		APIKey:      apiKey,
@@ -325,32 +330,54 @@ func buildModelForUser(ctx context.Context, userID int64, role string, deps Plan
 }
 
 // plannerLogTransport 给 planner/utility 的出网请求打日志。
-// 成功只记一行摘要（不打 body——正常流量里 body 含用户对话内容，且 SSE 流不能预读）；
-// 失败（传输错或 HTTP ≥400）把请求体和响应体全量打出来——错误响应不是流、体量小，
-// 全量才够排查（截断 4KB 会把 JSON 尾部的 tool_choice 之类字段切掉，等于白打）。
+// 只记方法、地址、状态码、请求体字节数；上游 ≥400 时再附上截断后的响应体。
+// 请求体一律不打：里面是用户的完整对话，还可能有上百 MB 的图片 data URI（spec S12
+// 把本机图片内联成 data URI 之后），桌面端日志会落盘并随诊断包上传。
 // 不打任何请求头（Authorization 里是 sk）。
 type plannerLogTransport struct{ inner http.RoundTripper }
 
+// plannerLogRespLimit 是错误响应体在日志里的最大长度。
+const plannerLogRespLimit = 4 << 10
+
 func (t *plannerLogTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	var reqBody []byte
+	var reqBytes int64 = -1
 	if req.Body != nil {
-		reqBody, _ = io.ReadAll(req.Body)
+		reqBody, _ := io.ReadAll(req.Body)
+		reqBytes = int64(len(reqBody))
 		req.Body = io.NopCloser(bytes.NewReader(reqBody))
 	}
 	resp, err := t.inner.RoundTrip(req)
 	if err != nil {
-		log.Printf("[planner ✗] %s %s transport error: %v\nreq_body=%s", req.Method, req.URL, err, reqBody)
+		log.Printf("[planner ✗] %s %s transport error: %v req_bytes=%d", req.Method, req.URL.Redacted(), err, reqBytes)
 		return resp, err
 	}
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
-		log.Printf("[planner ✗] %s %s status=%d\nreq_body=%s\nresp_body=%s", req.Method, req.URL, resp.StatusCode, reqBody, respBody)
+		log.Printf("[planner ✗] %s %s status=%d req_bytes=%d resp_body=%s",
+			req.Method, req.URL.Redacted(), resp.StatusCode, reqBytes, redactForLog(respBody, plannerLogRespLimit))
 		return resp, nil
 	}
-	log.Printf("[planner →] %s %s status=%d req_bytes=%d", req.Method, req.URL, resp.StatusCode, len(reqBody))
+	log.Printf("[planner →] %s %s status=%d req_bytes=%d", req.Method, req.URL.Redacted(), resp.StatusCode, reqBytes)
 	return resp, nil
+}
+
+var logDataURIRe = regexp.MustCompile(`data:[^"\\\s]{64,}`)
+
+// redactForLog 把 data URI 折叠成长度提示，再截断到 limit 字节（按 rune 边界）。
+func redactForLog(b []byte, limit int) string {
+	s := logDataURIRe.ReplaceAllStringFunc(string(b), func(m string) string {
+		return fmt.Sprintf("data:…(%d bytes)", len(m))
+	})
+	if len(s) <= limit {
+		return s
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return fmt.Sprintf("%s…(truncated, %d bytes total)", s[:cut], len(s))
 }
 
 // normaliseNewapiBaseURL 确保 URL 以 "/v1" 结尾，因为 newapi 把

@@ -151,3 +151,33 @@ func TestEmbeddedSeedMatchesRepoSeed(t *testing.T) {
 		}
 	}
 }
+
+// 新种子把两个现有分类的 name 互换时，逐行 upsert 不能撞上 name UNIQUE。
+func TestImportHandlesSwappedCategoryNames(t *testing.T) {
+	conn := dbtest.Open(t)
+	insertModels(t, conn, toolModelIDs...)
+	if _, err := Import(conn); err != nil {
+		t.Fatal(err)
+	}
+	var n2, n3 string
+	_ = conn.QueryRow(`SELECT name FROM skill_categories WHERE id=2`).Scan(&n2)
+	_ = conn.QueryRow(`SELECT name FROM skill_categories WHERE id=3`).Scan(&n3)
+	// 模拟旧版本库：id 2 / 3 的名字与当前种子互换。
+	for _, q := range []string{
+		`UPDATE skill_categories SET name='tmp' WHERE id=2`,
+		`UPDATE skill_categories SET name='` + n2 + `' WHERE id=3`,
+		`UPDATE skill_categories SET name='` + n3 + `' WHERE id=2`,
+	} {
+		if _, err := conn.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := Import(conn); err != nil {
+		t.Fatalf("分类名互换后导入失败: %v", err)
+	}
+	var got string
+	_ = conn.QueryRow(`SELECT name FROM skill_categories WHERE id=2`).Scan(&got)
+	if got != n2 {
+		t.Fatalf("id 2 应恢复为 %q，得到 %q", n2, got)
+	}
+}

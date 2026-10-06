@@ -27,7 +27,7 @@ type agentWiringDeps struct {
 	Signer  agent.URLSigner              // P1b 的 *apphttp.MediaSigner
 	Assets  agent.AttachmentAssetFinder  // P1b 的 assets 仓库
 	Objects agent.AttachmentObjectReader // P1b 的 assets.Storage
-	Keys    agent.MediaKeyExtractor      // P1b 的 assets.Storage
+	Keys    agent.MediaKeyExtractor      // P1b 的 assets.Storage（ExtractKey）；接了 Signer/Objects 就必须接它
 }
 
 type agentWiring struct {
@@ -41,6 +41,11 @@ type agentWiring struct {
 func wireAgent(ctx context.Context, d agentWiringDeps) (*agentWiring, error) {
 	if d.DB == nil {
 		return nil, errors.New("wireAgent: 缺少数据库连接")
+	}
+	// 存储接了一半（有 Signer/Objects 没 Keys）时，LocalMediaResolver 认不出本机图片，
+	// 只能报错不发图；这一定是装配漏传，直接拒绝启动比运行时悄悄失效好查。
+	if d.Keys == nil && (d.Signer != nil || d.Objects != nil) {
+		return nil, errors.New("wireAgent: 已接入存储但缺少 Keys（应传 P1b 的 assets.Storage）")
 	}
 	// 内置数据同步失败不阻止启动：已有数据仍可用，日志里能看到原因。
 	if res, err := agentseed.Import(d.DB); err != nil {
@@ -70,6 +75,7 @@ func wireAgent(ctx context.Context, d agentWiringDeps) (*agentWiring, error) {
 	if objects == nil {
 		objects = agentUnavailableAssets{}
 	}
+	// Keys 为 nil（P1b 未合并）时，resolver 对本机地址一律报错，绝不把 127.0.0.1 原样发给上游。
 	resolver := &agent.LocalMediaResolver{Keys: d.Keys, Objects: objects}
 
 	backbones := agent.NewBackboneRepo(d.DB)
@@ -95,10 +101,12 @@ func wireAgent(ctx context.Context, d agentWiringDeps) (*agentWiring, error) {
 	registry.StartPeriodicRefresh(ctx, 10*time.Second)
 
 	runner := &agentRunnerImpl{deps: deps, agentRepo: repo, skillsRepo: skillsRepo, tools: registry, signer: signer, media: resolver}
+	agentHandler := apphttp.NewAgentHandler(hub, repo, runner, signer)
+	agentHandler.BaseCtx = ctx // sidecar 退出时取消，进行中的 Run 跟着停
 	return &agentWiring{
 		Hub:      hub,
 		Registry: registry,
-		Agent:    apphttp.NewAgentHandler(hub, repo, runner, signer),
+		Agent:    agentHandler,
 		Skills:   apphttp.NewSkillsHandler(skillsRepo, categoriesRepo, agentIconSigner{signer: signer}),
 		AdminAgent: &apphttp.AdminAgentHandler{
 			Repo: backbones, Switcher: agent.NewBackboneSwitcher(d.DB), Models: modelsRepo,

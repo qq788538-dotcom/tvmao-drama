@@ -191,3 +191,21 @@ func TestAgentE2E_SwitchPlannerModel(t *testing.T) {
 		t.Fatalf("恢复默认失败: %v", out)
 	}
 }
+
+type stubSigner struct{}
+
+func (stubSigner) Sign(s string) string         { return s }
+func (stubSigner) Canonicalize(s string) string { return s }
+
+// P1b 合并时接了 Signer/Objects 却漏传 Keys，本机图片会原样发给上游；装配直接报错。
+func TestWireAgentRequiresKeysWhenStorageWired(t *testing.T) {
+	conn := dbtest.Open(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if _, err := wireAgent(ctx, agentWiringDeps{DB: conn, Signer: stubSigner{}}); err == nil {
+		t.Fatal("Signer 已接、Keys 未接时应报错")
+	}
+	if _, err := wireAgent(ctx, agentWiringDeps{DB: conn}); err != nil {
+		t.Fatalf("存储整体未接入时应照常装配: %v", err)
+	}
+}

@@ -149,6 +149,11 @@ func Import(conn *sql.DB) (Result, error) {
 	if _, err := tx.Exec(`DELETE FROM skill_categories WHERE id NOT IN (`+placeholders(len(catIDs))+`)`, catIDs...); err != nil {
 		return res, err
 	}
+	// 保留的行先改成按 id 唯一的临时名，再逐行 upsert：新种子若把两个分类的 name 互换，
+	// 逐行覆盖会在中途撞上 name UNIQUE。临时名只活在本事务里。
+	if _, err := tx.Exec(`UPDATE skill_categories SET name = '__seed_tmp_' || id WHERE id IN (`+placeholders(len(catIDs))+`)`, catIDs...); err != nil {
+		return res, err
+	}
 	for _, c := range cats {
 		if _, err := tx.Exec(`INSERT INTO skill_categories (id, name, color, sort_order) VALUES (?,?,?,?)
 			ON CONFLICT (id) DO UPDATE SET name=excluded.name, color=excluded.color, sort_order=excluded.sort_order`,

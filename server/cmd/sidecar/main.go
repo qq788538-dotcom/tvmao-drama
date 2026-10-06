@@ -66,6 +66,10 @@ func run() error {
 	}
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
+	// P1b 合并时（I2 合并规则，见 .superpowers/sdd/2026-10-06-p5-agent/fix-round-1-report.md）：
+	// 本段 Open/Migrate 让位给 P1b 的版本，wireAgent 放到 P2a builtin.Apply 之后，并把下一行换成
+	//   wireAgent(ctx, agentWiringDeps{DB: conn, Signer: signer, Keys: storage, Objects: storage, Assets: assetsRepo, Gen: genSvc})
+	// Keys 必传（storage.ExtractKey），否则 wireAgent 拒绝启动；不传存储时本机图片一律报错、不外发。
 	agentW, err := wireAgent(appCtx, agentWiringDeps{DB: conn})
 	if err != nil {
 		return fmt.Errorf("装配 Agent: %w", err)
@@ -86,6 +90,9 @@ func run() error {
 	go func() {
 		_, _ = io.Copy(io.Discard, stdin)
 		log.Print("stdin 已关闭，sidecar 退出")
+		// os.Exit 不跑 defer：先取消进行中的 Agent Run，再关库让 WAL 做 checkpoint。
+		appCancel()
+		_ = conn.Close()
 		os.Exit(0)
 	}()
 

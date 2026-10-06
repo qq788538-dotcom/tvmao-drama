@@ -59,7 +59,7 @@ CREATE TABLE agent_tools (
   tool_name TEXT NOT NULL UNIQUE,
   display_name TEXT NOT NULL DEFAULT '',
   category TEXT NOT NULL,
-  source_model_id INTEGER NOT NULL REFERENCES model_configs (id) ON DELETE RESTRICT,
+  source_model_id INTEGER NOT NULL REFERENCES model_configs (id) ON DELETE CASCADE ON UPDATE CASCADE,
   tool_description TEXT NOT NULL,
   params_schema TEXT NOT NULL CHECK (typeof(params_schema) = 'text'),
   default_params TEXT NOT NULL CHECK (typeof(default_params) = 'text'),

@@ -25,6 +25,9 @@ type AgentHandler struct {
 	Repo   agent.Repository
 	Runner AgentRunner
 	Signer agentURLSigner
+	// BaseCtx 是每个 Run 的父 ctx（sidecar 的应用级 ctx）。退出时取消它，进行中的
+	// Run 随之停下。nil = context.Background()。
+	BaseCtx context.Context
 }
 
 // agentURLSigner 是出口签名需要的最小能力（P1b 的 *MediaSigner 满足）。
@@ -139,7 +142,11 @@ func (h *AgentHandler) WS(w http.ResponseWriter, r *http.Request) {
 			// 整个 Run 的预算。多图 / 多步生成是串行的（每个工具各自 poll 最多
 			// 5min），单张稍慢就可能把旧的 5min 预算耗光、在拿到最终回复前就被
 			// ctx 取消，导致前端永久转圈。放宽到 60min，给多图 / 多轮留足余量。
-			rctx, cancel := context.WithTimeout(context.Background(), agentRunTimeout)
+			base := h.BaseCtx
+			if base == nil {
+				base = context.Background()
+			}
+			rctx, cancel := context.WithTimeout(base, agentRunTimeout)
 			h.Hub.RegisterRun(uid, threadID, actionID, cancel)
 			go func() {
 				defer func() {

@@ -93,7 +93,7 @@ func (h *Hub) SendToUser(userID int64, f Frame) {
 		return
 	}
 	for _, c := range conns {
-		_ = c.ws.Write(c.ctx, websocket.MessageText, buf)
+		_ = writeFrameWithTimeout(c.ctx, c.ws, buf, agentFrameWriteTimeout)
 	}
 }
 
@@ -114,7 +114,7 @@ func (h *Hub) SendToProject(userID, projectID int64, f Frame) {
 	}
 	for _, c := range all {
 		if c.projectID == projectID {
-			_ = c.ws.Write(c.ctx, websocket.MessageText, buf)
+			_ = writeFrameWithTimeout(c.ctx, c.ws, buf, agentFrameWriteTimeout)
 		}
 	}
 }
@@ -124,8 +124,13 @@ func (h *Hub) SendToProject(userID, projectID int64, f Frame) {
 // 为什么只有这条帧路径需要它：广播的调用方是**同步的画布保存 HTTP handler 和生成
 // 回写 worker**。一个「TCP 还活着但不读」的观看端（切后台被冻结、进程卡死）会让
 // c.ws.Write 一直阻塞在内核缓冲区上，于是编辑者每次保存都要陪着一起卡——观看功能
-// 反过来拖垮了编辑。agent 自己的帧走在 Run 的 goroutine 里，行为保持原样不动。
+// 反过来拖垮了编辑。
 var canvasNotifyWriteTimeout = 2 * time.Second
+
+// agentFrameWriteTimeout 是 Agent 帧每条连接的写超时。Agent 帧走在 Run 的 goroutine
+// 里，放宽到 30s（正常写在毫秒级）；只防 WebView 被冻结但 TCP 还活着时 Run 永久卡住。
+// 超时后 coder/websocket 会把连接置为失败态，读循环退出、defer 摘表。
+var agentFrameWriteTimeout = 30 * time.Second
 
 // NotifyCanvasChanged 把一次画布变更广播给该项目下的所有连接。
 //

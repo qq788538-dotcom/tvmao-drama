@@ -148,8 +148,9 @@ func TestBuildPlanner_NewapiPath_ErrsWhenNoUpstreamKey(t *testing.T) {
 	}
 }
 
-// 匹配不到计费配置（model_configs 里查不到 backbone.ModelName）→ 拒绝 Run。
-func TestBuildPlanner_ErrsWhenNoBillingConfig(t *testing.T) {
+// 匹配不到计费配置（model_configs 里查不到 backbone.ModelName）→ 桌面端计费是空实现，
+// 降级成「无计费配置」继续运行，不能让 Agent 因此整体不可用。
+func TestBuildPlanner_NoBillingConfigDegrades(t *testing.T) {
 	repo := &stubBackboneRepo{active: &BackboneModel{Provider: "openai", ModelName: "ghost-model"}}
 	deps := PlannerDeps{
 		Backbones:   repo,
@@ -157,8 +158,12 @@ func TestBuildPlanner_ErrsWhenNoBillingConfig(t *testing.T) {
 		UpstreamKey: stubKeyResolver{key: "sk-global"},
 		Models:      stubModels{err: models.ErrNotFound},
 	}
-	if _, err := BuildPlannerForUser(context.Background(), 1, deps); err == nil {
-		t.Fatal("expected error when backbone model has no billing config")
+	llm, cfg, mb, err := BuildModelForUserWithCfg(context.Background(), 1, RolePlanner, deps)
+	if err != nil || llm == nil || cfg == nil {
+		t.Fatalf("缺计费配置应降级继续，得到 err=%v", err)
+	}
+	if mb.FlatFee != 0 || mb.FreezeEstimate != 0 || len(mb.Items) != 0 {
+		t.Fatalf("降级后应是零值计费配置，得到 %+v", mb)
 	}
 }
 

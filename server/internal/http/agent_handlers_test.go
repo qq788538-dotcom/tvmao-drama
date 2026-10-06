@@ -96,6 +96,39 @@ func TestAgentWS_AbortCancelsRun(t *testing.T) {
 	}
 }
 
+// sidecar 退出（BaseCtx 取消）时，进行中的 Run 必须跟着停下，不能挂在 Background 上。
+func TestAgentWS_BaseCtxCancelStopsRun(t *testing.T) {
+	runner := &blockingRunner{started: make(chan struct{}), canceled: make(chan struct{})}
+	base, baseCancel := context.WithCancel(context.Background())
+	defer baseCancel()
+	h := &AgentHandler{Hub: agent.NewHub(), Repo: stubThreadRepo{}, Runner: runner, BaseCtx: base}
+	srv := httptest.NewServer(http.HandlerFunc(h.WS))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer c.Close(websocket.StatusNormalClosure, "")
+	buf, _ := json.Marshal(agent.Frame{Type: agent.FrameUserMessage, ThreadID: "thr_1", ActionID: "act_1", Content: "跑起来"})
+	if err := c.Write(ctx, websocket.MessageText, buf); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-runner.started:
+	case <-ctx.Done():
+		t.Fatal("runner 没启动")
+	}
+	baseCancel()
+	select {
+	case <-runner.canceled:
+	case <-ctx.Done():
+		t.Fatal("BaseCtx 取消后 Run 没停")
+	}
+}
+
 // otherUserThreadRepo 的 thread 归 user 2 所有，用来验证 user 1 打不进去。
 type otherUserThreadRepo struct{ stubThreadRepo }
 

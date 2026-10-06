@@ -252,7 +252,7 @@ func TestHub_NotifyCanvasChangedSkipsStuckConnection(t *testing.T) {
 	}
 }
 
-// agent 自己的帧路径不受影响：SendToProject 仍用连接自身的 ctx，不套写超时。
+// agent 自己的帧照常送达（写超时见 agentFrameWriteTimeout）。
 func TestHub_AgentFramesKeepConnectionContext(t *testing.T) {
 	healthy := &recordingWriter{}
 	hub := NewHub()
@@ -261,6 +261,27 @@ func TestHub_AgentFramesKeepConnectionContext(t *testing.T) {
 	hub.SendToProject(1, 10, Frame{Type: FrameThreadStart, ThreadID: "thr_x"})
 	if healthy.count() != 1 {
 		t.Fatalf("agent 帧收到 %d, want 1", healthy.count())
+	}
+}
+
+// Agent 帧也要有写超时：WebView 被冻结但 TCP 还活着时，Run 的 goroutine 不能永远卡在 Write 上。
+func TestHub_AgentFrameWriteHasTimeout(t *testing.T) {
+	prev := agentFrameWriteTimeout
+	agentFrameWriteTimeout = 80 * time.Millisecond
+	defer func() { agentFrameWriteTimeout = prev }()
+	stuck := &blockingWriter{started: make(chan struct{})}
+	hub := NewHub()
+	hub.conns[1] = []*hubConn{{ws: stuck, userID: 1, projectID: 10, ctx: context.Background()}}
+	done := make(chan struct{})
+	go func() {
+		hub.SendToProject(1, 10, Frame{Type: FrameThreadStart, ThreadID: "thr_x"})
+		hub.SendToUser(1, Frame{Type: FrameThreadStart, ThreadID: "thr_x"})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("agent 帧写被卡住的连接永久挂住")
 	}
 }
 
