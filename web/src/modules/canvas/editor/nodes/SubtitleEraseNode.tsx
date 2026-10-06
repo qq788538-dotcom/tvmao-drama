@@ -11,7 +11,6 @@ import { stopIfInVideoControls } from './videoControlsGuard';
 import {
   currentProjectId,
   fetchCanvasPostprocessConfig,
-  fetchCanvasPostprocessEstimate,
   pollCanvasTaskUntilDone,
   submitCanvasDesub,
 } from '@/shared/api';
@@ -59,32 +58,7 @@ export function SubtitleEraseNode({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options]);
 
-  // 预估积分整份由后端算。**不要**从 <video>.duration 取时长再自己拼计费 inputs——
-  // 那是浏览器读的容器声明值，改一下 metadata 就能让两分多钟的视频显示「预计 1 积分」
-  // （钱按真实时长扣，但数字骗人）。预估与结算必须同一个权威秒数来源，见后端
-  // CanvasPostprocessHandler.Estimate 的注释。
   const projectId = currentProjectId();
-  const estimateQuery = useQuery({
-    queryKey: ['canvas-postprocess-estimate', projectId, sourceNodeId, modelId],
-    queryFn: () =>
-      fetchCanvasPostprocessEstimate({
-        projectId: projectId!,
-        sourceNodeId: sourceNodeId!,
-        modelId,
-      }),
-    enabled: Boolean(projectId && sourceNodeId && modelId),
-    // 一次预估可能付了「下载源视频 + ffprobe」的代价（老视频首次），别让同一组合反复打。
-    // 换源/换模型 queryKey 自然变化，不会读到过期结果。
-    staleTime: 300_000,
-    retry: false,
-  });
-  // isPending 同时覆盖「还没 enabled」和「首次请求在飞」两种——都该显示「计算中…」，
-  // 而不是显示一个还没算出来的「预计 0 积分」。
-  const estimateLabel = estimateQuery.isPending
-    ? '计算中…'
-    : estimateQuery.isError
-      ? '预计 --'
-      : `预计 ${estimateQuery.data?.credits ?? 0} 积分`;
 
   const isGenerating = node?.status === 'generating';
   const canSubmit = Boolean(sourceUrl && sourceNodeId && modelId) && !isGenerating;
@@ -231,14 +205,6 @@ export function SubtitleEraseNode({ id }: { id: string }) {
               )}
 
               <div className="flex items-center gap-1.5">
-                {modelId && (
-                  <span
-                    className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-[11px] text-muted-foreground border border-white/10"
-                    title="按当前模型和时长预估，实际以完成后结算为准"
-                  >
-                    {estimateLabel}
-                  </span>
-                )}
                 <div className="flex-1" />
                 <button
                   type="button"
