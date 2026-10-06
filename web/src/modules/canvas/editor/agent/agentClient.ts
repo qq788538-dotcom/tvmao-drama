@@ -1,8 +1,10 @@
 import type { Frame, Mention } from './types';
 
 export interface AgentClientOptions {
+  /** 完整 WS 地址。桌面端由 buildWsUrl 生成，已带 ?token=。 */
   url: string;
-  token: string;
+  /** 旧写法：单独传 token 由这里拼进查询参数。桌面端不传。 */
+  token?: string;
   projectId?: number;
 }
 
@@ -15,7 +17,7 @@ const SLOW_RETRY_MS = 60_000;
 const STABLE_OPEN_MS = 30_000;
 
 // AgentClient 是对浏览器 WebSocket 的薄封装，处理 /api/v1/agent/ws 用的
-// 「token 放 query string」鉴权方式（浏览器没法在 WS 握手时设 Authorization 头）。
+// 「token 放 query string」鉴权方式（桌面端由 buildWsUrl 负责；浏览器没法在 WS 握手时设 Authorization 头）。
 export class AgentClient {
   private opts: AgentClientOptions;
   private ws?: WebSocket;
@@ -43,9 +45,10 @@ export class AgentClient {
     if (this.opts.projectId && this.opts.projectId > 0) {
       params.set('project_id', String(this.opts.projectId));
     }
-    params.set('token', this.opts.token);
+    if (this.opts.token) params.set('token', this.opts.token);
     const sep = this.opts.url.includes('?') ? '&' : '?';
-    const url = `${this.opts.url}${sep}${params.toString()}`;
+    const qs = params.toString();
+    const url = qs ? `${this.opts.url}${sep}${qs}` : this.opts.url;
     this.ws = new WebSocket(url);
     this.ws.onopen = () => {
       // 见 stableOpenTimer 的注释：保持 open 30s 才清零重试计数，防热重连风暴。
