@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
 import { Download, X } from 'lucide-react';
+import { App as AntApp } from 'antd';
 import { useCanvasStore } from './store';
+import { extFromUrl, saveMediaToDisk, saveWithFeedback } from '@/shared/saveToDisk';
 import { mediaCrossOrigin } from './utils/mediaCrossOrigin';
 
 export function Lightbox() {
   const lightbox = useCanvasStore((s) => s.lightbox);
   const setLightbox = useCanvasStore((s) => s.setLightbox);
+  const { message } = AntApp.useApp();
 
   useEffect(() => {
     if (!lightbox) return;
@@ -17,6 +20,15 @@ export function Lightbox() {
   }, [lightbox, setLightbox]);
 
   if (!lightbox) return null;
+
+  const fallbackExt = lightbox.kind === 'video' ? 'mp4' : lightbox.kind === 'audio' ? 'mp3' : 'png';
+  const handleDownload = () => {
+    const { url, kind } = lightbox;
+    void saveWithFeedback(
+      () => saveMediaToDisk(url, `${kind}-${Date.now()}.${extFromUrl(url, fallbackExt)}`),
+      message,
+    );
+  };
 
   return (
     <div
@@ -55,17 +67,17 @@ export function Lightbox() {
           />
         )}
         <div className="absolute top-4 right-4 flex gap-2">
-          <a
-            href={lightbox.url}
-            download
-            target="_blank"
-            rel="noreferrer"
-            className="p-2 bg-black/70 hover:bg-black text-white rounded-full backdrop-blur transition-colors"
+          <button
+            type="button"
+            className="p-2 bg-black/70 hover:bg-black text-white rounded-full backdrop-blur transition-colors border-none cursor-pointer"
             title="下载"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDownload();
+            }}
           >
             <Download size={18} />
-          </a>
+          </button>
           <button
             className="p-2 bg-black/70 hover:bg-black text-white rounded-full backdrop-blur transition-colors border-none cursor-pointer"
             onClick={() => setLightbox(null)}

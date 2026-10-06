@@ -1,4 +1,6 @@
 import { Download } from 'lucide-react';
+import { App as AntApp } from 'antd';
+import { extFromUrl, saveManyMediaToDisk, saveMediaToDisk, saveWithFeedback } from '@/shared/saveToDisk';
 import { useCanvasStore } from '../store';
 import { ThumbImg } from '../ThumbImg';
 import { NodeShell } from '../NodeShell';
@@ -7,6 +9,7 @@ import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 export function LocalSaveNode({ id }: { id: string }) {
   const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
   const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
+  const { message } = AntApp.useApp();
 
   if (!node) return null;
 
@@ -14,23 +17,22 @@ export function LocalSaveNode({ id }: { id: string }) {
   const allUrls = [...linked.images, ...linked.videos];
   const hasContent = allUrls.length > 0;
 
+  const isVideoUrl = (url: string) => linked.videos.includes(url) || /\.(mp4|webm|mov)(\?|$)/i.test(url);
+  const fileName = (url: string, idx: number) =>
+    `output-${idx + 1}.${extFromUrl(url, isVideoUrl(url) ? 'mp4' : 'png')}`;
+
+  // 统一走 saveMediaToDisk：Tauri 里弹系统保存对话框、Rust 直接复制本地媒体
+  // （<a download> 在 Tauri/macOS 下会被 WebView 直接取消）。
   const handleDownloadSingle = (url: string, idx: number) => {
-    const ext = /\.(mp4|webm|mov)(\?|$)/i.test(url) ? 'mp4' : 'png';
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `output-${idx + 1}.${ext}`;
-    a.target = '_blank';
-    a.rel = 'noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    void saveWithFeedback(() => saveMediaToDisk(url, fileName(url, idx)), message);
   };
 
-  const handleDownloadAll = async () => {
-    // 如果有 jszip 就打包成 zip；否则逐个下载
-    for (let i = 0; i < allUrls.length; i++) {
-      handleDownloadSingle(allUrls[i], i);
-    }
+  // 全部下载：Tauri 里只弹一次“选择文件夹”，批量复制进去（重名自动加序号）。
+  const handleDownloadAll = () => {
+    void saveWithFeedback(
+      () => saveManyMediaToDisk(allUrls.map((url, i) => ({ url, name: fileName(url, i) }))),
+      message,
+    );
   };
 
   return (
@@ -44,7 +46,7 @@ export function LocalSaveNode({ id }: { id: string }) {
         <div className="flex flex-col gap-2 flex-1 min-h-0">
           <div className="flex-1 overflow-auto min-h-0 flex flex-col gap-1.5">
             {allUrls.map((url, i) => {
-              const isVideo = /\.(mp4|webm|mov)(\?|$)/i.test(url);
+              const isVideo = isVideoUrl(url);
               return (
                 <div
                   key={i}

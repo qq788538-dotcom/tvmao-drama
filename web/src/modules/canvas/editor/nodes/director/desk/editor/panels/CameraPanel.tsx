@@ -443,7 +443,11 @@ export function CameraPanel() {
             aria-label="下载图片"
             className="camera-capture-viewer-tool"
             type="button"
-            onClick={() => downloadDataUrl(viewerCapture.dataUrl, `${viewerCapture.name}.png`)}
+            onClick={() => {
+              downloadDataUrl(viewerCapture.dataUrl, `${viewerCapture.name}.png`).catch((err) =>
+                console.error("save capture failed", err),
+              );
+            }}
           >
             <Download aria-hidden="true" size={18} strokeWidth={2} />
           </button>

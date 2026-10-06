@@ -4,6 +4,7 @@
 pub mod data_dir;
 pub mod datadir;
 pub mod lifecycle;
+pub mod media_save;
 pub mod native_dialog;
 pub mod sidecar;
 pub mod webview2;
@@ -183,7 +184,9 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        // 前端只有 dialog:allow-open（数据目录选择，只返回路径）；保存对话框只走 Rust 侧 API（media_save），前端不授予 dialog:allow-save / fs:*，写盘路径只能来自用户在 Rust 对话框里的选择。
         .plugin(tauri_plugin_dialog::init())
+        .manage(media_save::MediaRoot::default())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -192,6 +195,9 @@ pub fn run() {
                 let info = data_dir::resolve(&default_data_dir(&spec_app)?)?;
                 data_dir::prepare(&info)?;
                 let py = python_home(&spec_app);
+                spec_app
+                    .state::<media_save::MediaRoot>()
+                    .set(media_save::media_root_of(&info.current));
                 Ok(sidecar::LaunchSpec {
                     program: sidecar_program()?,
                     args: sidecar_args(&info.current, cfg!(debug_assertions), py.as_deref()),
@@ -240,7 +246,10 @@ pub fn run() {
             set_data_dir,
             apply_data_dir_change,
             datadir::data_dir_status,
-            datadir::dismiss_data_dir_error
+            datadir::dismiss_data_dir_error,
+            media_save::save_media,
+            media_save::save_media_batch,
+            media_save::save_bytes
         ])
         .build(tauri::generate_context!());
 

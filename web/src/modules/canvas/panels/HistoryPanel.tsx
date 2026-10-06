@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { App as AntApp } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import {
   Check,
@@ -21,6 +20,7 @@ import { deleteTask, GenerationTask, listRuntimeModels, listTasks } from '@/shar
 import { useCanvasStore } from '@/modules/canvas/editor/store';
 import { persistNodeById } from '@/modules/canvas/editor/persistence/canvasMutations';
 import { ThumbImg } from '@/modules/canvas/editor/ThumbImg';
+import { saveBlobToDisk, saveMediaToDisk, saveWithFeedback } from '@/shared/saveToDisk';
 
 // 生产环境可能跑在 HTTP 下（非安全上下文），navigator.clipboard 不可用，
 // 所以保留 textarea + execCommand 兜底。
@@ -199,9 +199,13 @@ export function HistoryPanel({ open, projectId, onClose }: Props) {
       setDownloadProgress({ current, total: files.length });
     }
 
+    // ZIP 是前端内存里现打的包，没有现成的源文件可复制：字节经 IPC raw body 交给 Rust，
+    // 由 Rust 弹保存对话框写盘（非 Tauri 环境回退 file-saver）。
     try {
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      saveAs(zipBlob, `history-${Date.now()}.zip`);
+      await saveWithFeedback(async () => {
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        return saveBlobToDisk(zipBlob, `history-${Date.now()}.zip`);
+      }, message);
     } finally {
       setDownloadProgress(null);
     }
@@ -423,31 +427,9 @@ export function HistoryPanel({ open, projectId, onClose }: Props) {
               }
               const kind = resolveOutputKind(task.output?.outputKind, modelTypeById[task.modelId], url);
               const name = `task-${task.id}.${DOWNLOAD_EXT[kind]}`;
-              // 大文件 fetch 要几秒，失败又只进 console——两种情况用户看到的都是
-              // 「点了没反应」。全程给 loading，失败必须报出来。
-              const hide = message.loading('下载中…', 0);
-              try {
-                const resp = await fetch(url);
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const blob = await resp.blob();
-                saveAs(blob, name);
-              } catch (err) {
-                // 「Failed to fetch」大概率是跨域限制拦了 JS fetch（部分产物存在
-                // 另一个域上），而浏览器原生下载不受 CORS 约束、多数情况能正常
-                // 落文件——所以这是预期内的降级路径，提示用中性 info 而不是报错，
-                // 不然用户看着「下载失败」弹窗、文件却好好躺在下载目录里。
-                console.error('history download fetch failed, fallback to native', err);
-                message.info('已转为浏览器直接下载');
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = name;
-                a.rel = 'noopener';
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-              } finally {
-                hide();
-              }
+              // 统一走 saveMediaToDisk：本地媒体由 Rust 弹保存对话框后直接复制，
+              // 不再经前端 fetch → blob；失败必须报出来，不能「点了没反应」。
+              await saveWithFeedback(() => saveMediaToDisk(url, name), message);
             }}
           />
           <div className="h-px bg-popover my-1" />

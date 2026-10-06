@@ -1,4 +1,6 @@
 import { Download, Eye, Maximize2 } from 'lucide-react';
+import { App as AntApp } from 'antd';
+import { extFromUrl, saveMediaToDisk, saveWithFeedback } from '@/shared/saveToDisk';
 import { useCanvasStore } from '../store';
 import { NodeShell } from '../NodeShell';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
@@ -56,6 +58,7 @@ export function PreviewNode({ id }: { id: string }) {
   const isAudio = kind === 'audio' || (!kind && /\.(mp3|wav|m4a|ogg)(\?|$)/i.test(url));
   // 图片预览走缩略图；视频不适用。Lightbox 与下载按钮仍然用原图 url。
   const thumbUrl = useThumbUrl(isVideo ? undefined : url);
+  const { message } = AntApp.useApp();
   // 故事板详情面板里这张媒体是主角，占满预览区、用户就是来看清的：直接上原图，
   // 也不需要再点开 Lightbox（开出来还是同一张）。画布上必须相反——节点才两三百
   // 像素宽、一张画布可能挂上百个，缩略图省流量，双击预览是唯一看清的途径。
@@ -139,18 +142,22 @@ export function PreviewNode({ id }: { id: string }) {
             {/* 音频态不渲染角落下载：音频工具条（AudioActionsBar）已有下载，
                 两个下载图标叠着出现（用户点名去掉 2026-08-18）。 */}
             {!isAudio && (
-              <a
-                href={url}
-                download
-                target="_blank"
-                rel="noreferrer"
-                className="absolute bottom-2 right-2 p-1.5 bg-black/70 hover:bg-black text-white rounded backdrop-blur"
+              <button
+                type="button"
+                className="absolute bottom-2 right-2 p-1.5 bg-black/70 hover:bg-black text-white rounded backdrop-blur border-none cursor-pointer"
                 onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const kindName = isVideo ? 'video' : 'image';
+                  void saveWithFeedback(
+                    () => saveMediaToDisk(url, `${kindName}-${Date.now()}.${extFromUrl(url, isVideo ? 'mp4' : 'png')}`),
+                    message,
+                  );
+                }}
                 title="下载"
               >
                 <Download size={14} />
-              </a>
+              </button>
             )}
           </div>
         ) : (

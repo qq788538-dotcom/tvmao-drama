@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主窗口的最小权限：core:default（含事件监听、getVersion）。自定义命令 server_info / sidecar_status / restart_sidecar / get_data_dir / set_data_dir / apply_data_dir_change / data_dir_status / dismiss_data_dir_error 由本应用注册，默认只对本应用窗口开放。dialog:allow-open 供设置 → 数据目录选择文件夹（P4）；其余权限由后续阶段按需添加（SEC4）。",
+  "description": "主窗口的最小权限：core:default（含事件监听、getVersion）。自定义命令 server_info / sidecar_status / restart_sidecar / get_data_dir / set_data_dir / apply_data_dir_change / data_dir_status / dismiss_data_dir_error / save_media / save_media_batch / save_bytes 由本应用注册，默认只对本应用窗口开放。dialog:allow-open 只供设置 → 数据目录选择文件夹（P4），它只返回路径、不写盘；save_media / save_media_batch / save_bytes 的保存对话框在 Rust 侧弹出（tauri-plugin-dialog 的 Rust API），前端刻意不授予 dialog:allow-save / fs:* 权限：写盘路径只能来自用户在 Rust 对话框里的选择（SEC4）。",
   "windows": ["main"],
   "permissions": ["core:default", "dialog:allow-open"]
 }

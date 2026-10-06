@@ -15,6 +15,7 @@
 import { useState } from 'react';
 import { ArrowUp, ChevronDown, ChevronUp, Download, Gauge, Loader2, Scissors, X } from 'lucide-react';
 import { App as AntApp } from 'antd';
+import { extFromUrl, saveMediaToDisk, saveWithFeedback } from '@/shared/saveToDisk';
 import { useCanvasStore } from '../store';
 import { isTrimSupported, MIN_TRIM_DURATION } from './trim/videoTrim';
 import { MAX_SPEED_RATE, MIN_SPEED_RATE } from './audioedit/audioEdit';
@@ -152,21 +153,13 @@ export function AudioActionsBar({
 
   if (!show || !visible) return null;
 
-  // 下载：与 ImageActionsBar 同款隐藏 <a download> 触发。跨域源浏览器会忽略
-  // download 属性退化成新标签打开，靠 target=_blank 兜底不至于把画布顶掉。
+  // 下载：统一走 saveMediaToDisk（Tauri 里弹系统保存对话框、Rust 直接复制本地媒体）。
   const handleDownload = () => {
     if (!url) {
       message.warning('当前节点没有可下载的音频');
       return;
     }
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'audio.mp3';
-    a.target = '_blank';
-    a.rel = 'noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    void saveWithFeedback(() => saveMediaToDisk(url, `audio-${Date.now()}.${extFromUrl(url, 'mp3')}`), message);
   };
 
   const enterEdit = (mode: 'trim' | 'speed') => {

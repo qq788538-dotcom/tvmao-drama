@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { useRef } from 'react';
 import { App as AntApp } from 'antd';
+import { extFromUrl, saveMediaToDisk, saveWithFeedback } from '@/shared/saveToDisk';
 import { useQuery } from '@tanstack/react-query';
 import { listRuntimeModels } from '@/shared/api';
 import { executeAudioSeparate } from './audiosep/executeAudioSeparate';
@@ -146,8 +147,7 @@ export function VideoActionsBar({
   if (reshooting && url) return <SegmentReshootBar nodeId={nodeId} url={url} />;
   if (continuing && url) return <VideoContinuationBar nodeId={nodeId} url={url} />;
 
-  // 下载：与 ImageActionsBar 同款隐藏 <a download> 触发。跨域源浏览器会忽略
-  // download 属性退化成新标签打开，靠 target=_blank 兜底不至于把画布顶掉。
+  // 下载：统一走 saveMediaToDisk（Tauri 里弹系统保存对话框、Rust 直接复制本地媒体）。
   // 取 URL 不用另写解析——三个宿主传进来的 url 已是各自解析好的当前视频
   // （GenVideoNode 含历史档位、PreviewNode 含上游 fallback）。
   const handleDownload = () => {
@@ -155,14 +155,7 @@ export function VideoActionsBar({
       message.warning('当前节点没有可下载的视频');
       return;
     }
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'video.mp4';
-    a.target = '_blank';
-    a.rel = 'noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    void saveWithFeedback(() => saveMediaToDisk(url, `video-${Date.now()}.${extFromUrl(url, 'mp4')}`), message);
   };
 
   // 音视频分离：无模式 UI，点了直接后台跑（拆轨→双上传→落 音频+无声视频 两
