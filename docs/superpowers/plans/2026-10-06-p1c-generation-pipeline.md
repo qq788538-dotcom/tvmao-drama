@@ -1,5 +1,10 @@
 # P1c 生成链路 Implementation Plan
 
+> **实施后注（2026-10-06，正文未改）**
+> - 正文中的迁移名 `0002_generation.sql` 实际为 **`0004_generation.sql`**（P1b 占用 0002、P2a 占用 0003，整合时按迁移编号规则重编）。
+> - `p1cshim` build tag 与 `assets/p1c_shim.go`、`http/p1c_shim.go` 已随 Task 10 删除，正文里所有 `-tags p1cshim` 命令在最终代码里不再需要；`generation/p1c_contract.go`、`canvasgen/p1c_contract_enqueue.go` 在整合 P1d 时已删。`pendingGeneration` 已由 `genW.CanvasGen` / `genW.Gen` 取代。出处：integration-report.md 第二、三节。
+> - 最终审查后另有修复轮（643b9bb）：gpt-image-2 edits 模式放行本地图、`file://` 限目录、日志不写请求体、同步成功收口重试；与正文逐条描述不同处以代码为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让 sidecar 能完整跑通一次 AI 生成：画布提交 → SQLite 持久化队列 → 调上游（同步出图 / 异步轮询）→ 产物立即落本地（失败重试 3 次，仍失败标「未保存到本地」可手动重试）→ outbox 投递回写画布节点并发 `canvas_changed`；进程重启后在途任务立即续跑；同时提供生成历史、模型列表接口。

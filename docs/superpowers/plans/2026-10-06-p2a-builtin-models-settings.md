@@ -1,5 +1,8 @@
 # P2a 内置模型与配置数据 Implementation Plan
 
+> **实施后注（2026-10-06，正文未改）**
+> - 迁移实际编号为 `0003_builtin_overrides.sql`。种子里的 `base_domain` 保留生产 IP `http://115.191.35.118:3000`（用户授权，发布前换域名只改 seed 一行）；打光/多角度 template 视为"预设提示词"允许编辑；`subtitleRemovalModels`/`modelCandidates` 不允许增删条目。出处：p2a 账本 Ruling。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让 sidecar 首次启动时把编译进二进制的内置模型（`model_configs`）和画布配置（`settings`）导入 SQLite，升级时按 model_id 做字段级合并并保留用户改过的字段，并提供一个只放行安全字段、带校验和“恢复默认”的 Go 服务，供 P4 的 HTTP 层调用。
