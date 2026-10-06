@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/cloudwego/eino/schema"
@@ -69,14 +70,31 @@ func buildUserMessage(text string, mentions []Mention) *schema.Message {
 // mediaRefLine 渲染「用户引用了视频/音频」的文本引用行。发送轮（buildUserMessage）
 // 与历史回放轮（blocksToSchemaMessage）共用同一份措辞——回放轮若自己拼一套文案，
 // planner 会在同一会话里看到两种说法，且改措辞时极易只改一处。
-func mediaRefLine(kind, name, url string) string {
+func mediaRefLine(kind, name, ref string) string {
 	kindLabel := "视频"
 	toolHint := "analyze_video"
 	if kind == "audio" {
 		kindLabel = "音频"
 		toolHint = "analyze_audio"
 	}
-	return fmt.Sprintf("[用户引用了%s《%s》：%s ——需要了解其内容时请调用 %s]", kindLabel, name, url, toolHint)
+	return fmt.Sprintf("[用户引用了%s《%s》：%s ——需要了解其内容时请调用 %s]", kindLabel, name, stripLocalMediaQuery(ref), toolHint)
+}
+
+// stripLocalMediaQuery 去掉本机媒体地址（回环 http(s)）的查询串和片段：引用行会原文发给
+// 上游，查询串里的媒体 token 不能跟着出本机。去掉后 ExtractKey 仍按路径认得回 key，
+// planner 拿它调 analyze_video 的结果不变。外链原样保留——它的查询串可能就是访问签名。
+func stripLocalMediaQuery(u string) string {
+	if strings.HasPrefix(u, "media://") || !IsLocalMediaURL(u) {
+		return u
+	}
+	pu, err := url.Parse(u)
+	if err != nil {
+		return u
+	}
+	pu.RawQuery = ""
+	pu.Fragment = ""
+	pu.RawFragment = ""
+	return pu.String()
 }
 
 // attachmentRefLine 渲染「大文本附件」的引用行。与 mediaRefLine 同一纪律：
