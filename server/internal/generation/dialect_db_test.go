@@ -75,7 +75,7 @@ func TestListProcessingStaleFilter(t *testing.T) {
 	repo := NewSQLiteRepository(conn)
 	ins := func(hb string) int64 {
 		res, err := conn.Exec(`INSERT INTO generation_tasks (user_id, model_id, status, input, upstream_task_id, owner_instance, heartbeat_at)
-			VALUES (1, 'm', 'processing', '{}', 'up', 'x', `+hb+`)`)
+			VALUES (1, 'm', 'processing', '{}', 'up', 'x', ` + hb + `)`)
 		if err != nil {
 			t.Fatal(err)
 		}

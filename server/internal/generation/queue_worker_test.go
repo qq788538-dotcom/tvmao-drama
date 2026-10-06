@@ -10,12 +10,12 @@ import (
 type fakeQueueRepo struct {
 	mu sync.Mutex
 
-	running map[string]int  // model → 在跑数
+	running map[string]int    // model → 在跑数
 	queued  map[string][]Task // model → 排队任务
 
-	claimed     []int64
-	claimFails  map[int64]bool // 模拟被别的实例抢先
-	listedFor   []string       // 记录问过哪些模型，用于验证不是扫全队列
+	claimed    []int64
+	claimFails map[int64]bool // 模拟被别的实例抢先
+	listedFor  []string       // 记录问过哪些模型，用于验证不是扫全队列
 }
 
 func (f *fakeQueueRepo) RunningCountByModel(int) (map[string]int, error) {

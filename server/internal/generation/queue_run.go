@@ -118,6 +118,7 @@ func (s *Service) failQueuedTask(task Task, lease int64, reason string) {
 		log.Printf("[gen-queue] task=%d 失败收口出错: %v", task.ID, err)
 	}
 }
+
 // RecoverStaleQueueTasks 是统一接管器（v5 §3.2）：leader 周期接管心跳超时的
 // running 任务，**不按 sink 过滤**，按状态表四路分流：
 //   - 有 upstream_task_id：交给 ResumeOrphanedTasks 续 poll，这里不插手

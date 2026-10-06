@@ -69,9 +69,9 @@ func TestComposeLightControlText(t *testing.T) {
 			contains: []string{"顶光", "赛博朋克霓虹打光"},
 		},
 		{
-			name:     "非法方向/亮度/颜色全部静默跳过",
-			params:   map[string]string{"keyLight": "sideways", "brightness": "abc", "lightColor": "blue"},
-			absent:   []string{"主光源", "亮度", "色调"},
+			name:   "非法方向/亮度/颜色全部静默跳过",
+			params: map[string]string{"keyLight": "sideways", "brightness": "abc", "lightColor": "blue"},
+			absent: []string{"主光源", "亮度", "色调"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
