@@ -67,3 +67,15 @@
 2. P1b 存储层：本地文件 `assets.Storage`、MediaSigner、上传、素材库、孤儿回收。
 3. P1c 生成链路：upstream、generation（队列、租约简化、重试、恢复）、billing 空实现、canvasgen 回写与 `canvas_changed` 通知、任务历史。取决于第 1 节的决定。
 4. P1d 其余接口与收尾：后处理、预设、多角度、打光、AI 角色、导演台、`/me`；P0 遗留事项中归 P1 的条目；Go 测试迁移。
+
+## 6. P1a 完成后的约束（来自 P1a 最终审查，2026-10-06，写 P1b / P1c 计划必须遵守）
+
+- **事务**：除 `BeginTx(ctx, &sql.TxOptions{ReadOnly: true})` 外，所有 `Begin` 一开始就拿库级写锁（`_txlock=immediate`）。纯读用无事务或 ReadOnly 事务；modernc 忽略隔离级别；ReadOnly 事务里写入在争用时立即 `SQLITE_BUSY`，不等 busy_timeout。
+- **自死锁**：持有事务时再通过 `r.db`（而不是 `tx`）写入，会等 10 秒后 `SQLITE_BUSY`。逐个审计接收 `tx` 的函数（`finishTx`、billing `*Tx`、outbox）和 `MutateSnapshot` 回调；事务内不得有网络 I/O；任何持锁超过 10 秒的操作都会让其他写入失败。
+- **迁移**：0001 在首个正式版发布前仍可改，发布后冻结；新表放 0002+；纯 `ADD COLUMN` 安全；迁移文件里的 `PRAGMA` 不生效（已由迁移器处理外键，见 P1a 修复）。
+- **新表**：凡 id 会进入对象 key 的（如 `gen/task-<id>-<i>`）必须 `INTEGER PRIMARY KEY AUTOINCREMENT`，否则删除后 id 可能被复用，与旧媒体文件冲突；每张表按 0001 的模式加 `updated_at` 触发器；`UPDATE … RETURNING` 看不到触发器写入的时间。
+- **时间**：`datetime('now','-90 seconds')`、`CURRENT_TIMESTAMP` 与 `db.TimeLayout` 一致，租约比较可用；绝不直接绑定 `time.Time`（modernc 会写成带 `-07:00` 的格式）。`strftime('%f')` 只有毫秒；`agent_messages.created_at` 需要微秒时由 Go 生成 `"2006-01-02 15:04:05.000000"`，或 keyset 分页改用 id。`MAX(updated_at)`、`COALESCE(time, …)` 这类无声明类型的列会以字符串返回，扫成 string 再解析，不要全局开 `_texttotime`。
+- **方言**：`UPDATE … ORDER BY … LIMIT` 不支持（`generation/repository.go:679` 改成 `WHERE id IN (SELECT … LIMIT n)`）；`GREATEST` → 标量 `MAX(a,b)`；`IF` → `iif`；`LAST_INSERT_ID(expr)` → `UPDATE … RETURNING`；`JSON_SEARCH` / `JSON_CONTAINS` → `EXISTS (SELECT 1 FROM json_each(…))`；assets 的 upsert（`LAST_INSERT_ID(id)` + `RowsAffected==1`）→ `INSERT … ON CONFLICT DO NOTHING RETURNING id`，无返回再 `SELECT`；`RowsAffected` 是匹配行数而非改变行数。
+- **表需要扩展**：`users` 缺 `seedance_group_id` / `seedance_group_version`（library seedance 经 `users/repository.go:401,411` 使用）、`kind`、`password_changed_at`、`storage_quota_base_bytes`——要么在新迁移里加，要么不原样复制 `users.Repository`。M11 需要在 `model_configs` 上加"用户改过的字段"列（以后 `ADD COLUMN`）。`settings.base_domain` 未预置，P1c 在它为空时要给出明确错误。
+- **数据目录迁移（spec S2）**：关闭连接后连同 `-wal` / `-shm` 一起复制，或用 `VACUUM INTO`；只复制 `data.db` 会丢未 checkpoint 的已提交数据。始终关闭 `rows`，长时间存活的读会阻塞 WAL checkpoint。迁移目录前对新路径同样执行 `db.Open` 的 `?` / `file:` 检查。
+- **已知差异（接受）**：触发器在值未变化的 UPDATE 上也会刷新 `updated_at`（MySQL 只在值变化时刷新）；`agent_tools` 的 `MAX(updated_at)` 缓存版本只会多失效几次。
