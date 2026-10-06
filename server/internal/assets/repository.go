@@ -211,14 +211,30 @@ func (r *SQLiteRepository) ListForProject(projectID int64) ([]AssetRecord, error
 	return out, nil
 }
 
-func (r *SQLiteRepository) DeleteForProject(projectID int64) (int64, error) {
-	var totalSize int64
-	_ = r.db.QueryRow(`SELECT IFNULL(SUM(size_bytes), 0) FROM assets WHERE project_id = ?`, projectID).Scan(&totalSize)
-	_, err := r.db.Exec(`DELETE FROM assets WHERE project_id = ?`, projectID)
+// deleteSumming 删除 col = id 的全部行，返回被删行的 size_bytes 之和。求和与删除在
+// 同一个 immediate 事务里：分两步时，中间并发插入的行会被删掉却不计入返回值，调用方
+// 据此扣减的配额就会少扣。求和出错直接返回，不再吞掉错误按 0 处理。
+func (r *SQLiteRepository) deleteSumming(col string, id int64) (int64, error) {
+	tx, err := r.db.Begin()
 	if err != nil {
 		return 0, err
 	}
+	defer tx.Rollback()
+	var totalSize int64
+	if err := tx.QueryRow(`SELECT IFNULL(SUM(size_bytes), 0) FROM assets WHERE `+col+` = ?`, id).Scan(&totalSize); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`DELETE FROM assets WHERE `+col+` = ?`, id); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
 	return totalSize, nil
+}
+
+func (r *SQLiteRepository) DeleteForProject(projectID int64) (int64, error) {
+	return r.deleteSumming(`project_id`, projectID)
 }
 
 func (r *SQLiteRepository) ListForUser(userID int64, limit int) ([]AssetRecord, error) {
@@ -265,13 +281,7 @@ func (r *SQLiteRepository) ListForTask(taskID int64) ([]AssetRecord, error) {
 }
 
 func (r *SQLiteRepository) DeleteForTask(taskID int64) (int64, error) {
-	var totalSize int64
-	_ = r.db.QueryRow(`SELECT IFNULL(SUM(size_bytes), 0) FROM assets WHERE source_task_id = ?`, taskID).Scan(&totalSize)
-	_, err := r.db.Exec(`DELETE FROM assets WHERE source_task_id = ?`, taskID)
-	if err != nil {
-		return 0, err
-	}
-	return totalSize, nil
+	return r.deleteSumming(`source_task_id`, taskID)
 }
 
 func (r *SQLiteRepository) ListByObjectKey(objectKey string) ([]AssetRecord, error) {
