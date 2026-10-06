@@ -1,8 +1,9 @@
 //! Tauri 薄壳：拉起 Go sidecar、完成 token 握手、把端口和 token 交给前端。
 //! 业务逻辑全部在 sidecar 里，这里不放任何业务代码。
 
-use std::sync::Mutex;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::async_runtime::Receiver;
@@ -20,6 +21,8 @@ pub struct ServerInfo {
 struct Sidecar {
     info: Mutex<Result<ServerInfo, String>>,
     child: Mutex<Option<CommandChild>>,
+    /// sidecar 进程已退出（日志转发任务收到 Terminated 时置位）；退出握手据此判断要不要强杀。
+    exited: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -43,6 +46,50 @@ pub fn new_token() -> String {
 
 /// 等待 sidecar 就绪的最长时间。
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// 开发服务器的来源。只在 debug 构建里经 --origins 交给 sidecar；release 包不放行它（P0 遗留）。
+pub const DEV_ORIGINS: &str = "tauri://localhost,http://tauri.localhost,http://localhost:5173";
+
+/// 应用退出时等 sidecar 自己收尾（停 HTTP、停后台任务、关数据库）的最长时间，超时再强杀。
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
+
+/// sidecar 的命令行参数。debug 构建额外放行 Vite 开发服务器的来源。
+pub fn sidecar_args(data_dir: &str, debug: bool) -> Vec<String> {
+    let mut args = vec!["--data-dir".to_string(), data_dir.to_string()];
+    if debug {
+        args.push("--origins".to_string());
+        args.push(DEV_ORIGINS.to_string());
+    }
+    args
+}
+
+/// 轮询等 flag 置位，最多等 timeout；返回是否等到。
+pub fn wait_flag(flag: &AtomicBool, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if flag.load(Ordering::SeqCst) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// 数据目录只允许当前用户访问：data.db 里有 API Key（spec M3）。
+/// Windows 的 %APPDATA% 本身就是用户私有目录，不另设 ACL。
+fn make_private(dir: &std::path::Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| format!("无法设置数据目录权限：{e}"))?;
+    }
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
+}
 
 /// 等待 "READY <port>"。sidecar 先退出返回其最后一行 stderr，超时返回超时原因。
 async fn wait_ready(rx: &mut Receiver<CommandEvent>, timeout: Duration) -> Result<u16, String> {
@@ -79,19 +126,23 @@ async fn wait_ready(rx: &mut Receiver<CommandEvent>, timeout: Duration) -> Resul
 }
 
 /// 启动 sidecar 并等到 READY。任何一步失败都返回可读的中文原因。
-fn start_sidecar(app: &tauri::AppHandle) -> Result<(ServerInfo, CommandChild), String> {
+fn start_sidecar(app: &tauri::AppHandle) -> Result<(ServerInfo, CommandChild, Arc<AtomicBool>), String> {
     let data_dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("无法确定数据目录：{e}"))?;
     std::fs::create_dir_all(&data_dir).map_err(|e| format!("无法创建数据目录：{e}"))?;
+    make_private(&data_dir)?;
 
     let token = new_token();
     let (mut rx, mut child) = app
         .shell()
         .sidecar("sidecar")
         .map_err(|e| format!("找不到 sidecar 程序：{e}"))?
-        .args(["--data-dir", &data_dir.to_string_lossy()])
+        .args(sidecar_args(
+            &data_dir.to_string_lossy(),
+            cfg!(debug_assertions),
+        ))
         .spawn()
         .map_err(|e| format!("无法启动 sidecar：{e}"))?;
 
@@ -110,6 +161,8 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(ServerInfo, CommandChild), S
         }
     };
 
+    let exited = Arc::new(AtomicBool::new(false));
+    let exited_flag = exited.clone();
     // 握手完成后继续把 sidecar 的日志转到壳的 stderr。
     tauri::async_runtime::spawn(async move {
         while let Some(event) = rx.recv().await {
@@ -119,6 +172,7 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(ServerInfo, CommandChild), S
                 }
                 // 握手后 sidecar 退出：只记一行日志，不改状态、不重启。
                 CommandEvent::Terminated(payload) => {
+                    exited_flag.store(true, Ordering::SeqCst);
                     eprintln!(
                         "[sidecar] 进程已退出，code={:?}，signal={:?}",
                         payload.code, payload.signal
@@ -129,7 +183,7 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(ServerInfo, CommandChild), S
         }
     });
 
-    Ok((ServerInfo { port, token }, child))
+    Ok((ServerInfo { port, token }, child, exited))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -146,14 +200,16 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let state = match start_sidecar(app.handle()) {
-                Ok((info, child)) => Sidecar {
+                Ok((info, child, exited)) => Sidecar {
                     info: Mutex::new(Ok(info)),
                     child: Mutex::new(Some(child)),
+                    exited,
                 },
                 // 启动失败不退出进程：让窗口照常打开，由前端显示失败原因。
                 Err(reason) => Sidecar {
                     info: Mutex::new(Err(format!("本地服务启动失败：{reason}"))),
                     child: Mutex::new(None),
+                    exited: Arc::new(AtomicBool::new(true)),
                 },
             };
             app.manage(state);
@@ -163,10 +219,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("构建 Tauri 应用失败")
         .run(|app, event| {
-            // 正常退出时主动结束 sidecar；崩溃场景由 sidecar 自己靠 stdin EOF 兜底。
+            // 正常退出时先请 sidecar 自己收尾，等不到再强杀；崩溃场景由 sidecar 自己靠 stdin EOF 兜底。
             if let RunEvent::Exit = event {
-                if let Some(child) = app.state::<Sidecar>().child.lock().unwrap().take() {
-                    let _ = child.kill();
+                let state = app.state::<Sidecar>();
+                let child = state.child.lock().unwrap().take();
+                if let Some(mut child) = child {
+                    let _ = child.write(b"SHUTDOWN\n");
+                    if !wait_flag(&state.exited, SHUTDOWN_GRACE) {
+                        let _ = child.kill();
+                    }
                 }
             }
         });
@@ -239,5 +300,36 @@ mod tests {
         assert_eq!(a.len(), 64);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn sidecar_args_adds_dev_origins_only_in_debug() {
+        assert_eq!(sidecar_args("/d", false), vec!["--data-dir", "/d"]);
+        let dbg = sidecar_args("/d", true);
+        assert_eq!(dbg.len(), 4);
+        assert_eq!(dbg[2], "--origins");
+        assert!(dbg[3].contains("http://localhost:5173"));
+        assert!(dbg[3].contains("tauri://localhost"));
+    }
+
+    #[test]
+    fn wait_flag_returns_when_flag_set() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let flag = Arc::new(AtomicBool::new(false));
+        let setter = flag.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            setter.store(true, Ordering::SeqCst);
+        });
+        assert!(wait_flag(&flag, Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn wait_flag_times_out() {
+        let flag = std::sync::atomic::AtomicBool::new(false);
+        let start = Instant::now();
+        assert!(!wait_flag(&flag, Duration::from_millis(100)));
+        assert!(start.elapsed() < Duration::from_secs(1));
     }
 }
