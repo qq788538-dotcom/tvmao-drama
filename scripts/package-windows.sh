@@ -19,5 +19,9 @@ STAGE="out/miaoju-windows-x64-$VERSION"
 rm -rf "$STAGE" "$STAGE.zip"
 mkdir -p "$STAGE"
 cp "$REL/miaoju.exe" "$REL/sidecar.exe" "$STAGE/"
+# 内置 Python：sidecar 在自身所在目录的 python/ 下找解释器（--no-bundle 不会拷 Tauri 资源）。
+[ -f src-tauri/resources/python/python.exe ] || { echo "内置 Python 不是 Windows 版本，先运行 scripts/fetch-python.sh $TARGET" >&2; exit 1; }
+cp -R src-tauri/resources/python "$STAGE/python"
+rm -f "$STAGE/python/README.md" "$STAGE/python/.stamp"
 ( cd out && zip -r "miaoju-windows-x64-$VERSION.zip" "miaoju-windows-x64-$VERSION" )
 echo "已生成 $STAGE.zip"

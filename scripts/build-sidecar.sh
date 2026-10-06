@@ -18,3 +18,6 @@ mkdir -p src-tauri/binaries
     go build -trimpath -ldflags "-s -w -X main.version=$VERSION" \
     -o "../src-tauri/binaries/sidecar-$TARGET$EXT" ./cmd/sidecar )
 echo "已生成 src-tauri/binaries/sidecar-$TARGET$EXT"
+
+# 内置 Python 与 sidecar 同目标（脚本节点 X6）。
+scripts/fetch-python.sh "$TARGET"
