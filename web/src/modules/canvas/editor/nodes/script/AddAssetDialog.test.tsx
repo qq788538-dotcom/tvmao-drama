@@ -7,7 +7,6 @@ vi.mock('@/shared/api', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   submitCanvasTask: vi.fn().mockResolvedValue({ taskId: 7, status: 'processing' }),
   currentProjectId: () => 42,
-  estimateCostBatch: vi.fn().mockResolvedValue({ total: 5, items: [5] }),
 }));
 import { submitCanvasTask } from '@/shared/api';
 import { AddAssetDialog } from './AddAssetDialog';

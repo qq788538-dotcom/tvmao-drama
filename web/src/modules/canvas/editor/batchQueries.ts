@@ -1,11 +1,6 @@
-import {
-  estimateCostBatch,
-  fetchSeedanceStatus,
-  type EstimateItem,
-  type SeedanceAssetState,
-} from '@/shared/api';
+import { fetchSeedanceStatus, type SeedanceAssetState } from '@/shared/api';
 
-// 画布合批加载器。大画布上每个节点各自的估价 / 合规状态查询本来是「一个节点一个
+// 画布合批加载器。大画布上每个节点各自的合规状态查询本来是「一个节点一个
 // 请求」，几百个节点一进画布就把同一个端点打成几百条请求。这里把同一时间窗内的
 // load(key) 调用攒起来、按 key 去重，发一次批量请求，再按 key 把结果分发回各自的
 // promise——react-query 的 queryFn 只需从「单发」换成「走 load」，缓存/staleTime/
@@ -83,25 +78,6 @@ export function createBatchLoader<K, V>(
     });
   };
 }
-
-// modelId + inputs 指纹：同模型同 inputs 的节点共用一次估算。
-function estimateKey(it: EstimateItem): string {
-  return `${it.modelId}\u0000${JSON.stringify(it.inputs)}`;
-}
-
-/**
- * 估价合批。各生图/生视频节点传自己的 {modelId, inputs}，落到一次 estimate-batch。
- * 返回该节点的预计积分（模型查不到计费配置时后端给 0）。
- */
-export const loadEstimate = createBatchLoader<EstimateItem, number>(
-  async (items) => {
-    const { items: credits } = await estimateCostBatch(items);
-    const map = new Map<string, number>();
-    items.forEach((it, i) => map.set(estimateKey(it), credits[i] ?? 0));
-    return map;
-  },
-  { keyOf: estimateKey },
-);
 
 /**
  * seedance 合规状态合批。各图片节点传自己的 url，落到一次 seedance/status。

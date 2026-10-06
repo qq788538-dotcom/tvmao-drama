@@ -426,8 +426,7 @@ export interface ModelConfig {
   name: string;
   modelId: string;
   basePath: string;
-  // 按上游响应实际用量结算的模型的单价说明（如「100积分/分钟」）。这类模型
-  // estimate 给的是预冻结上限而非实价——非空时把「预计 X 积分」改成「预扣 X 积分 · 文案，按实际结算」。
+  // 参考仓的单价说明。桌面端不计费（spec X3），界面不显示；字段保留只为兼容 sidecar 返回。
   priceNote?: string;
   enabled: boolean;
   hidden: boolean;
@@ -441,25 +440,6 @@ export interface ModelConfig {
 export async function listRuntimeModels(): Promise<ModelConfig[]> {
   const { data } = await api.get<{ data: ModelConfig[] }>('/models');
   return data.data ?? [];
-}
-
-// estimateCost 预计扣费：后端按模型计费配置(billingConfig)对这组 inputs 算预冻结积分，
-// 给「生成」按钮显示「预计消耗 X 积分」。纯定价计算、不冻结；传与提交一致的 inputs 即与实扣对齐。
-// 旧的 defaultCostCents 标量字段已随后端 0027 迁移删除，统一走此接口。
-export async function estimateCost(modelId: string, inputs: Record<string, unknown>): Promise<number> {
-  const { data } = await api.post<{ credits: number }>('/models/estimate', { modelId, inputs });
-  return data.credits ?? 0;
-}
-
-// estimateCostBatch 批量估算并求和：每条可不同模型/inputs（如分镜各自选了不同视频模型）。
-// 一次请求拿总价 + 每条明细，用于「提交至下一步」这种把多条加总到一个按钮的场景。
-export interface EstimateItem {
-  modelId: string;
-  inputs: Record<string, unknown>;
-}
-export async function estimateCostBatch(items: EstimateItem[]): Promise<{ total: number; items: number[] }> {
-  const { data } = await api.post<{ total: number; items: number[] }>('/models/estimate-batch', { items });
-  return { total: data.total ?? 0, items: data.items ?? [] };
 }
 
 // ---------- 自由画布 AI 生成（方案 B：恒异步 + 每模型并发 + 后端权威回写） --------
@@ -677,35 +657,6 @@ export async function submitCanvasWhiteModel(
 ): Promise<{ taskId: number; status: string }> {
   const { data } = await api.post<{ taskId: number; status: string }>(
     '/canvas-tasks/whitemodel',
-    input,
-  );
-  return data;
-}
-
-// ---------- 后处理预估积分 ----------
-// 为什么不用通用的 /models/estimate：那条路要前端自己把 duration 拼进 inputs，而视频时长
-// 只有 <video>.duration 拿得到——那是浏览器解析出的容器声明值，可被工具单独篡改。曾因此
-// 让一个两分多钟的视频显示「预计 1 积分」（实际按真实时长结算，钱没错但数字骗人）。
-// 现在整个计费 req 都由后端用 assets.duration_ms（ffprobe 数真实帧测定）构造，前端只显示。
-// resolution 供转高清/转白模用（档位影响单价）；去字幕不传。
-
-export interface CanvasPostprocessEstimateInput {
-  projectId: number;
-  sourceNodeId: string;
-  modelId: string;
-  resolution?: string;
-}
-
-export interface CanvasPostprocessEstimate {
-  credits: number;
-  durationMs: number;
-}
-
-export async function fetchCanvasPostprocessEstimate(
-  input: CanvasPostprocessEstimateInput,
-): Promise<CanvasPostprocessEstimate> {
-  const { data } = await api.post<CanvasPostprocessEstimate>(
-    '/canvas-tasks/postprocess-estimate',
     input,
   );
   return data;
@@ -1130,12 +1081,12 @@ export async function saveMediaToLibrary(
 
 // ========== 自由画布 · 脚本节点「剧本生成分镜」 ==========
 // 风格是后台配置的展示名（映射到服务端 skill，前端不感知 skillName）；
-// 任务恒异步：提交冻结积分 → 轮询 → succeeded 拿 candidate.json 原文自行导入。
+// 任务恒异步：提交 → 轮询 → succeeded 拿 candidate.json 原文自行导入。
 
 export interface CanvasScriptModelCandidate {
   modelId: string;
   displayName: string;
-  /** 该模型一次执行的预冻结积分（后端按模型中心计费实时算，与扣费同源） */
+  /** 参考仓的预冻结积分。桌面端 sidecar 恒为 0、界面不显示（spec X3），字段保留只为兼容。 */
   credits: number;
 }
 
