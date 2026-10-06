@@ -73,9 +73,9 @@ type SkillsRepo interface {
 	IncrementUseCount(id string) error
 }
 
-type mysqlSkillsRepo struct{ db *sql.DB }
+type sqliteSkillsRepo struct{ db *sql.DB }
 
-func NewSkillsRepo(db *sql.DB) SkillsRepo { return &mysqlSkillsRepo{db: db} }
+func NewSkillsRepo(db *sql.DB) SkillsRepo { return &sqliteSkillsRepo{db: db} }
 
 const skillColumns = `id, name, description, category, categories, icon_url, skill_type, system_prompt_addon,
 		force_tools, param_defaults, workflow_steps, trigger_keywords, is_official, creator_id, is_published,
@@ -96,7 +96,7 @@ func normalizeSkillCategories(s *Skill) (categoriesJSON []byte) {
 	return b
 }
 
-func (r *mysqlSkillsRepo) Create(s Skill) error {
+func (r *sqliteSkillsRepo) Create(s Skill) error {
 	forceTools, paramDefaults, workflowSteps, triggerKeywords := encodeSkillJSON(s)
 	categories := normalizeSkillCategories(&s)
 	_, err := r.db.Exec(`INSERT INTO skills
@@ -104,13 +104,13 @@ func (r *mysqlSkillsRepo) Create(s Skill) error {
 		 force_tools, param_defaults, workflow_steps, trigger_keywords, is_official, creator_id, is_published,
 		 is_featured, use_count, sort_weight)
 		VALUES (?,?,?,?,?,?, ?,?, ?,?,?,?, ?,?,?, ?,?,?)`,
-		s.ID, s.Name, s.Description, s.Category, categories, s.IconURL, s.SkillType, s.SystemPromptAddon,
-		forceTools, paramDefaults, workflowSteps, triggerKeywords, boolToInt(s.IsOfficial), s.CreatorID, boolToInt(s.IsPublished),
+		s.ID, s.Name, s.Description, s.Category, string(categories), s.IconURL, s.SkillType, s.SystemPromptAddon,
+		string(forceTools), string(paramDefaults), string(workflowSteps), string(triggerKeywords), boolToInt(s.IsOfficial), s.CreatorID, boolToInt(s.IsPublished),
 		boolToInt(s.IsFeatured), s.UseCount, s.SortWeight)
 	return err
 }
 
-func (r *mysqlSkillsRepo) Update(s Skill) error {
+func (r *sqliteSkillsRepo) Update(s Skill) error {
 	forceTools, paramDefaults, workflowSteps, triggerKeywords := encodeSkillJSON(s)
 	categories := normalizeSkillCategories(&s)
 	_, err := r.db.Exec(`UPDATE skills SET
@@ -118,18 +118,18 @@ func (r *mysqlSkillsRepo) Update(s Skill) error {
 		force_tools=?, param_defaults=?, workflow_steps=?, trigger_keywords=?, is_official=?, creator_id=?, is_published=?,
 		is_featured=?, sort_weight=?
 		WHERE id=?`,
-		s.Name, s.Description, s.Category, categories, s.IconURL, s.SkillType, s.SystemPromptAddon,
-		forceTools, paramDefaults, workflowSteps, triggerKeywords, boolToInt(s.IsOfficial), s.CreatorID, boolToInt(s.IsPublished),
+		s.Name, s.Description, s.Category, string(categories), s.IconURL, s.SkillType, s.SystemPromptAddon,
+		string(forceTools), string(paramDefaults), string(workflowSteps), string(triggerKeywords), boolToInt(s.IsOfficial), s.CreatorID, boolToInt(s.IsPublished),
 		boolToInt(s.IsFeatured), s.SortWeight, s.ID)
 	return err
 }
 
-func (r *mysqlSkillsRepo) Delete(id string) error {
+func (r *sqliteSkillsRepo) Delete(id string) error {
 	_, err := r.db.Exec(`DELETE FROM skills WHERE id=?`, id)
 	return err
 }
 
-func (r *mysqlSkillsRepo) Get(id string) (*Skill, error) {
+func (r *sqliteSkillsRepo) Get(id string) (*Skill, error) {
 	row := r.db.QueryRow(`SELECT `+skillColumns+` FROM skills WHERE id=?`, id)
 	return scanSkill(row)
 }
@@ -139,11 +139,11 @@ func (r *mysqlSkillsRepo) Get(id string) (*Skill, error) {
 // 分类管理决定，不是拼音/编码顺序。
 const categoryOrderExpr = `COALESCE((SELECT c.sort_order FROM skill_categories c WHERE c.name = skills.category), 999999)`
 
-func (r *mysqlSkillsRepo) List() ([]Skill, error) {
+func (r *sqliteSkillsRepo) List() ([]Skill, error) {
 	return r.list(`SELECT ` + skillColumns + ` FROM skills ORDER BY ` + categoryOrderExpr + `, category, sort_weight DESC, id ASC`)
 }
 
-func (r *mysqlSkillsRepo) ListPublicByCategory(category string) ([]Skill, error) {
+func (r *sqliteSkillsRepo) ListPublicByCategory(category string) ([]Skill, error) {
 	if category == "" {
 		// 无分类过滤 = SkillPopover 的「全部」视图：先按分类顺序、再按组内权重。
 		return r.list(`SELECT ` + skillColumns + ` FROM skills
@@ -154,11 +154,12 @@ func (r *mysqlSkillsRepo) ListPublicByCategory(category string) ([]Skill, error)
 	// 「任何分类下都可见」的既有语义）。
 	return r.list(`SELECT `+skillColumns+` FROM skills
 		WHERE is_published=1 AND is_official=1
-		  AND (category=? OR category='' OR JSON_CONTAINS(COALESCE(categories, JSON_ARRAY()), JSON_QUOTE(?)))
+		  AND (category=? OR category='' OR EXISTS (
+		       SELECT 1 FROM json_each(COALESCE(skills.categories, '[]')) WHERE json_each.value = ?))
 		ORDER BY sort_weight DESC, id ASC`, category, category)
 }
 
-func (r *mysqlSkillsRepo) ListForUser(userID int64) ([]Skill, error) {
+func (r *sqliteSkillsRepo) ListForUser(userID int64) ([]Skill, error) {
 	// 公开的官方 skill + 用户自己的 skill（creator_id 匹配，无视 published 标志
 	// ——作者总能看到自己的草稿）。
 	return r.list(`SELECT `+skillColumns+` FROM skills
@@ -166,18 +167,18 @@ func (r *mysqlSkillsRepo) ListForUser(userID int64) ([]Skill, error) {
 		ORDER BY category, sort_weight DESC, id ASC`, userID)
 }
 
-func (r *mysqlSkillsRepo) ListFeatured() ([]Skill, error) {
+func (r *sqliteSkillsRepo) ListFeatured() ([]Skill, error) {
 	return r.list(`SELECT ` + skillColumns + ` FROM skills
 		WHERE is_published=1 AND is_official=1 AND is_featured=1
 		ORDER BY sort_weight DESC, id ASC`)
 }
 
-func (r *mysqlSkillsRepo) IncrementUseCount(id string) error {
+func (r *sqliteSkillsRepo) IncrementUseCount(id string) error {
 	_, err := r.db.Exec(`UPDATE skills SET use_count=use_count+1 WHERE id=?`, id)
 	return err
 }
 
-func (r *mysqlSkillsRepo) list(q string, args ...any) ([]Skill, error) {
+func (r *sqliteSkillsRepo) list(q string, args ...any) ([]Skill, error) {
 	rows, err := r.db.Query(q, args...)
 	if err != nil {
 		return nil, err
