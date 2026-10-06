@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"github.com/james/huabu_studio/apps/api/internal/db"
 )
 
 var ErrAgentToolNotFound = errors.New("agent tool not found")
@@ -36,11 +38,11 @@ type AgentToolsRepo interface {
 	MaxUpdatedAt() (time.Time, error)
 }
 
-type mysqlAgentToolsRepo struct{ db *sql.DB }
+type sqliteAgentToolsRepo struct{ db *sql.DB }
 
-func NewAgentToolsRepo(db *sql.DB) AgentToolsRepo { return &mysqlAgentToolsRepo{db: db} }
+func NewAgentToolsRepo(db *sql.DB) AgentToolsRepo { return &sqliteAgentToolsRepo{db: db} }
 
-func (r *mysqlAgentToolsRepo) Create(t AgentToolRow) (int64, error) {
+func (r *sqliteAgentToolsRepo) Create(t AgentToolRow) (int64, error) {
 	if len(t.ParamsSchema) == 0 {
 		t.ParamsSchema = json.RawMessage(`{}`)
 	}
@@ -52,14 +54,14 @@ func (r *mysqlAgentToolsRepo) Create(t AgentToolRow) (int64, error) {
 		 params_schema, default_params, is_published, sort_weight)
 		VALUES (?,?,?,?,?, ?,?,?,?)`,
 		t.ToolName, t.DisplayName, t.Category, t.SourceModelID, t.ToolDescription,
-		[]byte(t.ParamsSchema), []byte(t.DefaultParams), boolToInt(t.IsPublished), t.SortWeight)
+		string(t.ParamsSchema), string(t.DefaultParams), boolToInt(t.IsPublished), t.SortWeight)
 	if err != nil {
 		return 0, err
 	}
 	return res.LastInsertId()
 }
 
-func (r *mysqlAgentToolsRepo) Update(t AgentToolRow) error {
+func (r *sqliteAgentToolsRepo) Update(t AgentToolRow) error {
 	if len(t.ParamsSchema) == 0 {
 		t.ParamsSchema = json.RawMessage(`{}`)
 	}
@@ -71,48 +73,48 @@ func (r *mysqlAgentToolsRepo) Update(t AgentToolRow) error {
 		params_schema=?, default_params=?, is_published=?, sort_weight=?
 		WHERE id=?`,
 		t.ToolName, t.DisplayName, t.Category, t.SourceModelID, t.ToolDescription,
-		[]byte(t.ParamsSchema), []byte(t.DefaultParams), boolToInt(t.IsPublished), t.SortWeight,
+		string(t.ParamsSchema), string(t.DefaultParams), boolToInt(t.IsPublished), t.SortWeight,
 		t.ID)
 	return err
 }
 
-func (r *mysqlAgentToolsRepo) Delete(id int64) error {
+func (r *sqliteAgentToolsRepo) Delete(id int64) error {
 	_, err := r.db.Exec(`DELETE FROM agent_tools WHERE id=?`, id)
 	return err
 }
 
-func (r *mysqlAgentToolsRepo) Get(id int64) (*AgentToolRow, error) {
+func (r *sqliteAgentToolsRepo) Get(id int64) (*AgentToolRow, error) {
 	row := r.db.QueryRow(`SELECT id, tool_name, display_name, category, source_model_id, tool_description,
 		params_schema, default_params, is_published, sort_weight, use_count_30d, created_at, updated_at
 		FROM agent_tools WHERE id=?`, id)
 	return scanAgentTool(row)
 }
 
-func (r *mysqlAgentToolsRepo) List() ([]AgentToolRow, error) {
+func (r *sqliteAgentToolsRepo) List() ([]AgentToolRow, error) {
 	return r.list(`SELECT id, tool_name, display_name, category, source_model_id, tool_description,
 		params_schema, default_params, is_published, sort_weight, use_count_30d, created_at, updated_at
 		FROM agent_tools ORDER BY category, sort_weight DESC, id ASC`)
 }
 
-func (r *mysqlAgentToolsRepo) ListPublished() ([]AgentToolRow, error) {
+func (r *sqliteAgentToolsRepo) ListPublished() ([]AgentToolRow, error) {
 	return r.list(`SELECT id, tool_name, display_name, category, source_model_id, tool_description,
 		params_schema, default_params, is_published, sort_weight, use_count_30d, created_at, updated_at
 		FROM agent_tools WHERE is_published=1 ORDER BY category, sort_weight DESC, id ASC`)
 }
 
-func (r *mysqlAgentToolsRepo) MaxUpdatedAt() (time.Time, error) {
-	var max sql.NullTime
-	err := r.db.QueryRow(`SELECT MAX(updated_at) FROM agent_tools`).Scan(&max)
-	if err != nil {
+func (r *sqliteAgentToolsRepo) MaxUpdatedAt() (time.Time, error) {
+	// MAX() 的结果没有声明类型，modernc 以字符串返回（见 p1-research §6），扫成 string 再解析。
+	var max sql.NullString
+	if err := r.db.QueryRow(`SELECT MAX(updated_at) FROM agent_tools`).Scan(&max); err != nil {
 		return time.Time{}, err
 	}
-	if !max.Valid {
+	if !max.Valid || max.String == "" {
 		return time.Time{}, nil
 	}
-	return max.Time, nil
+	return time.ParseInLocation(db.TimeLayout, max.String, time.UTC)
 }
 
-func (r *mysqlAgentToolsRepo) list(q string, args ...any) ([]AgentToolRow, error) {
+func (r *sqliteAgentToolsRepo) list(q string, args ...any) ([]AgentToolRow, error) {
 	rows, err := r.db.Query(q, args...)
 	if err != nil {
 		return nil, err

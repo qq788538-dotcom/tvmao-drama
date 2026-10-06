@@ -5,6 +5,7 @@ package agent
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -32,13 +33,13 @@ type SkillCategoriesRepo interface {
 	SetOrder(ids []int64) error
 }
 
-type mysqlSkillCategoriesRepo struct{ db *sql.DB }
+type sqliteSkillCategoriesRepo struct{ db *sql.DB }
 
 func NewSkillCategoriesRepo(db *sql.DB) SkillCategoriesRepo {
-	return &mysqlSkillCategoriesRepo{db: db}
+	return &sqliteSkillCategoriesRepo{db: db}
 }
 
-func (r *mysqlSkillCategoriesRepo) List() ([]SkillCategory, error) {
+func (r *sqliteSkillCategoriesRepo) List() ([]SkillCategory, error) {
 	rows, err := r.db.Query(`SELECT id, name, color, sort_order FROM skill_categories ORDER BY sort_order ASC, id ASC`)
 	if err != nil {
 		return nil, err
@@ -55,7 +56,7 @@ func (r *mysqlSkillCategoriesRepo) List() ([]SkillCategory, error) {
 	return out, rows.Err()
 }
 
-func (r *mysqlSkillCategoriesRepo) Create(name, color string) (int64, error) {
+func (r *sqliteSkillCategoriesRepo) Create(name, color string) (int64, error) {
 	if color == "" {
 		color = "blue"
 	}
@@ -68,7 +69,7 @@ func (r *mysqlSkillCategoriesRepo) Create(name, color string) (int64, error) {
 	return res.LastInsertId()
 }
 
-func (r *mysqlSkillCategoriesRepo) Update(id int64, name, color string) error {
+func (r *sqliteSkillCategoriesRepo) Update(id int64, name, color string) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -88,18 +89,48 @@ func (r *mysqlSkillCategoriesRepo) Update(id int64, name, color string) error {
 		if _, err := tx.Exec(`UPDATE skills SET category=? WHERE category=?`, name, oldName); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(
-			`UPDATE skills
-			   SET categories = JSON_SET(categories, JSON_UNQUOTE(JSON_SEARCH(categories, 'one', ?)), ?)
-			 WHERE categories IS NOT NULL AND JSON_SEARCH(categories, 'one', ?) IS NOT NULL`,
-			oldName, name, oldName); err != nil {
+		// categories 数组按值替换：在 Go 里解码、换掉第一个匹配（与 MySQL JSON_SEARCH 'one' 同语义）、写回。
+		rows, err := tx.Query(`SELECT id, categories FROM skills
+			WHERE categories IS NOT NULL
+			  AND EXISTS (SELECT 1 FROM json_each(skills.categories) WHERE json_each.value = ?)`, oldName)
+		if err != nil {
 			return err
+		}
+		type pending struct{ id, cats string }
+		var todo []pending
+		for rows.Next() {
+			var id, raw string
+			if err := rows.Scan(&id, &raw); err != nil {
+				rows.Close()
+				return err
+			}
+			var cats []string
+			if json.Unmarshal([]byte(raw), &cats) != nil {
+				continue
+			}
+			for i, c := range cats {
+				if c == oldName {
+					cats[i] = name
+					break
+				}
+			}
+			b, _ := json.Marshal(cats)
+			todo = append(todo, pending{id: id, cats: string(b)})
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, p := range todo {
+			if _, err := tx.Exec(`UPDATE skills SET categories=? WHERE id=?`, p.cats, p.id); err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit()
 }
 
-func (r *mysqlSkillCategoriesRepo) Delete(id int64) error {
+func (r *sqliteSkillCategoriesRepo) Delete(id int64) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -113,7 +144,7 @@ func (r *mysqlSkillCategoriesRepo) Delete(id int64) error {
 	var used int
 	if err := tx.QueryRow(
 		`SELECT COUNT(*) FROM skills
-		  WHERE category=? OR JSON_CONTAINS(COALESCE(categories, JSON_ARRAY()), JSON_QUOTE(?))`,
+		  WHERE category=? OR EXISTS (SELECT 1 FROM json_each(COALESCE(skills.categories, '[]')) WHERE json_each.value = ?)`,
 		name, name).Scan(&used); err != nil {
 		return err
 	}
@@ -126,7 +157,7 @@ func (r *mysqlSkillCategoriesRepo) Delete(id int64) error {
 	return tx.Commit()
 }
 
-func (r *mysqlSkillCategoriesRepo) SetOrder(ids []int64) error {
+func (r *sqliteSkillCategoriesRepo) SetOrder(ids []int64) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err

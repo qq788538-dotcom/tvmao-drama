@@ -56,11 +56,11 @@ type BackboneRepo interface {
 	GetActiveByRole(role string) (*BackboneModel, error)
 }
 
-type mysqlBackboneRepo struct{ db *sql.DB }
+type sqliteBackboneRepo struct{ db *sql.DB }
 
-func NewBackboneRepo(db *sql.DB) BackboneRepo { return &mysqlBackboneRepo{db: db} }
+func NewBackboneRepo(db *sql.DB) BackboneRepo { return &sqliteBackboneRepo{db: db} }
 
-func (r *mysqlBackboneRepo) Create(m BackboneModel) (int64, error) {
+func (r *sqliteBackboneRepo) Create(m BackboneModel) (int64, error) {
 	res, err := r.db.Exec(`INSERT INTO agent_backbone_models
 		(alias, provider, model_name, role,
 		 thinking_enabled, thinking_budget, max_tokens, context_window, temperature,
@@ -75,7 +75,7 @@ func (r *mysqlBackboneRepo) Create(m BackboneModel) (int64, error) {
 	return res.LastInsertId()
 }
 
-func (r *mysqlBackboneRepo) Update(m BackboneModel) error {
+func (r *sqliteBackboneRepo) Update(m BackboneModel) error {
 	_, err := r.db.Exec(`UPDATE agent_backbone_models SET
 		alias=?, provider=?, model_name=?, role=?,
 		thinking_enabled=?, thinking_budget=?, max_tokens=?, context_window=?, temperature=?,
@@ -88,12 +88,12 @@ func (r *mysqlBackboneRepo) Update(m BackboneModel) error {
 	return err
 }
 
-func (r *mysqlBackboneRepo) Delete(id int64) error {
+func (r *sqliteBackboneRepo) Delete(id int64) error {
 	_, err := r.db.Exec(`DELETE FROM agent_backbone_models WHERE id=?`, id)
 	return err
 }
 
-func (r *mysqlBackboneRepo) Get(id int64) (*BackboneModel, error) {
+func (r *sqliteBackboneRepo) Get(id int64) (*BackboneModel, error) {
 	row := r.db.QueryRow(`SELECT id, alias, provider, model_name, role,
 		thinking_enabled, thinking_budget, max_tokens, context_window, temperature,
 		is_active, sort_weight, description, created_at, updated_at
@@ -101,7 +101,7 @@ func (r *mysqlBackboneRepo) Get(id int64) (*BackboneModel, error) {
 	return scanBackbone(row)
 }
 
-func (r *mysqlBackboneRepo) List() ([]BackboneModel, error) {
+func (r *sqliteBackboneRepo) List() ([]BackboneModel, error) {
 	rows, err := r.db.Query(`SELECT id, alias, provider, model_name, role,
 		thinking_enabled, thinking_budget, max_tokens, context_window, temperature,
 		is_active, sort_weight, description, created_at, updated_at
@@ -121,7 +121,7 @@ func (r *mysqlBackboneRepo) List() ([]BackboneModel, error) {
 	return out, rows.Err()
 }
 
-func (r *mysqlBackboneRepo) GetActiveByRole(role string) (*BackboneModel, error) {
+func (r *sqliteBackboneRepo) GetActiveByRole(role string) (*BackboneModel, error) {
 	row := r.db.QueryRow(`SELECT id, alias, provider, model_name, role,
 		thinking_enabled, thinking_budget, max_tokens, context_window, temperature,
 		is_active, sort_weight, description, created_at, updated_at
