@@ -49,14 +49,14 @@ import { buildInlineSections, INLINE_TEXT_MAX, splitTextChips } from './mentionI
 import { MentionInput, type MentionInputHandle } from './MentionInput';
 import { MentionPicker } from './MentionPicker';
 import { MessageBubble } from './MessageBubble';
-import { SkillCreateModal } from './SkillCreateModal';
 import { SkillPopover } from './SkillPopover';
 import type { Artifact, ContentBlock, Mention } from './types';
-import { sidecarWsUrl } from '@/shared/sidecarSession';
+import { buildWsUrl, getServerInfo } from '@/shared/server';
 
 export interface AgentPanelProps {
   projectId: number;
-  jwt: string;
+  /** 已废弃：桌面端 WS 鉴权用 sidecar 的启动 token（buildWsUrl），此值被忽略。 */
+  jwt?: string;
   open: boolean;
   /** 面板宽度是受控 props——真源在宿主页（CanvasEditorPage）。
       故事板模式下覆盖层要按同一个宽度让位（挤压布局），两处必须
@@ -97,7 +97,7 @@ export function saveAgentPanelWidth(w: number): void {
 // docs/2026-08-13-agent-chat-cursor-lazy-load-design.md（D1，用户拍板 30）。
 const PAGE_SIZE = 30;
 
-export function AgentPanel({ projectId, jwt, open, width, onWidthChange, onClose, onArtifact }: AgentPanelProps) {
+export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onArtifact }: AgentPanelProps) {
   // 实时输入值（规范化的 `@[name](id)` token）——发送时从 MentionInput 取；
   // 只是镜像进 state 用来控制发送按钮的可用态。
   const [inputEmpty, setInputEmpty] = useState(true);
@@ -168,8 +168,6 @@ export function AgentPanel({ projectId, jwt, open, width, onWidthChange, onClose
   // 完成检测（L7）要看 sendingThreadId 自己的消息表——它未必是当前展示的 thread。
   const messagesByThread = useAgentStore((s) => s.messages);
   const connectionState = useAgentStore((s) => s.connectionState);
-  const pendingSkillDraft = useAgentStore((s) => s.pendingSkillDraft);
-  const clearPendingSkillDraft = useAgentStore((s) => s.clearPendingSkillDraft);
 
   const clientRef = useRef<AgentClient | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -263,35 +261,47 @@ export function AgentPanel({ projectId, jwt, open, width, onWidthChange, onClose
 
   // 启动 WS client
   useEffect(() => {
-    if (!jwt) return;
+    let disposed = false;
+    let c: AgentClient | null = null;
     setCurrentProjectId(projectId);
     setConnectionState('connecting');
-    const c = new AgentClient({ url: sidecarWsUrl('/api/v1/agent/ws'), token: jwt, projectId });
-    // 【L6】状态回调只认「当前 client」：effect 重建 client 后，旧 socket 的
-    // close 事件是异步派发的、可能晚到，不加守卫会把新连接的 connectionState
-    // 打回 closed，让 12s 看门狗对健康连接误开火。
-    c.onOpen(() => { if (clientRef.current === c) setConnectionState('open'); });
-    c.onClose(() => { if (clientRef.current === c) setConnectionState('closed'); });
-    c.onFrame(handleFrame);
-    c.onFrame(() => { lastFrameAtRef.current = Date.now(); }); // 看门狗心跳
-    // 【M1】被看门狗强退过的 thread：它的 pending 气泡已被抹掉，续传帧全部被
-    // store 丢弃。action_end 一到说明该轮真正结束、DB 已有完整消息，此刻补一次
-    // hydrate 是把最终回复捞回来的确定时机。
-    c.onFrame((f) => {
-      if (f.type === 'action_end' && f.thread_id && watchdogFiredThreadsRef.current.has(f.thread_id)) {
-        watchdogFiredThreadsRef.current.delete(f.thread_id);
-        void hydrateThread(f.thread_id);
-      }
-    });
-    c.connect();
-    clientRef.current = c;
+    void getServerInfo()
+      .then((info) => {
+        if (disposed) return;
+        const client = new AgentClient({ url: buildWsUrl(info, '/api/v1/agent/ws'), projectId });
+        c = client;
+        // 【L6】状态回调只认「当前 client」：effect 重建 client 后，旧 socket 的
+        // close 事件是异步派发的、可能晚到，不加守卫会把新连接的 connectionState
+        // 打回 closed，让 12s 看门狗对健康连接误开火。
+        client.onOpen(() => { if (clientRef.current === client) setConnectionState('open'); });
+        client.onClose(() => { if (clientRef.current === client) setConnectionState('closed'); });
+        client.onFrame(handleFrame);
+        client.onFrame(() => { lastFrameAtRef.current = Date.now(); }); // 看门狗心跳
+        // 【M1】被看门狗强退过的 thread：它的 pending 气泡已被抹掉，续传帧全部被
+        // store 丢弃。action_end 一到说明该轮真正结束、DB 已有完整消息，此刻补一次
+        // hydrate 是把最终回复捞回来的确定时机。
+        client.onFrame((f) => {
+          if (f.type === 'action_end' && f.thread_id && watchdogFiredThreadsRef.current.has(f.thread_id)) {
+            watchdogFiredThreadsRef.current.delete(f.thread_id);
+            void hydrateThread(f.thread_id);
+          }
+        });
+        client.connect();
+        clientRef.current = client;
+      })
+      .catch(() => {
+        if (!disposed) setConnectionState('closed');
+      });
     if (onArtifact) setArtifactListener(onArtifact);
     return () => {
-      if (clientRef.current === c) clientRef.current = null;
-      c.close();
+      disposed = true;
+      if (c) {
+        if (clientRef.current === c) clientRef.current = null;
+        c.close();
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jwt, projectId]);
+  }, [projectId]);
 
   // 【M1】重连成功时，对看门狗强退过的 thread 补一次 hydrate：若该轮在断线期间
   // 已经结束（action_end 再也不会来了），这是唯一能把最终回复捞回来的时机。这里
@@ -994,11 +1004,6 @@ export function AgentPanel({ projectId, jwt, open, width, onWidthChange, onClose
         open={skillOpen}
         onClose={() => setSkillOpen(false)}
         onSelect={setSelectedSkill}
-      />
-      <SkillCreateModal
-        draft={pendingSkillDraft}
-        onClose={clearPendingSkillDraft}
-        onSaved={clearPendingSkillDraft}
       />
     </div>
   );

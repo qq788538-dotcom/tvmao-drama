@@ -51,6 +51,12 @@ describe('AgentClient', () => {
     expect(FakeWS.instances[0].url).toBe('/api/v1/agent/ws?foo=bar&token=jwt-x');
   });
 
+  it('does not append token when url already carries it (buildWsUrl)', () => {
+    const client = new AgentClient({ url: 'ws://127.0.0.1:5555/api/v1/agent/ws?token=a%2Bb', projectId: 7 });
+    client.connect();
+    expect(FakeWS.instances[0].url).toBe('ws://127.0.0.1:5555/api/v1/agent/ws?token=a%2Bb&project_id=7');
+  });
+
   it('encodes token in URL', () => {
     const client = new AgentClient({ url: '/api/v1/agent/ws', token: 'a/b+c=' });
     client.connect();
