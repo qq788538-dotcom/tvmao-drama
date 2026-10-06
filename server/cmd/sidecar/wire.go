@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/james/huabu_studio/apps/api/internal/agent"
+	"github.com/james/huabu_studio/apps/api/internal/agent/agentseed"
 	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
 	"github.com/james/huabu_studio/apps/api/internal/assets"
+	"github.com/james/huabu_studio/apps/api/internal/builtin"
 	"github.com/james/huabu_studio/apps/api/internal/canvasowner"
 	"github.com/james/huabu_studio/apps/api/internal/directorlibrary"
 	"github.com/james/huabu_studio/apps/api/internal/directormodels"
@@ -114,6 +117,21 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		&directormodels.Service{Repo: directormodels.NewSQLiteRepository(conn)},
 		storage, orphans, usersRepo, signer, conn)
 	deps.DirectorLibrary = apphttp.NewDirectorLibraryHandler(directorlibrary.NewSQLiteRepository(conn), signer)
+
+	// ── P4 设置页 ── 内置模型 / 画布配置的修改只经 builtin.Service（白名单 + 改动记录，spec M10/M11），
+	// Agent 模型只换 model_name（spec A2）。/admin/canvas/* 的整份覆盖写接口不注册（见 router.go）。
+	policy, err := builtin.NewService(conn)
+	if err != nil {
+		return nil, fmt.Errorf("初始化内置数据编辑服务: %w", err)
+	}
+	deps.SettingsCenter = apphttp.SettingsCenterDeps{
+		Settings:    settingsRepo,
+		Models:      modelsRepo,
+		ModelEdit:   apphttp.NewPolicyModelEdit(policy, modelsRepo),
+		SettingEdit: apphttp.NewPolicySettingEdit(policy, settingsRepo),
+		Agent: apphttp.NewBackboneAgentModels(agent.NewBackboneRepo(conn), agent.NewBackboneSwitcher(conn),
+			agentseed.DefaultBackboneModelName),
+	}
 
 	cleaner := apphttp.NewProjectCleaner(projectsRepo, assetsRepo, usersRepo, genTasks, orphans, conn)
 	return &app{deps: deps, cleaner: cleaner, sweeper: sweeper, gen: genW, assets: assetsRepo, seedance: librarySeedanceSvc}, nil

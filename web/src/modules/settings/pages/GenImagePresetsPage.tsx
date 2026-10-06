@@ -5,6 +5,7 @@ import { deepClone, updateAt } from '../draft';
 import { ModelSelect } from '../components/ModelSelect';
 import { RestoreDefaultButton } from '../components/RestoreDefaultButton';
 import { groupByCategory, presetErrors, type GenImagePresetsConfig } from './presets';
+import { modelsError } from './promptTemplates';
 
 export function GenImagePresetsPage() {
   const { message } = AntApp.useApp();
@@ -15,7 +16,10 @@ export function GenImagePresetsPage() {
 
   if (isLoading) return <Spin />;
   if (!draft) return <Card title="绘图预设"><Empty description="没有内置此配置" /></Card>;
+  // 与 sidecar 一致：适用模型为空时预设菜单、人像质感、720 全景、九宫格都不可用，不允许保存。
+  const modelsErr = modelsError(draft.models);
   const onSave = () => {
+    if (modelsErr) return message.error(modelsErr);
     const errs = presetErrors(draft);
     if (errs.length) return message.error(errs[0]);
     save.mutate(draft);
@@ -29,7 +33,7 @@ export function GenImagePresetsPage() {
         绘图节点选中下列模型时显示预设菜单。预设提示词在本机拼接后发送给模型，可以直接修改。
       </Typography.Paragraph>
       <Form layout="vertical">
-        <Form.Item label="适用模型">
+        <Form.Item label="适用模型" validateStatus={modelsErr ? 'error' : undefined} help={modelsErr ?? undefined}>
           <ModelSelect type="image" multiple value={draft.models} onChange={(v) => set(['models'], v)} style={{ width: '100%' }} />
         </Form.Item>
       </Form>

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { App as AntApp, Button, Result, Tooltip } from 'antd';
-import { BotMessageSquare, LayoutGrid, LayoutPanelLeft, Save, Waypoints } from 'lucide-react';
+import { BotMessageSquare, LayoutGrid, LayoutPanelLeft, Save, Settings, Waypoints } from 'lucide-react';
 import { BrandLogo } from '@/shared/BrandLogo';
 import { CanvasEditor } from '@/modules/canvas/editor/CanvasEditor';
 import { StoryboardView } from '@/modules/canvas/storyboard/StoryboardView';
@@ -525,6 +525,14 @@ export function CanvasEditorPage() {
           >
             <LayoutGrid size={14} />
             所有项目
+          </button>
+          {/* 「设置」（P4）：上游地址与 Key、模型中心、画布配置、数据目录、环境诊断。离开前同样先 flush。 */}
+          <button
+            className="flex items-center gap-1.5 px-2 py-1 text-sidebar-foreground hover:text-foreground text-xs rounded bg-transparent border-none cursor-pointer"
+            onClick={() => requestNavigate('/settings')}
+          >
+            <Settings size={14} />
+            设置
           </button>
           <div className="h-5 w-px bg-accent" />
           {nameDraft !== null ? (

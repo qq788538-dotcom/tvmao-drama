@@ -173,6 +173,7 @@ function renderPage(queryClient = createTestQueryClient()) {
           <Routes>
             <Route path="/canvas/:projectId" element={<CanvasEditorPage />} />
             <Route path="/canvas" element={<div>canvas-projects-page</div>} />
+            <Route path="/settings" element={<div>settings-page</div>} />
           </Routes>
         </MemoryRouter>
       </AntApp>
@@ -482,6 +483,16 @@ describe('CanvasEditorPage 桌面端（spec F9、X1–X4）', () => {
     fireEvent.click(screen.getByRole('button', { name: '所有项目' }));
 
     await waitFor(() => expect(screen.getByText('canvas-projects-page')).toBeInTheDocument());
+    expect(flushCanvasMutations).toHaveBeenCalledTimes(1);
+  });
+
+  it('「设置」先 flush 未提交的编辑，再进设置页（P4）', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('canvas-editor')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+
+    await waitFor(() => expect(screen.getByText('settings-page')).toBeInTheDocument());
     expect(flushCanvasMutations).toHaveBeenCalledTimes(1);
   });
 

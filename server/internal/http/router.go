@@ -74,6 +74,9 @@ func MustWire(d Deps) {
 		"CanvasPostprocess":   d.CanvasPostprocess != nil, "GenImagePreset": d.GenImagePreset != nil,
 		"MultiAngle": d.MultiAngle != nil, "LightControl": d.LightControl != nil, "AICharacter": d.AICharacter != nil,
 		"Seedance": d.Seedance != nil, "DirectorModel": d.DirectorModel != nil, "DirectorLibrary": d.DirectorLibrary != nil,
+		"SettingsCenter.Settings": d.SettingsCenter.Settings != nil, "SettingsCenter.Models": d.SettingsCenter.Models != nil,
+		"SettingsCenter.ModelEdit": d.SettingsCenter.ModelEdit != nil, "SettingsCenter.SettingEdit": d.SettingsCenter.SettingEdit != nil,
+		"SettingsCenter.Agent": d.SettingsCenter.Agent != nil,
 	} {
 		if !ok {
 			missing = append(missing, name)

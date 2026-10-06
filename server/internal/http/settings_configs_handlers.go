@@ -213,7 +213,10 @@ func checkRequiredSelections(key string, v map[string]any) error {
 			return scValidation("modelCandidates", "至少保留一个候选模型")
 		}
 		return bindings("modelCandidates", "候选模型")
-	case "canvas_multi_angle", "canvas_light_control":
+	// 绘图预设的 models 为空：参考仓前端用 models.includes(当前模型) 决定显示预设菜单，
+	// 人像质感 / 720 全景 / 九宫格还要求 models[0] 存在，否则提示“后台未配置”。空列表 = 整套功能失效，
+	// 不是“不限制”；桌面端没有后台可以再配回来，所以与多角度、打光一样拒绝。
+	case "canvas_multi_angle", "canvas_light_control", "gen_image_prompt_presets":
 		if arr, _ := v["models"].([]any); len(arr) == 0 {
 			return scValidation("models", "至少选择一个模型")
 		}
