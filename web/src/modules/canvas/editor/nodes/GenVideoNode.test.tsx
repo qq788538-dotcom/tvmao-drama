@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GenVideoNode } from './GenVideoNode';
 import { useCanvasStore } from '../store';
 import { listRuntimeModels, uploadAsset, type ModelConfig } from '@/shared/api';
-import { loadEstimate, loadSeedanceStatus } from '../batchQueries';
+import { loadSeedanceStatus } from '../batchQueries';
 
 vi.mock('@/shared/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/shared/api')>();
@@ -18,9 +18,8 @@ vi.mock('@/shared/api', async (importOriginal) => {
   };
 });
 
-// 估价/合规状态都走合批器（batchQueries.ts）——按节点边界 stub 掉。
+// 合规状态走合批器（batchQueries.ts）——按节点边界 stub 掉。
 vi.mock('../batchQueries', () => ({
-  loadEstimate: vi.fn(),
   loadSeedanceStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -59,11 +58,10 @@ function renderNode() {
   );
 }
 
-describe('GenVideoNode cost estimate', () => {
+describe('GenVideoNode', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([videoModel]);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
     useCanvasStore.setState({
       nodes: [{
@@ -83,31 +81,15 @@ describe('GenVideoNode cost estimate', () => {
     });
   });
 
-  it('未选中的节点不发起估价——预计积分标签本就随选中才显示', async () => {
-    // beforeEach 默认选中 video-1；这里改成未选中，验证不打估价。
-    useCanvasStore.setState({ selectedIds: new Set(['other-node']) });
+  it('选中后不显示估价或积分文案（X3）', async () => {
+    vi.mocked(listRuntimeModels).mockResolvedValue([{ ...videoModel, priceNote: '480p:70积分/秒|720p:150积分/秒' }]);
     renderNode();
+
+    expect((await screen.findAllByText('Video Model', {}, { timeout: 3000 })).length).toBeGreaterThan(0);
     await act(async () => {
       await new Promise((resolve) => window.setTimeout(resolve, 700));
     });
-    expect(loadEstimate).not.toHaveBeenCalled();
-  });
-
-  it('does not re-estimate cost while only the prompt text changes', async () => {
-    renderNode();
-
-    await waitFor(() => expect(loadEstimate).toHaveBeenCalled());
-    await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 500));
-    });
-    vi.mocked(loadEstimate).mockClear();
-
-    await userEvent.type(screen.getByRole('textbox', { name: '生成提示词' }), '新的视频提示词');
-    await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 500));
-    });
-
-    expect(loadEstimate).not.toHaveBeenCalled();
+    expect(screen.queryByText(/积分|估算中|预计/)).toBeNull();
   });
 
   it('hides the upload button after a video result exists', () => {
@@ -239,7 +221,6 @@ describe('GenVideoNode 版本提示词', () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([videoModel]);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
   });
 
@@ -336,7 +317,6 @@ describe('GenVideoNode 提交按钮禁用', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([videoModel]);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
   });
 
@@ -420,7 +400,6 @@ describe('GenVideoNode 高级编辑入口', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
   });
 
@@ -627,7 +606,6 @@ describe('GenVideoNode 命名引用对账', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([videoModel]);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
     useCanvasStore.setState({
       nodes: [

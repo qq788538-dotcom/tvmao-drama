@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GenAudioNode } from './GenAudioNode';
@@ -11,7 +11,7 @@ import {
   submitCanvasTask,
   type ModelConfig,
 } from '@/shared/api';
-import { loadEstimate, loadSeedanceStatus } from '../batchQueries';
+import { loadSeedanceStatus } from '../batchQueries';
 
 vi.mock('@/shared/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/shared/api')>();
@@ -26,7 +26,6 @@ vi.mock('@/shared/api', async (importOriginal) => {
 });
 
 vi.mock('../batchQueries', () => ({
-  loadEstimate: vi.fn(),
   loadSeedanceStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -78,7 +77,6 @@ describe('GenAudioNode', () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     vi.mocked(listRuntimeModels).mockResolvedValue([audioModel, imageModel]);
-    vi.mocked(loadEstimate).mockResolvedValue(1);
     vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
     vi.mocked(api.post).mockResolvedValue({ data: { thumbs: {} } });
     useCanvasStore.setState({
@@ -97,6 +95,17 @@ describe('GenAudioNode', () => {
       view: { x: 0, y: 0, zoom: 1 },
       lightbox: null,
     });
+  });
+
+  it('选中后不显示估价或积分文案（X3）', async () => {
+    vi.mocked(listRuntimeModels).mockResolvedValue([{ ...audioModel, priceNote: '100积分/分钟' }, imageModel]);
+    renderNode();
+
+    expect((await screen.findAllByText('TTS Model', {}, { timeout: 3000 })).length).toBeGreaterThan(0);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
+    });
+    expect(screen.queryByText(/积分|估算中|预计/)).toBeNull();
   });
 
   it('模型选择器只列音频模型，图片模型不出现', async () => {

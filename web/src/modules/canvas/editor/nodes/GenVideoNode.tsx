@@ -44,12 +44,9 @@ import { calculateResolution, nodeBoxFromDims } from '../utils/resolution';
 import { inputLimitViolation } from '../utils/inputLimits';
 import { pokerStackOffset } from '../utils/pokerStack';
 import { useGenerationTimer } from '../hooks/useGenerationTimer';
-import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ThumbImg } from '../ThumbImg';
 import { pickRefUploadForNode } from '../utils/uploadRefPicker';
 import { renderRejected } from '../utils/rejectedFiles';
-import { loadEstimate } from '../batchQueries';
-import { resolvePriceNote } from '@/shared/priceNote';
 import {
   buildDynamicInputs,
   buildVideoGenerationInputs,
@@ -77,6 +74,9 @@ export function GenVideoNode({ id }: { id: string }) {
   const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
   const addNode = useCanvasStore((s) => s.addNode);
   const allNodes = useCanvasStore((s) => s.nodes);
+  // 订阅连线：getConnectedInputs 是稳定引用，不订阅的话连线变化不会触发重渲染
+  // （此前靠估价 query 的状态变化顺带重渲染，去掉估价后要显式订阅）。
+  useCanvasStore((s) => s.connections);
   // 只读画布（分享查看器等）下 store.addNode 直接 no-op 返回 ''——「高级编辑」
   // 保存链路拿着这个空 id 去 updateNode/addConnection 会产出一堆挂不上任何节点
   // 的脏 token，禁用按钮比让保存链路半途失败更直接。
@@ -410,7 +410,6 @@ export function GenVideoNode({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [schemaFingerprint, settingsFingerprint],
   );
-  const dynamicInputsFingerprint = JSON.stringify(dynamicInputs);
   const fallbackPrompt = linked.texts.filter(Boolean).join('\n');
   // 「有词可生成」的口径必须和 handleGenerate 取词的口径一致：真正提交的是
   // 「输入框的词 || 上游文本节点的词」，两个都空才是真的没东西可生成。只看
@@ -422,51 +421,6 @@ export function GenVideoNode({ id }: { id: string }) {
   const submitTip = isGenerating
     ? '生成中…'
     : inputLimitError ?? (!selectedModelId ? '请先选择模型' : !hasPrompt ? '请先输入提示词' : null);
-  const estimateInputs = useMemo(
-    () => buildVideoGenerationInputs({
-      prompt: '',
-      fallbackPrompt: '',
-      dynamicInputs,
-      connectedImages,
-      connectedVideos,
-      connectedAudios,
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      dynamicInputsFingerprint,
-      connectedImages.join('\n'),
-      connectedVideos.join('\n'),
-      connectedAudios.join('\n'),
-    ],
-  );
-  const debouncedEstimateInputs = useDebouncedValue(estimateInputs, 400);
-  const debouncedEstimateInputsFingerprint = JSON.stringify(debouncedEstimateInputs);
-  const estimateQuery = useQuery({
-    queryKey: ['canvas-cost-estimate', 'video', selectedModelId, debouncedEstimateInputsFingerprint],
-    // 走合批器：大画布上多个生视频节点的估价塌成一次 estimate-batch，见 batchQueries.ts。
-    queryFn: () => loadEstimate({ modelId: selectedModelId, inputs: debouncedEstimateInputs }),
-    // 只在节点被选中时才估价——「预计 X 积分」标签本就随选中才显示（下方面板
-    // opacity 由 isSelected 驱动），进画布默认无选中时估价纯属白打请求。
-    // 叠加 selectedModel 兜底：极早选中时模型列表可能还没加载，避免用空 schema 估。
-    enabled: isSelected && Boolean(selectedModel),
-    staleTime: 30_000,
-    retry: false,
-  });
-  // priceNote 非空 = 按上游响应实际用量结算的模型：estimate 给的是预冻结上限，
-  // 不是实价——积分数字干脆不显示（freezeEstimate 没配时会出「预扣 0 积分」这种
-  // 误导文案，用户点名去掉），只展示单价说明，结算口径放 tooltip。
-  // 文案支持按分辨率分档（`480p:70积分/秒|720p:150积分/秒`），跟随当前选中档显示。
-  const priceNote = resolvePriceNote(selectedModel?.priceNote, resolutionValue);
-  const estimateLabel = priceNote
-    ? priceNote
-    : estimateQuery.isFetching
-      ? '估算中...'
-      : estimateQuery.isError
-        ? '预计 --'
-        : `预计 ${estimateQuery.data ?? 0} 积分`;
-  const estimateTitle = priceNote
-    ? priceNote
-    : '按当前模型和参数预估，实际以完成后结算为准';
 
   // 用户是否已经在上游连了媒体（图片 / 音频 / 视频，包括能解析成媒体 URL 的
   // PreviewNode 输出）。为 true 时隐藏上传 chip——用户已经在喂参考图了。
@@ -1094,15 +1048,6 @@ export function GenVideoNode({ id }: { id: string }) {
               })}
 
               <div className="flex-1" />
-
-              {selectedModelId && (
-                <span
-                  className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-[11px] text-muted-foreground border border-white/10"
-                  title={estimateTitle}
-                >
-                  {estimateLabel}
-                </span>
-              )}
 
               {/* 装饰性麦克风——语音 prompt 不在本次范围内，所以这是个虚位，
                   对标参考站点的右侧栏，但不凭空造功能。从 tab 顺序里隐藏。 */}

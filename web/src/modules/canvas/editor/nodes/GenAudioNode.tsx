@@ -33,7 +33,6 @@ import {
 } from '@/shared/api';
 import { pokerStackOffset } from '../utils/pokerStack';
 import { useGenerationTimer } from '../hooks/useGenerationTimer';
-import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { buildDynamicInputs, buildAudioGenerationInputs, composePrompt, modelSettingDefaults } from '../utils/generationInputs';
 import {
   appendHistoryItem,
@@ -42,7 +41,6 @@ import {
   readPendingGen,
 } from '../utils/genHistory';
 import { PromptMentionEditor, serializeMentionPrompt, stripDeadMentions } from '../PromptMentionEditor';
-import { loadEstimate } from '../batchQueries';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
 import { WaveformPlayer } from './WaveformPlayer';
 import { AudioActionsBar } from './AudioActionsBar';
@@ -234,44 +232,8 @@ export function GenAudioNode({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [schemaFingerprint, settingsFingerprint],
   );
-  const dynamicInputsFingerprint = JSON.stringify(dynamicInputs);
   const fallbackPrompt = linked.texts.filter(Boolean).join('\n');
   const hasPrompt = Boolean(prompt.trim() || fallbackPrompt.trim());
-  const connectedAudiosFingerprint = connectedAudios.join('\n');
-  const estimateInputs = useMemo(
-    () =>
-      buildAudioGenerationInputs({
-        prompt: '',
-        fallbackPrompt: '',
-        dynamicInputs,
-        connectedAudios,
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dynamicInputsFingerprint, connectedAudiosFingerprint],
-  );
-  const debouncedEstimateInputs = useDebouncedValue(estimateInputs, 400);
-  const debouncedEstimateInputsFingerprint = JSON.stringify(debouncedEstimateInputs);
-  const estimateQuery = useQuery({
-    queryKey: ['canvas-cost-estimate', 'audio', selectedModelId, debouncedEstimateInputsFingerprint],
-    queryFn: () => loadEstimate({ modelId: selectedModelId, inputs: debouncedEstimateInputs }),
-    enabled: isSelected && Boolean(selectedModel),
-    staleTime: 30_000,
-    retry: false,
-  });
-  // priceNote 非空 = 按上游响应实际用量结算的模型：estimate 给的是预冻结上限，
-  // 不是实价——积分数字干脆不显示（freezeEstimate 没配时会出「预扣 0 积分」这种
-  // 误导文案，用户点名去掉），只展示单价说明，结算口径放 tooltip。
-  const priceNote = selectedModel?.priceNote;
-  const estimateLabel = priceNote
-    ? priceNote
-    : estimateQuery.isFetching
-      ? '估算中...'
-      : estimateQuery.isError
-        ? '预计 --'
-        : `预计 ${estimateQuery.data ?? 0} 积分`;
-  const estimateTitle = priceNote
-    ? priceNote
-    : '按当前模型和参数预估，实际以完成后结算为准';
 
   const hasUpstreamMedia =
     linked.images.length + linked.audios.length + linked.videos.length > 0;
@@ -669,15 +631,6 @@ export function GenAudioNode({ id }: { id: string }) {
             })}
 
             <div className="flex-1" />
-
-            {selectedModelId && (
-              <span
-                className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-[11px] text-muted-foreground border border-white/10"
-                title={estimateTitle}
-              >
-                {estimateLabel}
-              </span>
-            )}
 
             {/* 禁用原因即显（mouseEnterDelay=0）——原生 title 要悬停 ~1s 且 disabled 上
                 行为不一，用户发现不了原因；disabled 按钮不派发鼠标事件，须包 span 接管 hover */}
