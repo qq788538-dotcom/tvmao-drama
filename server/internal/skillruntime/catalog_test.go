@@ -16,11 +16,11 @@ func TestRepositoryNovelSkillDeclaresCandidateArtifact(t *testing.T) {
 	if !ok {
 		t.Fatal("locate test file")
 	}
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(testFile), "..", "..", "..", ".."))
-	if _, err := os.Stat(filepath.Join(repoRoot, "skills", "novel-real-person-short-drama-v1")); err != nil {
-		t.Skip("仓库根目录没有 novel-real-person-short-drama-v1 Skill，跳过")
+	skillsRoot := filepath.Clean(filepath.Join(filepath.Dir(testFile), "..", "skillbundle", "skills"))
+	if _, err := os.Stat(filepath.Join(skillsRoot, "novel-real-person-short-drama-v1")); err != nil {
+		t.Fatalf("内置 Skill 缺失: %v", err)
 	}
-	catalog, err := NewCatalog(filepath.Join(repoRoot, "skills"))
+	catalog, err := NewCatalog(skillsRoot)
 	if err != nil {
 		t.Fatal(err)
 	}

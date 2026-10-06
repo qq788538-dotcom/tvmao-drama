@@ -113,7 +113,7 @@ func TestMapScriptArgs(t *testing.T) {
 	if !reflect.DeepEqual(seen, []string{"candidate.json", "source.txt", "out/plan.json"}) {
 		t.Fatalf("只有路径参数应交给 resolvePath，got %#v", seen)
 	}
-	for _, bad := range [][]string{{"../x.json"}, {"--source=/etc/passwd"}, {"C:/x"}} {
+	for _, bad := range [][]string{{"../x.json"}, {"--source=/etc/passwd"}, {"C:/x"}, {"-s/etc/hosts"}, {"-s../x"}, {"-s../secret.txt"}, {"--source=-s/etc/hosts"}, {"-"}} {
 		if _, err := mapScriptArgs(bad, resolve); !errors.Is(err, ErrCommandRejected) {
 			t.Errorf("%v 应拒绝，got %v", bad, err)
 		}

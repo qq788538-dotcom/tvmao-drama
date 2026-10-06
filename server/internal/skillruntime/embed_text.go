@@ -36,7 +36,7 @@ func (s *RestrictedShell) embedText(ctx context.Context, args []string) (*filesy
 	if err != nil {
 		return nil, err
 	}
-	textAbs := filepath.Join(s.workspace, textPath)
+	textAbs := textPath
 	info, err := os.Stat(textAbs)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, rejectf("文本文件不存在：%q", textRel)
@@ -56,7 +56,7 @@ func (s *RestrictedShell) embedText(ctx context.Context, args []string) (*filesy
 	}
 
 	var fields []orderedField
-	raw, err := os.ReadFile(filepath.Join(s.workspace, jsonPath))
+	raw, err := os.ReadFile(jsonPath)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 	case err != nil:
@@ -78,7 +78,7 @@ func (s *RestrictedShell) embedText(ctx context.Context, args []string) (*filesy
 	if err != nil {
 		return nil, err
 	}
-	if err := backend.Write(ctx, &filesystem.WriteRequest{FilePath: jsonPath, Content: content}); err != nil {
+	if err := backend.Write(ctx, &filesystem.WriteRequest{FilePath: filepath.ToSlash(jsonRel), Content: content}); err != nil {
 		return nil, err
 	}
 	code := 0

@@ -206,24 +206,37 @@ func (s *Service) EnabledStyles(userTags []string) ([]StyleEntry, []ModelCandida
 	return out, cands, nil
 }
 
+// UserError 是可以原样展示给用户的错误（校验类）；其余错误只写日志，不下发。
+type UserError struct{ Msg string }
+
+func (e *UserError) Error() string { return e.Msg }
+
+func userError(msg string) error { return &UserError{Msg: msg} }
+func userErrorf(format string, args ...any) error {
+	return &UserError{Msg: fmt.Sprintf(format, args...)}
+}
+
+// ErrTaskNotFound 任务不存在或不属于该用户。
+var ErrTaskNotFound = errors.New("任务不存在")
+
 // Submit 校验并落任务，返回任务 id。
 func (s *Service) Submit(ctx context.Context, userID, projectID int64, nodeID, styleName, script string, durationSec int, model string, userTags []string) (int64, error) {
 	script = strings.TrimSpace(script)
 	if script == "" {
-		return 0, errors.New("剧本内容不能为空")
+		return 0, userError("剧本内容不能为空")
 	}
 	if utf8.RuneCountInString(script) > MaxScriptRunes {
-		return 0, fmt.Errorf("剧本最长 %d 字", MaxScriptRunes)
+		return 0, userErrorf("剧本最长 %d 字", MaxScriptRunes)
 	}
 	if durationSec < MinDurationSec || durationSec > MaxDurationSec {
-		return 0, fmt.Errorf("时长需在 %d-%d 秒", MinDurationSec, MaxDurationSec)
+		return 0, userErrorf("时长需在 %d-%d 秒", MinDurationSec, MaxDurationSec)
 	}
 	cfg, err := s.LoadConfig()
 	if err != nil {
 		return 0, err
 	}
 	if model == "" {
-		return 0, errors.New("请选择模型")
+		return 0, userError("请选择模型")
 	}
 	inList := false
 	for _, c := range cfg.ModelCandidates {
@@ -233,11 +246,11 @@ func (s *Service) Submit(ctx context.Context, userID, projectID int64, nodeID, s
 		}
 	}
 	if !inList {
-		return 0, errors.New("所选模型不可用")
+		return 0, userError("所选模型不可用")
 	}
 	// 二次校验：堵“拉完候选之后、提交之前模型被删”的竞态。
 	if _, err := s.models.GetByModelID(model); err != nil {
-		return 0, errors.New("所选模型不可用")
+		return 0, userError("所选模型不可用")
 	}
 	var style *StyleEntry
 	for i := range cfg.Styles {
@@ -247,10 +260,11 @@ func (s *Service) Submit(ctx context.Context, userID, projectID int64, nodeID, s
 		}
 	}
 	if style == nil {
-		return 0, errors.New("所选风格不存在或已停用")
+		return 0, userError("所选风格不存在或已停用")
 	}
 	if _, err := s.skills.Snapshot(ctx, style.SkillName); err != nil {
-		return 0, fmt.Errorf("风格对应的 skill 不可用: %w", err)
+		log.Printf("canvasscript: 风格 %q 的 skill 不可用: %v", style.SkillName, err)
+		return 0, userError("风格对应的 skill 不可用")
 	}
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO canvas_script_tasks (user_id, project_id, node_id, skill_name, duration_sec, script, model)
@@ -272,7 +286,7 @@ func (s *Service) Get(ctx context.Context, userID, taskID int64) (*Task, error) 
 	if err := row.Scan(&t.ID, &t.UserID, &t.ProjectID, &t.NodeID, &t.SkillName, &t.DurationSec, &t.Model,
 		&t.Status, &t.Result, &t.Error, &t.Attempts, &t.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errors.New("任务不存在")
+			return nil, ErrTaskNotFound
 		}
 		return nil, err
 	}
@@ -355,7 +369,9 @@ func (s *Service) claimOne(ctx context.Context) (*Task, bool) {
 
 func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	// 失败分流：还有重试额度 → 重排 pending；用尽 → failed。
-	fail := func(msg string) {
+	// msg 存库并展示给用户，不得含路径等内部细节；detail 只写日志。
+	fail := func(msg, detail string) {
+		log.Printf("canvasscript: task=%d 失败详情: %s", t.ID, detail)
 		if int(t.Attempts) < cfg.maxAttempts() {
 			log.Printf("canvasscript: task=%d attempt=%d 失败将重试: %s", t.ID, t.Attempts, msg)
 			_, _ = s.db.ExecContext(ctx, `
@@ -363,7 +379,7 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 				WHERE id=? AND status='running'`, msg, t.ID)
 			return
 		}
-		_, _ = s.db.ExecContext(ctx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=?`, msg, t.ID)
+		_, _ = s.db.ExecContext(ctx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=? AND status='running'`, msg, t.ID)
 	}
 
 	if t.Model == "" {
@@ -373,17 +389,17 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	}
 	snapshot, err := s.skills.Snapshot(ctx, t.SkillName)
 	if err != nil {
-		fail("skill 不可用: " + err.Error())
+		fail("风格对应的 skill 不可用", err.Error())
 		return
 	}
 	baseDomain, err := s.settings.Get("base_domain")
 	if err != nil || strings.TrimSpace(baseDomain) == "" {
-		fail("base_domain 未配置")
+		fail("服务未配置上游地址，请联系管理员", "base_domain 未配置")
 		return
 	}
 	sk, err := s.keys.Resolve(t.UserID)
 	if err != nil || strings.TrimSpace(sk) == "" {
-		fail("上游 API Key 未配置")
+		fail("上游 API Key 未配置，请联系管理员", "上游 API Key 未配置")
 		return
 	}
 
@@ -395,11 +411,11 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 		SourceText: t.Script,
 	})
 	if err != nil {
-		fail("生成失败: " + err.Error())
+		fail("生成失败，请稍后重试", err.Error())
 		return
 	}
 	if err := validateCandidate(result.Content); err != nil {
-		fail("产物校验失败: " + err.Error())
+		fail("生成结果不符合要求，请重试", err.Error())
 		return
 	}
 	if _, err := s.db.ExecContext(ctx, `

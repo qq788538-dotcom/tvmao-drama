@@ -257,7 +257,7 @@ func TestExecuteFailRequeuesThenFails(t *testing.T) {
 	}
 	task, _ = svc.claimOne(context.Background())
 	svc.execute(context.Background(), task, testConfig())
-	if status, msg, attempts := taskRow(t, conn, id); status != StatusFailed || attempts != 2 || !strings.Contains(msg, "上游 500") {
+	if status, msg, attempts := taskRow(t, conn, id); status != StatusFailed || attempts != 2 || !strings.Contains(msg, "生成失败") || strings.Contains(msg, "上游 500") {
 		t.Fatalf("用尽重试应判失败: status=%s attempts=%d err=%s", status, attempts, msg)
 	}
 }
@@ -267,7 +267,7 @@ func TestExecuteBadCandidateFails(t *testing.T) {
 	id := submitOne(t, svc)
 	task, _ := svc.claimOne(context.Background())
 	svc.execute(context.Background(), task, testConfig())
-	if _, msg, _ := taskRow(t, conn, id); !strings.Contains(msg, "产物校验失败") {
+	if _, msg, _ := taskRow(t, conn, id); !strings.Contains(msg, "不符合要求") || strings.Contains(msg, "storyboard") {
 		t.Fatalf("err=%s", msg)
 	}
 }

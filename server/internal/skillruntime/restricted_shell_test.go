@@ -51,6 +51,11 @@ func newShellFixture(t *testing.T, cfg RestrictedShellConfig) shellFixture {
 	skillDir := filepath.Join(base, "skills", "demo")
 	writeTestFile(t, filepath.Join(skillDir, "SKILL.md"), "---\nname: demo\ndescription: demo\n---\n")
 	writeTestFile(t, filepath.Join(skillDir, "scripts", "echo_args.py"), echoArgsScript)
+	shortOpt, err := os.ReadFile(filepath.Join("testdata", "short_opt.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(skillDir, "scripts", "short_opt.py"), string(shortOpt))
 	writeTestFile(t, filepath.Join(skillDir, "scripts", "exit3.py"), "import sys\nprint('bye')\nsys.exit(3)\n")
 	writeTestFile(t, filepath.Join(skillDir, "scripts", "sleep.py"), "import time\ntime.sleep(5)\n")
 	writeTestFile(t, filepath.Join(skillDir, "scripts", "flood.py"), "import sys\nsys.stdout.write('x' * (2 * 1024 * 1024))\n")
@@ -97,7 +102,7 @@ func TestRestrictedShellRunsSkillScriptWithWorkspaceCwd(t *testing.T) {
 	if exitCode(resp) != 0 {
 		t.Fatalf("exit=%d output=%s", exitCode(resp), resp.Output)
 	}
-	wantArgs := "ARGS=candidate.json|--duration-sec|10|--source=source.txt"
+	wantArgs := "ARGS=" + filepath.Join(f.workspace, "candidate.json") + "|--duration-sec|10|--source=" + filepath.Join(f.workspace, "source.txt")
 	if !strings.Contains(resp.Output, wantArgs) || !strings.Contains(resp.Output, "CWD="+f.workspace) {
 		t.Fatalf("参数或 cwd 不对: %s", resp.Output)
 	}
@@ -162,6 +167,10 @@ func TestRestrictedShellRejectsPathEscapes(t *testing.T) {
 		"python3 scripts/echo_args.py " + filepath.ToSlash(filepath.Join(f.outside, "secret.json")),
 		"python3 scripts/echo_args.py --source=../../x.txt",
 		"python3 ../demo/scripts/echo_args.py",
+		"python3 scripts/echo_args.py -s/etc/hosts",
+		"python3 scripts/echo_args.py -s../outside/secret.json",
+		"python3 scripts/short_opt.py -s../outside/secret.json",
+		"python3 scripts/short_opt.py -s/etc/hosts",
 	}
 	if runtime.GOOS != "windows" {
 		if err := os.Symlink(filepath.Join(f.outside, "secret.json"), filepath.Join(f.workspace, "link.json")); err != nil {

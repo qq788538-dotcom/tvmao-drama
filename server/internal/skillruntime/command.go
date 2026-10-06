@@ -45,7 +45,7 @@ var (
 	pythonNamePattern = regexp.MustCompile(`^(?i)(python(3(\.[0-9]+)?)?(\.exe)?|py)$`)
 	flagPattern       = regexp.MustCompile(`^--?[A-Za-z][A-Za-z0-9_-]*$`)
 	numberPattern     = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$`)
-	windowsDeviceName = regexp.MustCompile(`^(?i)(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$`)
+	windowsDeviceName = regexp.MustCompile(`^(?i)(con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$`)
 )
 
 // 不加引号时出现即拒绝：管道、重定向、串联、变量/命令替换、通配、子 shell、注释、历史展开。
@@ -179,6 +179,9 @@ func checkRelPath(p string) error {
 	switch {
 	case p == "":
 		return rejectf("路径为空")
+	case strings.HasPrefix(p, "-"):
+		// 以 - 开头的值会被脚本当成选项（如 -s/etc/hosts），一律拒绝。
+		return rejectf("路径不能以 - 开头：%q", p)
 	case strings.HasPrefix(p, "/"), strings.HasPrefix(p, "~"), len(p) >= 2 && p[1] == ':':
 		return rejectf("只能使用工作区内的相对路径，不能用绝对路径：%q", p)
 	case strings.Contains(p, ":"):

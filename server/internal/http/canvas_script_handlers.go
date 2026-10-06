@@ -2,6 +2,8 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	nethttp "net/http"
 	"strconv"
 
@@ -31,7 +33,8 @@ func canvasScriptError(w nethttp.ResponseWriter, status int, msg string) {
 func (h *CanvasScriptHandler) Styles(w nethttp.ResponseWriter, _ *nethttp.Request) {
 	styles, cands, err := h.svc.EnabledStyles(nil)
 	if err != nil {
-		canvasScriptError(w, nethttp.StatusInternalServerError, err.Error())
+		log.Printf("canvasscript: 读取风格列表失败: %v", err)
+		canvasScriptError(w, nethttp.StatusInternalServerError, "读取风格列表失败，请稍后重试")
 		return
 	}
 	type styleOut struct {
@@ -68,7 +71,13 @@ func (h *CanvasScriptHandler) Submit(w nethttp.ResponseWriter, r *nethttp.Reques
 	}
 	taskID, err := h.svc.Submit(r.Context(), canvasScriptUserID, body.ProjectID, body.NodeID, body.Style, body.Script, body.DurationSec, body.Model, nil)
 	if err != nil {
-		canvasScriptError(w, nethttp.StatusBadRequest, err.Error())
+		var ue *canvasscript.UserError
+		if errors.As(err, &ue) {
+			canvasScriptError(w, nethttp.StatusBadRequest, ue.Msg)
+			return
+		}
+		log.Printf("canvasscript: 提交失败: %v", err)
+		canvasScriptError(w, nethttp.StatusInternalServerError, "提交失败，请稍后重试")
 		return
 	}
 	writeJSON(w, nethttp.StatusOK, map[string]any{"taskId": taskID, "status": canvasscript.StatusPending})
@@ -82,7 +91,12 @@ func (h *CanvasScriptHandler) Status(w nethttp.ResponseWriter, r *nethttp.Reques
 	}
 	t, err := h.svc.Get(r.Context(), canvasScriptUserID, taskID)
 	if err != nil {
-		canvasScriptError(w, nethttp.StatusNotFound, err.Error())
+		if errors.Is(err, canvasscript.ErrTaskNotFound) {
+			canvasScriptError(w, nethttp.StatusNotFound, "任务不存在")
+			return
+		}
+		log.Printf("canvasscript: 查询任务失败: %v", err)
+		canvasScriptError(w, nethttp.StatusInternalServerError, "查询任务失败，请稍后重试")
 		return
 	}
 	out := map[string]any{"status": t.Status, "nodeId": t.NodeID, "durationSec": t.DurationSec}
@@ -90,6 +104,7 @@ func (h *CanvasScriptHandler) Status(w nethttp.ResponseWriter, r *nethttp.Reques
 		out["result"] = t.Result
 	}
 	if t.Status == canvasscript.StatusFailed {
+		// 落库的 error 已是面向用户的固定文案；详情只在日志里。
 		out["error"] = t.Error
 	}
 	writeJSON(w, nethttp.StatusOK, out)

@@ -160,7 +160,7 @@ func (s *RestrictedShell) resolveScript(rel string) (string, error) {
 }
 
 // resolveWorkspacePath 校验工作区相对路径：静态规则 + 已存在的最深一级经 EvalSymlinks 后仍在工作区内。
-// 返回相对工作区的路径（子进程 cwd 就是工作区）。
+// 返回工作区内的绝对路径。
 func (s *RestrictedShell) resolveWorkspacePath(rel string) (string, error) {
 	if err := checkRelPath(rel); err != nil {
 		return "", err
@@ -191,7 +191,12 @@ func (s *RestrictedShell) resolveWorkspacePath(rel string) (string, error) {
 	if !withinRoot(s.workspace, real) {
 		return "", rejectf("路径经符号链接指向工作区之外：%q", rel)
 	}
-	return filepath.Rel(s.workspace, candidate)
+	rel2, err := filepath.Rel(s.workspace, candidate)
+	if err != nil {
+		return "", err
+	}
+	// 返回绝对路径：值永远以盘符或 / 开头，不可能被脚本当成选项。
+	return filepath.Join(s.workspace, rel2), nil
 }
 
 func (s *RestrictedShell) runPython(ctx context.Context, script string, args []string) (*filesystem.ExecuteResponse, error) {
