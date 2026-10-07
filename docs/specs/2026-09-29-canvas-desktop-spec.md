@@ -29,9 +29,9 @@
 |---|---|---|---|---|
 | D1 | 桌面框架 | Tauri v2 / Wails v2 / Electron | Tauri v2（生态最成熟，主版本稳定） | ✅ 已确认 |
 | D2 | 本地服务实现 | a) 裁剪参考仓 Go 后端，作为 sidecar 运行　b) 用 Rust 重写 | a（Agent 和生成引擎原样复用，Rust 只写薄壳） | ✅ 已确认 |
-| D3 | 前端与本地服务的接口 | a) sidecar 在 127.0.0.1 上沿用 `/api/v1` REST + WS　b) 全部改成 Tauri invoke | a（88 处 api 调用基本不改） | ✅ 已确认 |
+| D3 | 前端与本地服务的接口 | a) sidecar 在 127.0.0.1 上沿用 `/api/v1` REST + WS　b) 全部改成 Tauri invoke | a（88 处 api 调用基本不改） | ✅ 已确认 <br>**2026-10-07 变更**：3D 导演台截图的 CORS 修复，sidecar 对跨源响应加 `Vary: Origin` |
 | D4 | 本地数据存储 | a) SQLite + 媒体文件目录　b) 每个项目一个文件夹（json + media）　c) WebView 的 IndexedDB | a | ✅ 已确认 |
-| D5 | SQLite 驱动 | `modernc.org/sqlite`（纯 Go）/ `mattn/go-sqlite3`（cgo） | modernc（交叉编译不需要 cgo） | ✅ 已确认 |
+| D5 | SQLite 驱动 | `modernc.org/sqlite`（纯 Go）/ `mattn/go-sqlite3`（cgo） | modernc（交叉编译不需要 cgo） | ✅ 已确认 <br>**2026-10-07 变更**：驱动已换成 `ncruces/go-sqlite3`（用户改动，见实施期裁定）；驱动审查结果出来后再补细节 |
 | D6 | 目标平台 | macOS / Windows / Linux，可多选 | macOS + Windows（Linux WebKitGTK 对 WebCodecs 支持弱） | ✅ 已确认 |
 | D7 | WebCodecs 风险兜底 | 2026-09-30 已在真实 Tauri v2 应用（macOS 26.2 / WKWebView）实测：WebCodecs 四个 API 齐全，H.264/HEVC/VP9/AAC/Opus 编解码均支持；用参考仓同款 mediabunny 跑抽帧、剪辑、裁剪、强制重编码、音频分离（无声 mp4 + WAV），通过 tauri:// 和 127.0.0.1 两种来源全部 PASS | 不再需要换 Electron；风险只剩旧版 macOS，见 D8 | ✅ 已确认 |
 | D8 | macOS 最低支持版本 | WKWebView 版本随系统走，旧系统的 WebCodecs（尤其 AudioEncoder/AudioDecoder）可能不全，本机只能测 26.2 | 最低 macOS 14，上线前在 14/15 上各跑一次同一套测试；不通过就提高最低版本 | ✅ 已确认 |
@@ -63,7 +63,7 @@
 | X2 | 多人协作（presence、owner 编辑锁、团队） | 删除 | ✅ 已确认 |
 | X3 | 积分计费和估价 UI | 删除；是否保留"价格说明"文本另行决定 | ✅ 已确认 |
 | X4 | 登录、账户、修改密码、版本检查弹窗 | 删除，改为单个本地用户 | ✅ 已确认 |
-| X5 | Seedance 2.0 合规校验 | 保留，生成前强制校验不动；合规调用改走 newapi provider（接口路径配置在 models.json 的 `features.seedanceCompliance`，接口由用户后续在 newapi 上补充）；未配置时入口提示“合规接口未配置” | ✏️ 已修改 |
+| X5 | Seedance 2.0 合规校验 | 保留，生成前强制校验不动；合规调用改走 newapi provider（接口路径配置在 models.json 的 `features.seedanceCompliance`，接口由用户后续在 newapi 上补充）；未配置时入口提示“合规接口未配置” <br>**2026-10-07 变更**：合规调用固定走全局上游，不受模型独立上游影响（短期方案，见 M2 与实施期裁定） | ✏️ 已修改 |
 | X6 | 脚本节点“剧本生成分镜”（Skill shell 执行） | 第一期就做：内置独立 Python 运行时 + 命令白名单（只允许执行 Skill 目录内脚本、只能写任务工作区）；需解决 Windows 没有 bash 的问题 | ✏️ 已修改 |
 | X7 | ChatPanel（参考仓的死代码） | 不迁移 | ✅ 已确认 |
 
@@ -74,14 +74,14 @@
 | ID | 决策项 | 推荐 | 状态 |
 |---|---|---|---|
 | M1 | 模型中心存储方式 | 照搬参考仓：SQLite 里建与 MySQL 同结构的 `model_configs` 表，JSON 列（request_template、polling_template、ui_schema、gen_control 等）存 TEXT，用 SQLite json 函数；JSON 文件只用于导入导出和首次安装的种子数据，格式兼容参考仓后台导出（version 1） | ✏️ 已修改 |
-| M2 | 上游网关配置 | 照搬参考仓：全局一个 `base_domain` 存 settings 表，所有模型共用（对接 newapi）；不加 providers 层 <br>**2026-10-07 补充（用户要求，见实施期裁定）**：全局 `base_domain` + Key 改为“默认上游”，设置入口从“通用”移到“模型中心”顶部；每个模型可单独配置上游（`model_configs.upstream_base_url` / `upstream_api_key`，迁移 0070），地址和 Key 必须同时填写，都留空则走全局。凡解析到某个模型的调用（画布生成、后处理、Agent backbone、剧本生成分镜等）一律经 `models.ResolveUpstream` 取地址和 Key；不绑定模型的调用（Seedance 合规）恒走全局。仍不加 providers 层 | ✏️ 已修改 |
+| M2 | 上游网关配置 | 照搬参考仓：全局一个 `base_domain` 存 settings 表，所有模型共用（对接 newapi）；不加 providers 层 <br>**2026-10-07 补充（用户要求，见实施期裁定）**：全局 `base_domain` + Key 改为“默认上游”，设置入口从“通用”移到“模型中心”顶部；每个模型可单独配置上游（`model_configs.upstream_base_url` / `upstream_api_key`，迁移 0070），地址和 Key 必须同时填写，都留空则走全局。凡解析到某个模型的调用（画布生成、后处理、Agent backbone、剧本生成分镜等）一律经 `models.ResolveUpstream` 取地址和 Key；不绑定模型的调用（Seedance 合规）恒走全局。仍不加 providers 层 <br>**2026-10-07 变更（独立上游补充）**：独立上游只关联模型（按模型行解析，不关联功能或调用方）；提交任务时记录上游指纹（规范化地址 + Key 的 sha256 前 16 位，迁移 0071），重启续轮询时指纹与当前解析结果不一致则立即失败，旧任务无指纹放行；保存全局或模型地址时自动去掉末尾 `/` 与 `/v1`，`ResolveUpstream` 出口同样规范化；Seedance 合规素材短期方案：固定走全局上游，`doubao-seedance` 模型走独立上游且指纹与全局不同时，引用已校验 `asset://` 素材在提交前直接报错、不调上游 | ✏️ 已修改 |
 | M3 | API Key 存储 | 照搬参考仓：存 SQLite（settings 表）。风险：Key 明文随 data.db 一起被备份、拷贝 <br>**2026-10-07 补充**：模型独立上游的 Key 同样存本机 data.db（`model_configs.upstream_api_key`），不进种子，内置数据升级不覆盖；接口只返回掩码（规则同全局），不进日志 | ✏️ 已修改 |
 | M4 | 引用模型 ID 的配置（后处理、预设、多角度、打光、脚本、Agent 大模型） | 照搬参考仓：settings 表每项存一个 JSON 值；Agent 大模型存 `agent_backbone_models` 表 | ✏️ 已修改 |
 | M5 | 预设、多角度、打光的提示词正文 | 照搬参考仓在 sidecar 内拼接；正文存本地 SQLite，本地可见，设置页可直接编辑 <br>**2026-10-07 补充（用户要求，见实施期裁定）**：预设、多角度、打光的正文写死为内置值，设置页不再提供编辑 | ✅ 已确认 |
 | M6 | 前端写死的模型 ID（重拍、续写、isVideoEditModel） | 照搬参考仓，继续写死；模型中心未配置同名模型时入口提示“未配置” | ✏️ 已修改 |
 | M7 | 导入导出 | 客户端不提供导入导出功能；参考仓后台的导出格式只在开发侧用于生成内置种子数据 | ✏️ 已修改 |
-| M8 | 客户端内的配置页面 | 把参考仓后台的模型中心和各配置页（后处理、预设、多角度、打光、脚本、Agent 模型）搬进客户端“设置”，UI 调整为客户端风格；模型和配置全部内置，用户只能修改，不能新增或删除 <br>**2026-10-07 补充（用户要求，见实施期裁定）**：后处理、绘图预设、多角度、打光、剧本生成分镜、Agent 模型六个配置页从设置里移除，对应配置写死为内置种子值，用户看不到也改不了；设置只剩“通用”（数据目录、版本号）、“模型中心”（全局上游、每模型独立上游、模型自身可改字段）、“环境诊断” | ✏️ 已修改 |
-| M9 | 首次安装的种子数据 | 从参考仓生产后台导出（模型 + settings 配置），去掉 Key，编译进 sidecar 二进制（go:embed），首次启动导入 SQLite | ✅ 已确认 |
+| M8 | 客户端内的配置页面 | 把参考仓后台的模型中心和各配置页（后处理、预设、多角度、打光、脚本、Agent 模型）搬进客户端“设置”，UI 调整为客户端风格；模型和配置全部内置，用户只能修改，不能新增或删除 <br>**2026-10-07 补充（用户要求，见实施期裁定）**：后处理、绘图预设、多角度、打光、剧本生成分镜、Agent 模型六个配置页从设置里移除，对应配置写死为内置种子值，用户看不到也改不了；设置只剩“通用”（数据目录、版本号）、“模型中心”（全局上游、每模型独立上游、模型自身可改字段）、“环境诊断” <br>**2026-10-07 变更（目标状态，设置界面在另一分支开发中）**：设置界面改为弹框，菜单只有一级，仅“通用、模型中心、环境诊断”三项；“设置”按钮在顶栏最右侧、Agent 之后；环境诊断页的按钮改用 antd 按钮 | ✏️ 已修改 |
+| M9 | 首次安装的种子数据 | 从参考仓生产后台导出（模型 + settings 配置），去掉 Key，编译进 sidecar 二进制（go:embed），首次启动导入 SQLite | ✅ 已确认 <br>**2026-10-07 变更**：内置模型精简到 26 个（text 2 / image 6 / video 16 / audio 2）：删除工作流专用、已停用、cm-seedance 系列、Midjourney 和 gpt-image-2.1；gpt-5.5 三合一（删除 id 36、41）；`sd-2.0-mini-yd` 去掉价格；以 `seed/model_configs.jsonl` 为准 |
 | M10 | 用户可修改的字段 | 只开放安全字段：启用/隐藏、显示名、排序、uiSchema 默认值、并发和重试，以及 settings 里的预设提示词、候选模型；请求模板、轮询模板、base_path、图片协议等技术字段只读。保存时后端校验；每个模型和每项配置提供“恢复默认”按钮 <br>**2026-10-07 补充**：settings 里五项画布配置的可改字段清空（全只读），只剩模型字段与 `base_domain` 可改 | ✅ 已确认 |
 | M11 | 升级时内置数据的更新方式 | 按 modelId 合并：新模型自动加入，新版已去掉的模型移除；字段级别上，用户没改过的字段跟随新版，用户改过的保留用户值（表里记录被用户改过的字段） | ✅ 已确认 |
 
@@ -182,7 +182,7 @@ JSON 结构草案（v2，已作废）：
 |---|---|---|---|
 | P0 | 验证原型。WebCodecs、mediabunny、127.0.0.1 Range 请求已在 2026-09-30 实测通过（见 D7）；剩余：sidecar 启动握手（stdin 传 token、stdout 回端口）、Agent WebSocket、Windows 上跑同一套测试 | 1 天 | ✅ 已完成（2026-09-30 合并到 main）；macOS 诊断 17/17 PASS，Windows 实机验证待补，见 `docs/superpowers/plans/p0-results.md` |
 | P1 | Go sidecar：从参考仓复制画布相关包；MySQL → SQLite（modernc，合并成一份 schema，方言替换）；本地文件存储 + `media://` 转本地 URL；固定本地用户；计费空实现；去掉 Redis、owner 锁、多实例租约；任务恢复；孤儿回收；token + Origin 校验；sidecar 启动入口；Go 测试迁到 SQLite | 2–2.5 周 | ✅ 已确认 <br>**实施进度（2026-10-06）**：P1a ✅（SQLite 数据层，已合 main）；P1b ✅（存储、媒体、HTTP）；P1c ✅（生成管线，迁移 0004）；P1d ✅（其余接口）；均已并入 integration 866ef9c；S12 仍待定，带 URL-only 参考媒体的模型在调上游前报错 |
-| P2 | 内置数据：从生产库导出模型、settings 配置、Skill、Agent 工具目录、AI 角色数据，去掉 Key，go:embed；首次启动导入；升级时按 modelId 字段级合并（M11）；“恢复默认” | 1 周 | ✅ 已确认 <br>**实施进度**：P2a ✅（47 模型 / 6 设置内置导入、M10/M11 合并与恢复默认，已并入 integration）；Skill、Agent 工具目录随 P5 导入 |
+| P2 | 内置数据：从生产库导出模型、settings 配置、Skill、Agent 工具目录、AI 角色数据，去掉 Key，go:embed；首次启动导入；升级时按 modelId 字段级合并（M11）；“恢复默认” | 1 周 | ✅ 已确认 <br>**实施进度**：P2a ✅（47 模型 / 6 设置内置导入；2026-10-07 起内置模型精简为 26 个、M10/M11 合并与恢复默认，已并入 integration）；Skill、Agent 工具目录随 P5 导入 |
 | P3 | 前端迁移：复制画布模块和 shared；删除协作、发布、分享、计费、登录、ChatPanel；启动直接进画布（F9）；“返回”改“所有项目”；“保存到本地”节点放回菜单；右键“在访达中显示”；下载失败提示与重试（S5）；字体本地化；vitest 测试迁移 | 1.5–2 周 | ✅ 已确认 <br>**实施进度**：P3a ✅（画布迁移、启动入口、sidecar 重启刷新，已并入 integration；GUI 手动清单待人工）；P3b/P3c ✅（估价 UI、协作残留清理、下载失败角标与重试，T1–T11 完成，已完成并合入 integration；Tauri GUI 验收待人工）；修下载及各并行小修 ✅（已完成并合入 integration） |
 | P4 | 设置页：把参考仓后台的模型中心和各配置页搬进客户端并调整 UI；只开放安全字段（M10）；base_domain 和 Key 填写；Agent 模型切换（A2）；数据目录修改与迁移（S2）；版本号显示 | 1–1.5 周 | ✅ 已确认 <br>**实施进度**：T1–T14 ✅（修复轮 f5a176e，已合 p4-int）；T15（适配器接线、移除 /admin/canvas 写接口）✅（已完成并合入 integration）；`app.restart()` 与单实例共存待人工验证 |
 | P5 | Agent：Eino 运行时接入、WebSocket、内置 Skill；隐藏 Skill 创建和 Skill JSON 导入导出；能力清单一致性测试 | 0.5–1 周 | ✅ 已确认 <br>**实施进度**：✅ 后端 T1–T9（修复轮 1434004）与前端 T10 均已并入 integration |
@@ -345,5 +345,10 @@ JSON 结构草案（v2，已作废）：
 | 终审 | I-4：CSP 放行 https 图片和媒体，与参考仓直接显示上游外链一致（`img-src`、`media-src` 加 `https:`；`connect-src` 不放行 https） | 终审裁定，S5 回退保留的上游地址需能预览 | final-review-spec I-4 |
 | 2026-10-07 | 每模型独立上游：`model_configs` 加 `upstream_base_url` / `upstream_api_key`（迁移 0070，两列同空或同非空，库层 CHECK）；解析唯一入口 `models.ResolveUpstream(model, 全局)`：两列都非空用模型的，否则全局 `base_domain` + `upstream_api_key`；generation（直连提交、队列执行、重启续轮询）、canvasgen 后处理（经队列）、canvasscript、Agent backbone 全部改走它，Seedance 合规不绑定模型，经 `ResolveUpstream(nil, …)` 恒走全局；`GET /api/v1/settings/models` 每项加 `upstream{configured,baseUrl,apiKeyMasked}`，`PATCH /api/v1/settings/models/{id}` 接受 `upstream`（`{baseUrl,apiKey?}` 设置，apiKey 缺省或空串时保留原 Key；`null` 清空；最终两项必须都非空，否则 400）；全局上游卡片移到模型中心顶部，全局接口路径不变；独立上游不属于 user_overrides，`builtin.Apply` 升级、改主键、恢复默认都保留 | 用户要求，改变 M2“只有一个全局 base_domain”的决策（M2、M3、A2 已追加说明） | `.superpowers/sdd/per-model-upstream-contract.md`、`pmu-server-report.md` |
 | 2026-10-07 | 设置页精简、六项配置写死：`builtin` 白名单里 `canvas_postprocess_config`、`gen_image_prompt_presets`、`canvas_multi_angle`、`canvas_light_control`、`canvas_script_config` 的可改字段全部移除（全只读）；`seedFormatVersion` 递增为 `p2a-2`，升级首启重新合并，这五项的 user_overrides 全部作废、回到内置值，且每次启动再检查一遍残留覆盖（`resetLockedSettings`）；模型的 user_overrides、独立上游、`base_domain` 不受影响。Agent backbone 每次启动无条件恢复种子 `model_name` 并清 `model_name_overridden`。注销 `/api/v1/settings/configs/{key}`（GET/PUT/POST restore-default）与 `/api/v1/settings/agent-models`（GET、PUT `/{id}`、POST `/{id}/restore-default`），调用返回 404/405；画布运行时读取接口（`/canvas/postprocess-config`、`/canvas/gen-image-presets`、`/canvas/multi-angle`、`/canvas/light-control`、`/canvas-script/*`）与只读 `/admin/agent/backbone-models` 保留 | 用户要求（M5、M8、M10、A2 已追加说明） | `.superpowers/sdd/hardcode-configs-contract.md`、`hc-server-report.md` |
+| 2026-10-07 | 内置模型精简到 26 个（text 2 / image 6 / video 16 / audio 2）：删除工作流专用、停用的模型，cm-seedance 系列，Midjourney，gpt-image-2.1；gpt-5.5 三合一（删除 id 36、41）；`sd-2.0-mini-yd` 去掉价格；M11 合并时新版已去掉的模型移除 | 用户要求，缩小内置范围；`seed/README.md` 同步 | `seed/model_configs.jsonl` |
+| 2026-10-07 | 独立上游补充：只关联模型；提交时记录上游指纹（规范化地址 + Key 的 sha256 前 16 位，迁移 0071），重启续轮询指纹不一致立即失败退款，旧任务无指纹放行；Seedance 合规素材固定走全局（短期方案）：doubao-seedance 模型走独立上游且指纹与全局不同时，引用已校验 `asset://` 素材在提交前报错；保存全局或模型地址时自动去掉末尾 `/` 与 `/v1`，`ResolveUpstream` 出口同样规范化；查模型行出现非“未找到”错误时不再静默回落全局；`ErrUpstreamUnpaired` 映射为 400 | 独立上游审查修复（I-1、I-2、M-1、M-5、M-7）；Seedance 素材归属于校验时的账号，换上游会跨账号 | commit b1ec2bf |
+| 2026-10-07 | 设置界面改为弹框、菜单一级，仅“通用、模型中心、环境诊断”三项；“设置”按钮挪到顶栏最右侧、Agent 之后；环境诊断页改用 antd 按钮。设置界面在另一分支开发，此处按目标状态记录 | 用户要求（M8 已追加说明） | 设置界面开发分支（未合入） |
+| 2026-10-07 | SQLite 驱动由 `modernc.org/sqlite` 换成 `ncruces/go-sqlite3`；细节待驱动审查结果出来后补充（D5 已追加说明；P1a 两条涉及 modernc 的裁定为当时背景，不改） | 用户改动 | commit bbd224f |
+| 2026-10-07 | 3D 导演台截图的 CORS 修复：响应加 `Vary: Origin` | 避免缓存按 Origin 串用响应 | 导演台截图修复 |
 
 人工验收项汇总见 `docs/manual-acceptance-checklist.md`。
