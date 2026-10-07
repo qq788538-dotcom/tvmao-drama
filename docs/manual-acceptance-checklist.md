@@ -260,6 +260,16 @@ Windows 实机全部必做；macOS 上 sidecar 级冒烟（`project list`/`node 
 - 步骤：Windows 上在 Codex 默认沙箱里执行 `miaoju project list`，再在允许网络的配置下执行一次。
 - 预期：前者退出码 9 并提示「网络被 AI 助手的沙箱拦截，请允许本命令访问网络后重试」（若 Windows 沙箱不拦截 loopback 则记录实际行为）；后者退出码 0。
 
+### L11 AI 助手直接使用 skill
+- 步骤：设置 → 配置 → 命令行工具 → 安装（卡片显示 Claude Code、Codex 的 skill 均为「已安装」）；在 Claude Code 新会话里直接说「用喵剧列出我的项目」；Codex 同理。
+- 预期：两者都会调用 `miaoju project list` 并列出项目，无需再复制提示词。
+
+### L12 让 AI 助手安装
+- 步骤：先卸载；切到「让 AI 助手安装」页签，复制提示词发给 Claude Code。
+- 预期：它按提示词完成安装（被沙箱拦截时会申请权限）；重新打开终端 `miaoju --help` 可用，设置卡片刷新后 Claude Code 的 skill 显示「已安装」。
+- Windows 真机上再按 Windows 版提示词做一次，完成后执行 `reg query HKCU\Environment /v Path`：值类型仍是 REG_EXPAND_SZ，原有的 `%USERPROFILE%` 类引用没有被展开。
+- 预先放一个用户自己的 `~/.claude/skills/miaoju-cli` 目录（无 `.miaoju-managed`）再发提示词：AI 报「已存在同名目录，未覆盖」，目录内容不变。
+
 ## 条目统计
 
-macOS 5 项、Windows 9 项、通用 14 项、下载 7 项，共 35 项（C8、C9 内部另含子项），另有对象存储 1 项（O1，内含 6 个步骤）、合规校验 1 项（O2）、命令行工具 10 项（L1–L10）。
+macOS 5 项、Windows 9 项、通用 14 项、下载 7 项，共 35 项（C8、C9 内部另含子项），另有对象存储 1 项（O1，内含 6 个步骤）、合规校验 1 项（O2）、命令行工具 12 项（L1–L12）。
