@@ -95,9 +95,11 @@ type Client struct {
 	warn      func(string)
 	version   string
 	connected bool
-	userAgent string
-	requestID string
-	hc        *http.Client
+	// reconnected：本条命令已经重读过一次地址文件（401 或连接被拒触发，两者共用），不再重连，避免来回打转。
+	reconnected bool
+	userAgent   string
+	requestID   string
+	hc          *http.Client
 	// trace 打开后把请求行写进 stderr。**永不打印 Authorization 与 body**——
 	// body 里有提示词和签名 URL。
 	trace func(format string, a ...any)
@@ -215,7 +217,8 @@ type request struct {
 	contentType string
 }
 
-// do 确保已连上本机应用后执行请求；遇 401 重读地址文件再试一次。
+// do 确保已连上本机应用后执行请求；遇 401 或（已连上后）连接被拒时重读地址文件再试一次，
+// 每条命令最多重连一次。
 func (c *Client) do(ctx context.Context, req request, out any) error {
 	if !c.connected {
 		if err := c.connect(ctx, false); err != nil {
@@ -223,9 +226,23 @@ func (c *Client) do(ctx context.Context, req request, out any) error {
 		}
 	}
 	err := c.doOnce(ctx, req, out)
+	var anr *AppNotRunningError
+	if c.connected && !c.reconnected && errors.As(err, &anr) && isConnRefused(anr.Err) {
+		// 应用崩溃重启后端口换了：旧端口是连接被拒而不是 401。重读地址文件，端口确实变了才重发
+		c.reconnected = true
+		old := c.server
+		if cerr := c.connect(ctx, true); cerr != nil || c.server == old {
+			return err
+		}
+		return c.doOnce(ctx, req, out)
+	}
 	var api *APIError
 	if errors.As(err, &api) && api.Status == http.StatusUnauthorized {
+		if c.reconnected {
+			return &AppNotRunningError{Err: err}
+		}
 		// 应用重启过：端口和 token 都换了，重读地址文件再试一次（不占用 maxRetries）
+		c.reconnected = true
 		if cerr := c.connect(ctx, true); cerr != nil {
 			return cerr
 		}

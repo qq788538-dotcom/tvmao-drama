@@ -448,3 +448,72 @@ func TestDownloadURLConnectionRefusedIsClassified(t *testing.T) {
 		t.Fatalf("连接被拒应经 classifyNetErr 归为 AppNotRunningError，got %T %v", err, err)
 	}
 }
+
+// 应用崩溃重启后端口变了：旧端口连接被拒（不是 401），已连上的 client 应重读地址文件换到新端口。
+func TestConnRefusedAfterConnectedRereadsEndpointOnce(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+	})
+	a := httptest.NewServer(pingWrap("miaoju-desktop", ok))
+	b := httptest.NewServer(pingWrap("miaoju-desktop", ok))
+	defer b.Close()
+	cur := infoFor(t, a, testCLIToken, "")
+	calls := 0
+	c := New(Options{Resolve: func() (endpoint.Info, error) { calls++; return cur, nil }})
+	if _, err := c.ListProjects(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	a.Close()
+	cur = infoFor(t, b, testCLIToken, "")
+	if _, err := c.ListProjects(context.Background()); err != nil {
+		t.Fatalf("端口变了应重连新端口，err=%T %v", err, err)
+	}
+	if calls != 2 {
+		t.Fatalf("Resolve 调用 %d 次，应为 2", calls)
+	}
+}
+
+func TestConnRefusedSamePortReturnsOriginalError(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+	})
+	a := httptest.NewServer(pingWrap("miaoju-desktop", ok))
+	info := infoFor(t, a, testCLIToken, "")
+	c := New(Options{Resolve: func() (endpoint.Info, error) { return info, nil }})
+	if _, err := c.ListProjects(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	a.Close()
+	_, err := c.ListProjects(context.Background())
+	var anr *AppNotRunningError
+	if !errors.As(err, &anr) || !isConnRefused(anr.Err) {
+		t.Fatalf("端口没变应返回原来的连接被拒，err=%T %v", err, err)
+	}
+}
+
+func TestConnRefusedReconnectsAtMostOncePerCommand(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+	})
+	a := httptest.NewServer(pingWrap("miaoju-desktop", ok))
+	b := httptest.NewServer(pingWrap("miaoju-desktop", ok))
+	cc := httptest.NewServer(pingWrap("miaoju-desktop", ok))
+	defer cc.Close()
+	cur := infoFor(t, a, testCLIToken, "")
+	c := New(Options{Resolve: func() (endpoint.Info, error) { return cur, nil }})
+	if _, err := c.ListProjects(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	a.Close()
+	cur = infoFor(t, b, testCLIToken, "")
+	if _, err := c.ListProjects(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	b.Close()
+	cur = infoFor(t, cc, testCLIToken, "")
+	_, err := c.ListProjects(context.Background())
+	var anr *AppNotRunningError
+	if !errors.As(err, &anr) {
+		t.Fatalf("同一条命令只重连一次，第二次端口变化应直接报错，err=%T %v", err, err)
+	}
+}
