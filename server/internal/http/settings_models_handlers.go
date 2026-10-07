@@ -25,6 +25,7 @@ func registerModelSettings(r chi.Router, d SettingsCenterDeps) {
 	r.Get("/models", h.list)
 	r.Patch("/models/{id}", h.patch)
 	r.Post("/models/{id}/restore-default", h.restore)
+	r.Post("/models/test-connection", h.testConnection)
 }
 
 type modelSettingsHandler struct{ d SettingsCenterDeps }
