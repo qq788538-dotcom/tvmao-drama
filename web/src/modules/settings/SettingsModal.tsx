@@ -7,6 +7,7 @@ import { applySettingsQueryDefaults } from './invalidate';
 import { settingsTheme } from './theme';
 import { GeneralPage } from './pages/GeneralPage';
 import { ModelCenterPage } from './pages/ModelCenterPage';
+import { CliToolCard } from './components/CliToolCard';
 import { DiagPage } from '@/diag/DiagPage';
 import { type SectionKey, useSettingsModal } from './settingsModalStore';
 
@@ -15,6 +16,7 @@ export type { SectionKey };
 // 菜单只有一级、没有分组标题。
 export const SECTIONS: { key: SectionKey; label: string }[] = [
   { key: 'models', label: '模型中心' },
+  { key: 'cli', label: '命令行工具' },
   { key: 'general', label: '配置' },
   { key: 'diag', label: '环境诊断' },
 ];
@@ -22,6 +24,7 @@ export const SECTIONS: { key: SectionKey; label: string }[] = [
 const PAGES: Record<SectionKey, () => ReactNode> = {
   general: () => <GeneralPage />,
   models: () => <ModelCenterPage />,
+  cli: () => <CliToolCard />,
   diag: () => <DiagPage embedded />,
 };
 

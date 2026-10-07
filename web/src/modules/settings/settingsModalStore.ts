@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type SectionKey = 'general' | 'models' | 'diag';
+export type SectionKey = 'general' | 'models' | 'cli' | 'diag';
 
 interface SettingsModalState {
   open: boolean;

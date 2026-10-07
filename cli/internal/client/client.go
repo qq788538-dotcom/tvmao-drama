@@ -190,7 +190,7 @@ func (c *Client) connect(ctx context.Context, refresh bool) error {
 	}
 	if !c.connected && c.warn != nil && c.version != "" && c.version != "dev" &&
 		info.AppVersion != "" && info.AppVersion != c.version {
-		c.warn(fmt.Sprintf("命令行工具版本 %s 与喵剧 %s 不一致，请在喵剧 设置 → 配置 → 命令行工具 中重新安装", c.version, info.AppVersion))
+		c.warn(fmt.Sprintf("命令行工具版本 %s 与喵剧 %s 不一致，请在喵剧 设置 → 命令行工具 中重新安装", c.version, info.AppVersion))
 	}
 	c.connected = true
 	return nil

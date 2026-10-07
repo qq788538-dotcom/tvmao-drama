@@ -63,7 +63,7 @@ func Load(dir string) (Info, error) {
 		return Info{}, fmt.Errorf("地址文件格式错误: %w", err)
 	}
 	if i.Version != 1 {
-		return Info{}, fmt.Errorf("地址文件版本 %d 不受支持，请在喵剧 设置 → 配置 → 命令行工具 中重新安装", i.Version)
+		return Info{}, fmt.Errorf("地址文件版本 %d 不受支持，请在喵剧 设置 → 命令行工具 中重新安装", i.Version)
 	}
 	if i.Port <= 0 || i.Port > 65535 || i.Token == "" {
 		return Info{}, errors.New("地址文件内容不完整")

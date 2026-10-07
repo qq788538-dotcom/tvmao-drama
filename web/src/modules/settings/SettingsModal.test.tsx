@@ -7,6 +7,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 vi.mock('@/diag/DiagPage', () => ({ DiagPage: ({ embedded }: { embedded?: boolean }) => <div>诊断页内容{embedded ? '-embedded' : ''}</div> }));
 vi.mock('./pages/GeneralPage', () => ({ GeneralPage: () => <div>通用页内容</div> }));
 vi.mock('./pages/ModelCenterPage', () => ({ ModelCenterPage: () => <div>模型中心内容</div> }));
+vi.mock('./components/CliToolCard', () => ({ CliToolCard: () => <div>命令行工具内容</div> }));
 
 import { SettingsModal, SECTIONS } from './SettingsModal';
 import { openSettings, useSettingsModal } from './settingsModalStore';
@@ -42,9 +43,9 @@ describe('SettingsModal', () => {
   it('菜单正好 3 项、没有分组标题', () => {
     setup();
     act(() => openSettings());
-    expect(SECTIONS.map((s) => s.label)).toEqual(['模型中心', '配置', '环境诊断']);
+    expect(SECTIONS.map((s) => s.label)).toEqual(['模型中心', '命令行工具', '配置', '环境诊断']);
     const items = [...document.querySelectorAll('.ant-menu-item')].map((e) => e.textContent);
-    expect(items).toEqual(['模型中心', '配置', '环境诊断']);
+    expect(items).toEqual(['模型中心', '命令行工具', '配置', '环境诊断']);
     expect(document.querySelector('.ant-menu-item-group-title')).toBeNull();
     expect(document.querySelector('.ant-menu-submenu')).toBeNull();
   });
@@ -54,6 +55,8 @@ describe('SettingsModal', () => {
     act(() => openSettings());
     fireEvent.click(screen.getByText('模型中心'));
     expect(screen.getByText('模型中心内容')).toBeTruthy();
+    fireEvent.click(screen.getByText('命令行工具'));
+    expect(screen.getByText('命令行工具内容')).toBeTruthy();
     fireEvent.click(screen.getByText('环境诊断'));
     expect(screen.getByText('诊断页内容-embedded')).toBeTruthy();
   });

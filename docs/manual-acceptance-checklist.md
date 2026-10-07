@@ -229,7 +229,7 @@ Windows 实机全部必做；macOS 上 sidecar 级冒烟（`project list`/`node 
 - 出处：CLI 计划 Task 14 Step 2。
 
 ### L3 设置卡片安装（macOS、Windows 各一次）
-- 步骤：设置 → 配置 → 命令行工具 → 安装；重新打开终端执行 `miaoju --help`。
+- 步骤：设置 → 命令行工具 → 安装；重新打开终端执行 `miaoju --help`。
 - 预期：命令可用。
 
 ### L4 Windows：用户 Path
@@ -253,7 +253,7 @@ Windows 实机全部必做；macOS 上 sidecar 级冒烟（`project list`/`node 
 - 预期：退出耗时没有明显变长（SSE 连接已立即断开）。
 
 ### L9 卸载
-- 步骤：设置 → 配置 → 命令行工具 → 卸载，重新打开终端。
+- 步骤：设置 → 命令行工具 → 卸载，重新打开终端。
 - 预期：`~/.zshrc` 中的标记块已被移除，`miaoju` 命令已不存在。
 
 ### L10 Codex 沙箱（Windows）
@@ -261,7 +261,7 @@ Windows 实机全部必做；macOS 上 sidecar 级冒烟（`project list`/`node 
 - 预期：前者退出码 9 并提示「网络被 AI 助手的沙箱拦截，请允许本命令访问网络后重试」（若 Windows 沙箱不拦截 loopback 则记录实际行为）；后者退出码 0。
 
 ### L11 AI 助手直接使用 skill
-- 步骤：设置 → 配置 → 命令行工具 → 安装（卡片显示 Claude Code、Codex 的 skill 均为「已安装」）；在 Claude Code 新会话里直接说「用喵剧列出我的项目」；Codex 同理。
+- 步骤：设置 → 命令行工具 → 安装（卡片显示 Claude Code、Codex 的 skill 均为「已安装」）；在 Claude Code 新会话里直接说「用喵剧列出我的项目」；Codex 同理。
 - 预期：两者都会调用 `miaoju project list` 并列出项目，无需再复制提示词。
 
 ### L12 让 AI 助手安装
