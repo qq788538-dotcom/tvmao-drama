@@ -47,3 +47,18 @@ func TestFromAPIErrorUnknownCodeFallsBackToStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalAppExitCodes(t *testing.T) {
+	if AppNotRunning != 8 || SandboxBlocked != 9 {
+		t.Fatalf("AppNotRunning=%d SandboxBlocked=%d", AppNotRunning, SandboxBlocked)
+	}
+	seen := map[int]string{}
+	for name, v := range map[string]int{"OK": OK, "Usage": Usage, "Auth": Auth, "NotFound": NotFound,
+		"Conflict": Conflict, "Server": Server, "Network": Network,
+		"AppNotRunning": AppNotRunning, "SandboxBlocked": SandboxBlocked} {
+		if other, dup := seen[v]; dup {
+			t.Fatalf("%s 与 %s 退出码重复（%d）", name, other, v)
+		}
+		seen[v] = name
+	}
+}

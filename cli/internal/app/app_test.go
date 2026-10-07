@@ -6,10 +6,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/cli/internal/client"
+	"github.com/james/huabu_studio/apps/cli/internal/endpoint"
 	"github.com/james/huabu_studio/apps/cli/internal/exitcode"
 	"github.com/james/huabu_studio/apps/cli/internal/workspace"
 )
@@ -17,38 +21,69 @@ import (
 // harness 是一次命令执行的完整隔离环境：自己的 stdout/stderr、
 // 自己的工作目录（项目绑定）、自己的假服务端。
 type harness struct {
+	t              *testing.T
 	stdout, stderr bytes.Buffer
 	// stdin 默认空；需要喂 stdin 的用例（node move --file -）在 run 前赋值。
 	stdin   io.Reader
 	workDir string
 	server  *httptest.Server
-	env     map[string]string
-	version string
+	// endpointDir 存放 cli-endpoint.json；run 时按 server 端口与 h.version 写入。
+	endpointDir string
+	version     string
 }
+
+// harnessCLIToken 是 harness 写进地址文件的 token，ping 校验它。
+const harnessCLIToken = "cli-test-token"
 
 func newHarness(t *testing.T, h http.HandlerFunc) *harness {
 	t.Helper()
-	srv := httptest.NewServer(h)
+	hs := &harness{workDir: t.TempDir(), endpointDir: t.TempDir(), version: "dev"}
+	// 包一层响应 /api/v1/cli/ping，其余请求交给 h。
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/cli/ping" {
+			if r.Header.Get("Authorization") != "Bearer "+harnessCLIToken {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"app": "miaoju-desktop", "version": hs.version})
+			return
+		}
+		h(w, r)
+	}))
 	t.Cleanup(srv.Close)
-	return &harness{
-		workDir: t.TempDir(), server: srv,
-		env: map[string]string{}, version: "dev",
+	hs.server = srv
+	hs.t = t
+	return hs
+}
+
+// writeEndpoint 按当前 server 端口与 h.version 写 cli-endpoint.json。
+func (h *harness) writeEndpoint() {
+	h.t.Helper()
+	u, err := url.Parse(h.server.URL)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	blob, _ := json.Marshal(endpoint.Info{Version: 1, Port: port, Token: harnessCLIToken, AppVersion: h.version})
+	if err := os.WriteFile(filepath.Join(h.endpointDir, endpoint.FileName), blob, 0o600); err != nil {
+		h.t.Fatal(err)
 	}
 }
 
 func (h *harness) run(args ...string) int {
 	h.stdout.Reset()
 	h.stderr.Reset()
+	h.writeEndpoint()
 	root := NewRootCommand(Dependencies{
-		ClientFactory: func() *client.Client {
-			return client.New(client.Options{Server: h.server.URL, Token: "test", Version: h.version})
-		},
-		Stdin:   h.stdinOrEmpty(),
-		Stdout:  &h.stdout,
-		Stderr:  &h.stderr,
-		Version: h.version,
-		WorkDir: h.workDir,
-		Env:     func(k string) string { return h.env[k] },
+		Stdin:       h.stdinOrEmpty(),
+		Stdout:      &h.stdout,
+		Stderr:      &h.stderr,
+		Version:     h.version,
+		WorkDir:     h.workDir,
+		EndpointDir: h.endpointDir,
 	})
 	return Execute(root, args, &h.stderr)
 }
