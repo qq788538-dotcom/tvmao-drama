@@ -223,8 +223,26 @@ function CoverModal({
 
 // ─── 页面 ────────────────────────────────────────────────────────────────────
 
-export function CanvasProjectsPage() {
-  const navigate = useNavigate();
+export interface CanvasProjectsPageProps {
+  /** 弹框模式：打开项目（含新建、创建副本后跳转）交给调用方；不传则走路由跳转。 */
+  onOpenProject?: (id: number) => void;
+  /** 项目被删除后回调（弹框用它处理「删的是当前项目」）。 */
+  onProjectDeleted?: (id: number) => void;
+  /** 嵌在弹框里：不显示自己的大标题（弹框已有标题）。 */
+  embedded?: boolean;
+}
+
+export function CanvasProjectsPage({ onOpenProject, onProjectDeleted, embedded = false }: CanvasProjectsPageProps = {}) {
+  const routerNavigate = useNavigate();
+  // 页面里所有「进入某个项目」都走这一个出口。
+  const navigate = useCallback(
+    (to: string) => {
+      const id = Number(to.split('/').pop());
+      if (onOpenProject && Number.isFinite(id)) onOpenProject(id);
+      else routerNavigate(to);
+    },
+    [onOpenProject, routerNavigate],
+  );
   const { message, modal } = AntApp.useApp();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Project | null>(null);
@@ -279,9 +297,10 @@ export function CanvasProjectsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteProject(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       message.success('项目已删除');
       invalidate();
+      onProjectDeleted?.(id);
     },
     onError: (err: any) => message.error(err?.response?.data?.error || '删除失败'),
   });
@@ -379,20 +398,22 @@ export function CanvasProjectsPage() {
     <div style={{ minHeight: '100%', color: '#e4e4e7' }}>
       <style>{CARD_CSS}</style>
       {/* 容器不再夹 maxWidth:1200——2000px 屏上那会让两边各空掉 400px。 */}
-      <div style={{ padding: '32px 40px' }}>
-        <div
-          style={{
-            display: 'flex',
-            width: '100%',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 24,
-          }}
-        >
-          <Title level={3} style={{ margin: 0, color: '#e4e4e7' }}>
-            项目列表
-          </Title>
-        </div>
+      <div style={{ padding: embedded ? '16px 24px 24px' : '32px 40px' }}>
+        {!embedded && (
+          <div
+            style={{
+              display: 'flex',
+              width: '100%',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 24,
+            }}
+          >
+            <Title level={3} style={{ margin: 0, color: '#e4e4e7' }}>
+              项目列表
+            </Title>
+          </div>
+        )}
 
         {projectsQuery.isLoading ? (
           <div style={{ textAlign: 'center', padding: 48 }}>

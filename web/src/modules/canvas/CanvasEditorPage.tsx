@@ -14,7 +14,6 @@ import { ShortcutsHint } from '@/modules/canvas/editor/ShortcutsHint';
 import { useCanvasStore } from '@/modules/canvas/editor/store';
 import {
   configureCanvasPersistence,
-  flushCanvasMutations,
   onCanvasOwnerLost,
   persistNodeById,
   retireCanvasPersistence,
@@ -44,6 +43,8 @@ import { useAgentHandoff } from '@/modules/canvas/editor/agent/agentHandoff';
 import { agentDropPointFor, claimAgentSlot } from '@/modules/canvas/editor/agent/dropPoint';
 import { applyCanvasOpArtifact, isCanvasOpArtifact } from '@/modules/canvas/editor/agent/canvasOps';
 import { LibraryPanel } from '@/modules/canvas/panels/LibraryPanel';
+import { openProjects } from '@/modules/canvas/projectsModalStore';
+import { openSettings } from '@/modules/settings/settingsModalStore';
 import '../../styles/canvas.css';
 
 // 桌面端单用户、单窗口（spec X2、S11）：没有画布编辑锁，也就没有 claim / 心跳 /
@@ -413,13 +414,6 @@ export function CanvasEditorPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // 应用内跳转（如「返回」）。新模型下用户动作已即时落库，不再有「未保存」
-  // 概念；只有 1.5s debounce 中的 prompt 可能还没提交，所以离开前先 flush
-  // 一次队列再跳转，避免丢掉最后一次输入。
-  const requestNavigate = useCallback((to: string) => {
-    void flushCanvasMutations().catch(() => undefined).finally(() => navigate(to));
-  }, [navigate]);
-
   if (!Number.isFinite(pid) || pid <= 0) {
     return <div className="p-8 text-white">无效的项目 ID</div>;
   }
@@ -526,10 +520,10 @@ export function CanvasEditorPage() {
               喵剧AI
             </div>
           </div>
-          {/* 「所有项目」：进项目列表页，选中项目后回到画布（spec F9）。离开前先 flush。 */}
+          {/* 「所有项目」：开项目弹框（ProjectsModal），不离开画布；切到别的项目时由弹框负责 flush。 */}
           <button
             className="flex items-center gap-1.5 px-2 py-1 text-sidebar-foreground hover:text-foreground text-xs rounded bg-transparent border-none cursor-pointer"
-            onClick={() => requestNavigate('/canvas')}
+            onClick={() => openProjects()}
           >
             <LayoutGrid size={14} />
             所有项目
@@ -653,10 +647,10 @@ export function CanvasEditorPage() {
         </button>
 
         {/* 「设置」（P4）：放在顶栏最右侧、Agent 之后。上游地址与 Key、模型中心、画布配置、
-            数据目录、环境诊断。离开前同样先 flush。 */}
+            数据目录、环境诊断。开弹框，不离开画布，所以不需要 flush。 */}
         <button
           type="button"
-          onClick={() => requestNavigate('/settings')}
+          onClick={() => openSettings()}
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-foreground cursor-pointer shadow-xl shadow-black/40 pointer-events-auto transition-colors bg-[rgba(28,28,28,0.95)] hover:bg-accent"
           style={{
             borderWidth: 1,
