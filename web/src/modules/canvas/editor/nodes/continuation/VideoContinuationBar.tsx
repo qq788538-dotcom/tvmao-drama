@@ -6,15 +6,16 @@
 // - 一行续写内容输入框(留空=自然续写,兜底文案见 videoContinuation.ts);
 // - 确认:浏览器内切出前置片段(复用 trim 的 mediabunny 管道)→ 上传 →
 //   铺「切片 preview 节点 + gen-video 节点」对并连线,模型写死续写专用
-//   doubao-seedance-2-5-260628-extend;切片自动异步提交 Seedance 合规校验;
+//   doubao-seedance-2-5-260628-extend;切片随即提交 Seedance 合规校验(不等待);
 // - 确认只铺节点——生成由用户在 gen-video 节点上手动点
 //   (批量入口绝不自动发起生成的铁律)。
 import { redactSecrets } from '@/shared/redact';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as AntApp } from 'antd';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Loader2, X } from 'lucide-react';
-import { listRuntimeModels, uploadAsset, currentProjectId, verifySeedance } from '@/shared/api';
+import { listRuntimeModels, uploadAsset, currentProjectId } from '@/shared/api';
+import { verifySeedanceAndRefresh } from '../seedanceVerify';
 import { useCanvasStore } from '../../store';
 import { persistNodeById } from '../../persistence/canvasMutations';
 import { modelSettingDefaults } from '../../utils/generationInputs';
@@ -41,6 +42,7 @@ type DragKind = 'left' | 'right' | 'move';
 
 export function VideoContinuationBar({ nodeId, url }: { nodeId: string; url: string }) {
   const { message } = AntApp.useApp();
+  const queryClient = useQueryClient();
   const show = useCanvasStore((s) => s.continuationNodeId === nodeId);
   const [duration, setDuration] = useState(0);
   const [frames, setFrames] = useState<string[]>([]);
@@ -174,8 +176,9 @@ export function VideoContinuationBar({ nodeId, url }: { nodeId: string; url: str
         persistNodeById(genId);
       }
       // 续写模型是 doubao-seedance* 前缀,generation 层强制要求输入素材已过
-      // 合规校验(execution_plan.go)——切片一落地就异步补校验,结果走节点角标。
-      verifySeedance(asset.url, 'video').catch(() => {});
+      // 合规校验(execution_plan.go)——切片一落地就提交校验(不等待):同步调用期间
+      // 角标显示校验中,结束后刷新角标显示结果。
+      verifySeedanceAndRefresh(queryClient, asset.url, 'video').catch(() => {});
       message.success('已铺续写节点,确认参数后点生成');
       store.setContinuationNode(null);
     } catch (e: any) {
@@ -184,7 +187,7 @@ export function VideoContinuationBar({ nodeId, url }: { nodeId: string; url: str
     } finally {
       setProgressText('');
     }
-  }, [phase, nodeId, modelsQuery.data, sel.start, sel.end, intent, url, message]);
+  }, [phase, nodeId, modelsQuery.data, sel.start, sel.end, intent, url, message, queryClient]);
 
   if (!show) return null;
 

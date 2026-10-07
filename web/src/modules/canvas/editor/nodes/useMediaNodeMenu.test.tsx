@@ -12,6 +12,13 @@ vi.mock('../batchQueries', () => ({
   loadSeedanceStatus: (...args: unknown[]) => loadSeedanceStatusMock(...args),
 }));
 
+// 合规校验请求：默认成功，个别用例改成失败或挂起。
+const verifyMock = vi.fn().mockResolvedValue({ objectKey: 'k', status: 'active', assetId: 'a' });
+vi.mock('@/shared/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/api')>()),
+  verifySeedance: (...args: unknown[]) => verifyMock(...args),
+}));
+
 // 「在访达中显示」最终由 sidecar 打开文件夹；这里只验证菜单把哪个地址交了出去。
 const revealMock = vi.fn();
 vi.mock('@/desktop/localMedia', async (importOriginal) => ({
@@ -154,7 +161,7 @@ describe('useMediaNodeMenu 合规校验（图片/视频/音频）', () => {
   });
 
   // 已 active 的素材（自己校验过的，或公共角色库那种天生 active 的）再提交
-  // 只是空转甚至 403，所以置灰并说明。版本轮换的重新校验由后台 worker 做。
+  // 只是空转甚至 403，所以置灰并说明。
   it('已通过校验的素材不能再点，hint 说明无需重复提交', async () => {
     loadSeedanceStatusMock.mockResolvedValueOnce({
       objectKey: 'k',
@@ -168,6 +175,40 @@ describe('useMediaNodeMenu 合规校验（图片/视频/音频）', () => {
     const item = screen.getByText('Seedance 合规校验').closest('button')!;
     expect(item).toBeDisabled();
     expect(item.getAttribute('title')).toContain('已通过校验');
+  });
+
+  // 终审 I2：失败也要刷新状态，否则后端刚写下的 failed_permanent 角标要等到
+  // 无关的重新拉取才出现。
+  it('校验失败后重新拉取状态，角标显示不合规', async () => {
+    loadSeedanceStatusMock.mockReset();
+    loadSeedanceStatusMock.mockResolvedValueOnce(undefined).mockResolvedValue({
+      objectKey: 'k',
+      status: 'failed_permanent',
+      error: '素材不合规：检测到真人',
+    });
+    verifyMock.mockRejectedValueOnce({ response: { data: { error: '素材不合规：检测到真人' } } });
+    renderProbeInApp({ url: 'http://x.png', kind: 'image', nodeId: 'n-1' });
+    await act(async () => {});
+    const before = loadSeedanceStatusMock.mock.calls.length;
+    openMenu();
+    await userEvent.click(screen.getByText('Seedance 合规校验'));
+    expect(await screen.findByText('不合规')).toBeInTheDocument();
+    expect(loadSeedanceStatusMock.mock.calls.length).toBeGreaterThan(before);
+    loadSeedanceStatusMock.mockReset();
+    loadSeedanceStatusMock.mockResolvedValue(undefined);
+  });
+
+  // 同步注册可能要几分钟：请求一发出角标就显示「校验中」（后端此时已写临时 pending）。
+  it('校验请求进行中时角标显示校验中', async () => {
+    let finish!: (v: unknown) => void;
+    verifyMock.mockReturnValueOnce(new Promise((r) => (finish = r)));
+    renderProbeInApp({ url: 'http://y.png', kind: 'image', nodeId: 'n-1' });
+    await act(async () => {});
+    expect(screen.queryByText('校验中')).toBeNull();
+    openMenu();
+    await userEvent.click(screen.getByText('Seedance 合规校验'));
+    expect(await screen.findByText('校验中')).toBeInTheDocument();
+    await act(async () => finish({ objectKey: 'k', status: 'active', assetId: 'a' }));
   });
 
   it('? 悬浮显示对应类型的要求条件', async () => {
