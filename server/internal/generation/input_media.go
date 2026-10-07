@@ -13,21 +13,24 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/models"
 )
 
-// InputMediaSigner 是 spec S12「输入媒体如何让上游拿到」的接入点（待定）。实现方把 inputs 里的
-// 本地媒体引用（media://key 或 sidecar 签出的本地 URL）换成上游能直接下载的地址并返回新 map
-// （不得修改入参）。未注入时走参考仓原逻辑 storage.SignedURL——桌面端得到的是 127.0.0.1
-// 地址，上游拿不到，最终由 ensureNoLocalMedia 在调上游之前明确失败。
-// 本计划不实现任何上传到公网主机的逻辑。
-type InputMediaSigner interface {
-	SignInputMedia(ctx context.Context, inputs map[string]any) (map[string]any, error)
+// MediaPublisher 把本机媒体发布到用户配置的对象存储并返回上游可下载的地址
+// （对象存储设计 §3.2；*objectstore.Publisher 满足）。
+type MediaPublisher interface {
+	Configured() bool
+	Publish(ctx context.Context, mediaKey string) (string, error)
 }
 
-// SetInputMediaSigner 注入 S12 方案的实现（setter 惯例同 SetTempDir）。
-func (s *Service) SetInputMediaSigner(m InputMediaSigner) { s.inputSigner = m }
+// SetMediaPublisher 注入对象存储发布器（setter 惯例同 SetTempDir）。nil = 参考仓原逻辑。
+func (s *Service) SetMediaPublisher(p MediaPublisher) { s.publisher = p }
 
-// ErrLocalMediaUnreachable：插值后的上游请求里仍有本机媒体地址。在调上游之前失败，
-// 不产生任何上游调用。
-var ErrLocalMediaUnreachable = errors.New("该模型要求参考图/视频/音频是上游能直接下载的网址，桌面端暂不支持把本地文件交给它（待定事项 S12）")
+// skipImagesFor：图片会以内容本身发给上游（data_uri / base64 / edits multipart）时不必上传。
+func skipImagesFor(m *models.ModelConfig) bool {
+	return m != nil && (m.ImageInputFormat != models.ImageInputFormatURL || m.ImageRequestMode == models.ImageRequestModeOpenAIImageEdits)
+}
+
+// ErrLocalMediaUnreachable：插值后的上游请求里仍有本机媒体地址（未配置对象存储）。
+// 在调上游之前失败，不产生任何上游调用。
+var ErrLocalMediaUnreachable = errors.New("未配置对象存储：视频和音频需要上传到你自己的对象存储，请在 设置 → 配置 → 对象存储 中填写")
 
 // ensureNoLocalMediaForRequest 只检查真正会发给上游的内容（C1）。
 // edits 模式且有落盘参考图时走 multipart：payload 里的 image/images/mask 不会发送

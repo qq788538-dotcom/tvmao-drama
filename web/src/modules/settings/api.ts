@@ -15,7 +15,7 @@ export function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-async function request<T>(method: 'GET' | 'PUT' | 'PATCH' | 'POST', path: string, body?: unknown): Promise<T> {
+async function request<T>(method: 'GET' | 'PUT' | 'PATCH' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
   const info = await getServerInfo();
   const headers: Record<string, string> = { ...authHeaders(info) };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -136,3 +136,36 @@ export async function switchToExistingDataDir(path: string): Promise<void> {
   await restartSidecar().catch(() => undefined);
 }
 export const appVersion = () => getVersion();
+
+// ---- 对象存储（视频/音频参考素材上传到用户自己的桶）----
+export type ObjectStorageProvider = 'tos' | 'oss';
+export interface ObjectStorageView {
+  configured: boolean;
+  provider: ObjectStorageProvider | '';
+  endpoint: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  accessKey: string;
+  secretKeySet: boolean;
+  secretKeyMasked: string;
+}
+export interface ObjectStorageInput {
+  provider: ObjectStorageProvider;
+  endpoint: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  accessKey: string;
+  /** 留空 = 沿用已保存的值 */
+  secretKey: string;
+}
+export interface ProbeResult {
+  ok: boolean;
+  step?: 'config' | 'upload' | 'presign' | 'download' | 'delete';
+  message: string;
+}
+export const getObjectStorage = () => request<ObjectStorageView>('GET', '/object-storage');
+export const saveObjectStorage = (b: ObjectStorageInput) => request<ObjectStorageView>('PUT', '/object-storage', b);
+export const clearObjectStorage = () => request<ObjectStorageView>('DELETE', '/object-storage');
+export const testObjectStorage = (b: ObjectStorageInput) => request<ProbeResult>('POST', '/object-storage/test', b);

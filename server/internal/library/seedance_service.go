@@ -96,7 +96,9 @@ type SeedanceService struct {
 	client   seedanceAPI
 	settings settingsReader
 	signer   urlSigner
-	now      func() time.Time // 可注入，测试控制重试兜底窗口的时钟
+	// publisher 把本机素材发布到用户的对象存储；nil = 回环地址一律报错。
+	publisher MediaPublisher
+	now       func() time.Time // 可注入，测试控制重试兜底窗口的时钟
 	// public 是可选的平台公共资产兜底（画布 AI 角色库实现它）。查询顺序：先查
 	// 用户自己的校验记录（seedance_assets），查不到才问它——所以对存量行为零
 	// 影响；公共资产也永远进不了 seedance_assets，worker 不会碰它们（版本轮换
@@ -186,21 +188,33 @@ func (s *SeedanceService) Configured() bool {
 // ErrSeedanceDisabled：网关地址、API Key 或合规接口路径没配，校验功能整体关闭。
 var ErrSeedanceDisabled = errors.New("合规接口未配置：请在设置中填写网关地址、API Key 和合规接口路径")
 
-// ErrLocalMediaNoPublicURL：素材只能签出本机回环地址，上游拉不到（spec S12 待定）。
-var ErrLocalMediaNoPublicURL = errors.New("本机素材暂无公网地址，暂不能提交合规校验")
+// MediaPublisher 把本机媒体发布到用户配置的对象存储（*objectstore.Publisher 满足）。
+type MediaPublisher interface {
+	Configured() bool
+	Publish(ctx context.Context, mediaKey string) (string, error)
+}
+
+// SetMediaPublisher 注入对象存储发布器；nil = 回环地址一律报错。
+func (s *SeedanceService) SetMediaPublisher(p MediaPublisher) { s.publisher = p }
+
+// ErrLocalMediaNoPublicURL：素材只能签出本机回环地址，且未配置对象存储。
+var ErrLocalMediaNoPublicURL = errors.New("未配置对象存储：合规校验需要把素材上传到你自己的对象存储，请在 设置 → 配置 → 对象存储 中填写")
 
 // signedURL 把 object key 签成对外直链，并断言结果确实是 http(s)。
 // 签不出直链时宁可就地失败给人话原因，也不要把一个不是 URL 的字符串发给上游——
 // 那样根因会被上游晦涩的 InvalidParameter.URL 掩盖掉。
-func (s *SeedanceService) signedURL(objectKey string) (string, error) {
+func (s *SeedanceService) signedURL(ctx context.Context, objectKey string) (string, error) {
 	url := s.signer.Sign(mediaProtocol + objectKey)
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		return "", errors.New("无法生成素材直链，请检查存储配置")
 	}
 	// 桌面端 MediaSigner 签出的是 http://127.0.0.1:<端口>/media/…，发给上游必然拉取失败，
-	// 且会被上游晦涩的 URL 错误掩盖根因。S12 定下公网方案前一律就地拒绝。
+	// 且会被上游晦涩的 URL 错误掩盖根因。已配置对象存储则发布后取公网地址，否则就地拒绝。
 	if isLoopbackURL(url) {
-		return "", ErrLocalMediaNoPublicURL
+		if s.publisher == nil || !s.publisher.Configured() {
+			return "", ErrLocalMediaNoPublicURL
+		}
+		return s.publisher.Publish(ctx, objectKey)
 	}
 	return url, nil
 }
@@ -241,7 +255,7 @@ func (s *SeedanceService) Submit(ctx context.Context, userID int64, objectKey, a
 		return existing, nil // 已通过且版本没变 → 无需重复校验
 	}
 
-	url, err := s.signedURL(objectKey)
+	url, err := s.signedURL(ctx, objectKey)
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +399,7 @@ func (s *SeedanceService) reconcileOne(ctx context.Context, sdKey string, versio
 	stale := a.Version == nil || *a.Version != version
 	if a.AssetID == nil || *a.AssetID == "" || stale {
 		// 当前版本下还没有有效 asset（或版本 bump 让旧 asset 作废）→ 重新提交。
-		url, err := s.signedURL(a.ObjectKey)
+		url, err := s.signedURL(ctx, a.ObjectKey)
 		if err != nil {
 			log.Printf("seedance: %s 签不出直链: %v", a.ObjectKey, err)
 			_ = s.repo.SetError(a.ObjectKey, "failed", err.Error())

@@ -105,7 +105,7 @@ func TestSignInputMediaReferencesSignsMediaProtocolImages(t *testing.T) {
 		},
 	}
 
-	got, err := svc.signInputMediaReferences(context.Background(), inputs)
+	got, err := svc.signInputMediaReferences(context.Background(), inputs, false)
 	if err != nil {
 		t.Fatalf("signInputMediaReferences: %v", err)
 	}

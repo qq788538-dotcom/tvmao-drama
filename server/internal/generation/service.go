@@ -139,8 +139,8 @@ type Service struct {
 	promptPreset func(key string, params map[string]string) (string, bool)
 	// repersist 只供测试注入；nil 时 repersistStore() 回退到 repo（SQLiteRepository 实现 UpdateOutput）。
 	repersist RepersistStore
-	// inputSigner 见 SetInputMediaSigner（spec S12 接入点）；nil = 参考仓原逻辑。
-	inputSigner InputMediaSigner
+	// publisher 见 SetMediaPublisher（对象存储设计 §3.2）；nil 或未配置 = 参考仓原逻辑。
+	publisher MediaPublisher
 }
 
 func NewService(
@@ -380,7 +380,7 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	}
 
 	requireURLImageBytes := model.ImageRequestMode == models.ImageRequestModeOpenAIImageEdits
-	upstreamInputs, err := s.signInputMediaReferences(ctx, input.Inputs)
+	upstreamInputs, err := s.signInputMediaReferences(ctx, input.Inputs, skipImagesFor(model))
 	if err != nil {
 		return nil, fmt.Errorf("sign input media references: %w", err)
 	}

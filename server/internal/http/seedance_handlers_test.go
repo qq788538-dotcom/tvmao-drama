@@ -150,7 +150,7 @@ func TestSeedanceVerifyLocalMediaRejected(t *testing.T) {
 	})
 	seedanceInsertAsset(t, conn, 1, "u1/a.png")
 	rec := seedanceDo(h.Verify, http.MethodPost, `{"url":"media://u1/a.png","kind":"image"}`)
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "公网") {
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "对象存储") {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body)
 	}
 	if client.createAssetCalls != 0 {

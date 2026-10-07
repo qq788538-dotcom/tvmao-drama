@@ -8,6 +8,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -113,32 +115,80 @@ func TestPrepareExecutionRejectsLocalMediaInURLPayload(t *testing.T) {
 	}
 }
 
-type publicSigner struct{}
-
-func (publicSigner) SignInputMedia(_ context.Context, in map[string]any) (map[string]any, error) {
-	out, err := walkInputStrings(in, func(s string) (string, error) {
-		return strings.Replace(s, "media://", "https://public.example.com/", 1), nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return out.(map[string]any), nil
+type fakePublisher struct {
+	configured bool
+	published  []string
 }
 
-func TestPrepareExecutionInjectedSignerMakesURLReachable(t *testing.T) {
+func (f *fakePublisher) Configured() bool { return f.configured }
+func (f *fakePublisher) Publish(_ context.Context, key string) (string, error) {
+	f.published = append(f.published, key)
+	return "https://bucket.example.com/" + key + "?sig", nil
+}
+
+func TestPrepareExecutionPublishesVideo(t *testing.T) {
 	svc := planService(&models.ModelConfig{ModelID: "m", Enabled: true, ImageInputFormat: models.ImageInputFormatURL,
-		RequestTemplate: json.RawMessage(`{"image":"{{image}}"}`)}, okSettings(), "sk")
-	svc.SetInputMediaSigner(publicSigner{})
+		RequestTemplate: json.RawMessage(`{"video":"{{video}}"}`)}, okSettings(), "sk")
+	pub := &fakePublisher{configured: true}
+	svc.SetMediaPublisher(pub)
 	plan, err := svc.prepareExecution(context.Background(), 1, "m",
-		map[string]any{"images": []any{"media://u1/a"}}, "", "", nil)
+		map[string]any{"video": "media://u1/v.mp4"}, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(plan.payload), "https://public.example.com/u1/a") {
-		t.Fatalf("S12 接入的签名器结果应进 payload, got %s", plan.payload)
+	if !strings.Contains(string(plan.payload), "https://bucket.example.com/u1/v.mp4?sig") {
+		t.Fatalf("视频应换成对象存储地址, got %s", plan.payload)
 	}
 }
 
+func TestSignInputMediaSkipsImagesForInlineFormats(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		format string
+		mode   string
+		skip   bool
+	}{
+		{"data_uri", models.ImageInputFormatDataURI, models.ImageRequestModeJSON, true},
+		{"edits", models.ImageInputFormatURL, models.ImageRequestModeOpenAIImageEdits, true},
+		{"url", models.ImageInputFormatURL, models.ImageRequestModeJSON, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := skipImagesFor(&models.ModelConfig{ImageInputFormat: tc.format, ImageRequestMode: tc.mode}); got != tc.skip {
+				t.Fatalf("skipImagesFor=%v want %v", got, tc.skip)
+			}
+			svc := planService(&models.ModelConfig{ModelID: "m", Enabled: true}, okSettings(), "sk")
+			pub := &fakePublisher{configured: true}
+			svc.SetMediaPublisher(pub)
+			out, err := svc.signInputMediaReferences(context.Background(),
+				map[string]any{"images": []any{"media://u1/a.png"}, "videos": []any{"media://u1/v.mp4"}}, tc.skip)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantPub := []string{"u1/v.mp4"}
+			if !tc.skip {
+				wantPub = []string{"u1/a.png", "u1/v.mp4"}
+			}
+			sort.Strings(pub.published)
+			if !reflect.DeepEqual(pub.published, wantPub) {
+				t.Fatalf("published=%v want %v", pub.published, wantPub)
+			}
+			if tc.skip && out["images"].([]any)[0] != "media://u1/a.png" {
+				t.Fatalf("跳过的图片应原样保留, got %v", out["images"])
+			}
+		})
+	}
+}
+
+func TestPrepareExecutionUnconfiguredStillFailsWithGuide(t *testing.T) {
+	svc := planService(&models.ModelConfig{ModelID: "m", Enabled: true, ImageInputFormat: models.ImageInputFormatURL,
+		RequestTemplate: json.RawMessage(`{"video":"{{video}}"}`)}, okSettings(), "sk")
+	svc.SetMediaPublisher(&fakePublisher{configured: false})
+	_, err := svc.prepareExecution(context.Background(), 1, "m",
+		map[string]any{"video": "media://u1/v.mp4"}, "", "", nil)
+	if !errors.Is(err, ErrLocalMediaUnreachable) || !strings.Contains(err.Error(), "设置 → 配置 → 对象存储") {
+		t.Fatalf("err=%v", err)
+	}
+}
 func TestPrepareExecutionMissingBaseDomain(t *testing.T) {
 	svc := planService(&models.ModelConfig{ModelID: "m", Enabled: true, RequestTemplate: json.RawMessage(`{}`)}, planSettings{}, "sk")
 	_, err := svc.prepareExecution(context.Background(), 1, "m", map[string]any{}, "", "", nil)

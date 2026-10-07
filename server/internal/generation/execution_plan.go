@@ -70,7 +70,7 @@ func (s *Service) prepareExecution(ctx context.Context, userID int64, modelID st
 	}
 
 	requireURLImageBytes := model.ImageRequestMode == models.ImageRequestModeOpenAIImageEdits
-	upstreamInputs, err := s.signInputMediaReferences(ctx, inputs)
+	upstreamInputs, err := s.signInputMediaReferences(ctx, inputs, skipImagesFor(model))
 	if err != nil {
 		return nil, fmt.Errorf("sign input media references: %w", err)
 	}

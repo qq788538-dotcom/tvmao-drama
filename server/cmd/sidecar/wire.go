@@ -17,6 +17,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/library"
 	"github.com/james/huabu_studio/apps/api/internal/localauth"
 	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/james/huabu_studio/apps/api/internal/objectstore"
 	"github.com/james/huabu_studio/apps/api/internal/projects"
 	"github.com/james/huabu_studio/apps/api/internal/reveal"
 	"github.com/james/huabu_studio/apps/api/internal/seedance"
@@ -35,6 +36,8 @@ type app struct {
 	assets *assets.SQLiteRepository
 	// seedance 是 Seedance 合规校验服务，main 用根 ctx 起它的对账 worker（未配置时自身 no-op）。
 	seedance *library.SeedanceService
+	// publisher 是对象存储发布器（用户自配 TOS/OSS），main 把它交给 wireAgent 的媒体解析。
+	publisher *objectstore.Publisher
 }
 
 // wire 是唯一的装配点（对应参考仓 cmd/server/main.go 里画布相关的那部分）。
@@ -44,6 +47,8 @@ type app struct {
 // 生成后台循环不在这里启动，由 run() 在 HTTP 就绪前用可取消的 ctx 调 a.gen.Gen.StartBackground。
 func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dataDir, version string) (*app, error) {
 	signer := apphttp.NewMediaSigner(storage)
+	// 对象存储（用户自配 TOS/OSS）：本机视频/音频经它交给上游（对象存储设计 §3.2）。
+	publisher := objectstore.NewPublisher(settings.NewSQLiteRepository(conn), storage, nil)
 	projectsRepo := projects.NewSQLiteRepository(conn)
 	assetsRepo := assets.NewSQLiteRepository(conn)
 	usersRepo := users.NewSQLiteRepository(conn)
@@ -84,6 +89,8 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		GenerationRepersist: genW.Repersist,
 	}
 
+	genW.Gen.SetMediaPublisher(publisher)
+
 	// ── P1d ──
 	settingsRepo := settings.NewSQLiteRepository(conn)
 	modelsRepo := models.NewSQLiteRepository(conn)
@@ -101,6 +108,7 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		seedanceClient, settingsRepo, signer)
 	// AI 角色图是平台预置、已过校验的公共资产：状态角标兜底。
 	librarySeedanceSvc.SetPublicAssets(aiCharactersRepo)
+	librarySeedanceSvc.SetMediaPublisher(publisher)
 	// 生成时真人素材自动以 asset://<id> 提交（参考仓 main.go 同名装配）。
 	genW.Gen.WithRealPersonResolver(librarySeedanceSvc)
 
@@ -127,6 +135,8 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	deps.SettingsCenter = apphttp.SettingsCenterDeps{
 		Settings: settingsRepo,
 		Models:   modelsRepo,
+		// 对象存储连接测试。
+		ObjectStore: publisher,
 		// 每模型独立上游：本机字段，直接写 model_configs，不经内置编辑策略（2026-10-07）。
 		ModelUpstream: modelsRepo,
 		ModelEdit:     apphttp.NewPolicyModelEdit(policy, modelsRepo),
@@ -136,7 +146,7 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	}
 
 	cleaner := apphttp.NewProjectCleaner(projectsRepo, assetsRepo, usersRepo, genTasks, orphans, conn)
-	return &app{deps: deps, cleaner: cleaner, sweeper: sweeper, gen: genW, assets: assetsRepo, seedance: librarySeedanceSvc}, nil
+	return &app{deps: deps, cleaner: cleaner, sweeper: sweeper, gen: genW, assets: assetsRepo, seedance: librarySeedanceSvc, publisher: publisher}, nil
 }
 
 // charImageStore 把 assets.Storage 适配成 aicharacters.ObjectStore（角色形象图缓存用）。

@@ -43,21 +43,22 @@ type spooledFile struct {
 
 type spoolFunc func(ctx context.Context, ref string) (spooledFile, error)
 
-func (s *Service) signInputMediaReferences(ctx context.Context, inputs map[string]any) (map[string]any, error) {
-	if s != nil && s.inputSigner != nil && inputs != nil {
-		return s.inputSigner.SignInputMedia(ctx, cloneInputs(inputs))
-	}
+func (s *Service) signInputMediaReferences(ctx context.Context, inputs map[string]any, skipImages bool) (map[string]any, error) {
 	if s == nil || s.storage == nil || inputs == nil {
 		return cloneInputs(inputs), nil
 	}
+	publish := s.publisher != nil && s.publisher.Configured()
 	// 自由画布 HTTP 请求会在 GenerationHandler 签名，但 agent tool、
 	// drama 等 service 直调会绕过那层边界。上游只接受可拉取 URL/base64/asset ID，
 	// 所以 canonical media:// 必须在模板插值前临时展开；DB/画布快照仍保留
 	// 能熬过签名 URL TTL 的 media:// 持久形态。
-	signed, err := walkInputStrings(inputs, func(ref string) (string, error) {
+	sign := func(ref string) (string, error) {
 		key, ok := s.storage.ExtractKey(ref)
 		if !ok || key == "" {
 			return ref, nil
+		}
+		if publish {
+			return s.publisher.Publish(ctx, key)
 		}
 		url, err := s.storage.SignedURL(ctx, key, inputMediaURLExpiry)
 		if err != nil || url == "" {
@@ -67,13 +68,19 @@ func (s *Service) signInputMediaReferences(ctx context.Context, inputs map[strin
 			return "", fmt.Errorf("sign %q: %w", key, err)
 		}
 		return url, nil
-	})
-	if err != nil {
-		return nil, err
 	}
-	out, ok := signed.(map[string]any)
-	if !ok {
-		return cloneInputs(inputs), nil
+	out := make(map[string]any, len(inputs))
+	for k, v := range inputs {
+		transform := sign
+		if skipImages && (k == "images" || k == "image") {
+			// 图片随后由 prepareImageInputs 直接读盘内嵌，不上传。
+			transform = func(ref string) (string, error) { return ref, nil }
+		}
+		next, err := walkInputStrings(v, transform)
+		if err != nil {
+			return nil, err
+		}
+		out[k] = next
 	}
 	return out, nil
 }

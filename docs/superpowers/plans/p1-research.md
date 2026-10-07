@@ -16,7 +16,7 @@
 - 同样依赖公网 URL 的其他位置：Agent 把图片/视频/音频 URL 发给 planner 和子模型（`agent/multimodal.go:60-80`、`tools_subagent.go:48-68`）；Seedance 合规校验（`library/seedance_service.go:177-183`）。
 - 提交时 `http/canvasgen_handlers.go:55-60` 先把 inputs 签名成 URL 再入库，执行时靠 `ExtractKey` 认回 key：本地存储的 `ExtractKey` 必须同时认 `media://` 和 sidecar 自己发出的本地 URL。
 
-**待用户决定**：桌面端如何让上游拿到本机磁盘上的输入媒体（见对话记录，决定后补到 spec）。
+已决定（2026-10-07）：见 `docs/superpowers/specs/2026-10-07-object-storage-design.md`
 
 ## 2. 数据库
 
