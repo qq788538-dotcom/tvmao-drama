@@ -69,6 +69,15 @@ describe('SettingsModal', () => {
     expect(screen.getByTestId('path').textContent).toBe('/canvas/1');
   });
 
+  it('点弹框外和按 Esc 都不会关闭，只能点 X', () => {
+    setup();
+    act(() => openSettings());
+    fireEvent.click(document.querySelector('.ant-modal-wrap')!);
+    fireEvent.keyDown(document.querySelector('.ant-modal-wrap')!, { key: 'Escape', code: 'Escape', keyCode: 27 });
+    expect(useSettingsModal.getState().open).toBe(true);
+    expect(screen.getByText('通用页内容')).toBeTruthy();
+  });
+
   it('不出现任何导入导出或新建入口（spec M7、M8、A4）', () => {
     setup();
     act(() => openSettings());

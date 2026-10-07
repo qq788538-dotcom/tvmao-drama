@@ -62,6 +62,8 @@ export function ProjectsModal() {
       title="所有项目"
       width="min(1100px, 92vw)"
       centered
+      maskClosable={false}
+      keyboard={false}
       destroyOnClose
       styles={{ body: { padding: 0, height: '80vh', overflow: 'auto' } }}
     >

@@ -164,7 +164,7 @@ export function ModelCenterPage() {
           ]}
         />
 
-        <Drawer width={640} open={!!editing} onClose={closeEditor} title={editing ? `编辑：${editing.name}` : ''} destroyOnClose
+        <Drawer width={640} open={!!editing} onClose={closeEditor} maskClosable={false} keyboard={false} title={editing ? `编辑：${editing.name}` : ''} destroyOnClose
           extra={<Button type="primary" onClick={() => form.submit()} loading={patch.isPending}>保存</Button>}>
           {editing && (
             <>

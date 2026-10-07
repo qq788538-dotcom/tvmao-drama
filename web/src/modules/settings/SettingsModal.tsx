@@ -50,6 +50,8 @@ export function SettingsModal() {
             title="设置"
             width="min(1100px, 92vw)"
             centered
+            maskClosable={false}
+            keyboard={false}
             destroyOnClose
             styles={{ body: { padding: 0 } }}
           >

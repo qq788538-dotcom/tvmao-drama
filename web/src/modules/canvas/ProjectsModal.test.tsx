@@ -56,6 +56,15 @@ describe('ProjectsModal', () => {
     expect(path()).toBe('/canvas/5');
   });
 
+  it('点弹框外和按 Esc 都不会关闭，只能点 X', () => {
+    setup();
+    act(() => openProjects());
+    fireEvent.click(document.querySelector('.ant-modal-wrap')!);
+    fireEvent.keyDown(document.querySelector('.ant-modal-wrap')!, { key: 'Escape', code: 'Escape', keyCode: 27 });
+    expect(useProjectsModal.getState().open).toBe(true);
+    expect(screen.getByText('projects-list-embedded')).toBeTruthy();
+  });
+
   it('点当前项目：只关弹框，不跳转不 flush', async () => {
     setup();
     act(() => openProjects());
