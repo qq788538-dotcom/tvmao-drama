@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelView } from '../api';
-import { filterModels, formToPatch, modelToForm, validateUpstream } from './modelForm';
+import { filterModels, formToPatch, modelToForm, TYPE_OPTIONS, validateUpstream } from './modelForm';
 
 const base: ModelView = {
   id: 1, type: 'image', name: 'GPT Image 2', modelId: 'gpt-image-2', enabled: true, hidden: false, sortOrder: 1,
@@ -12,6 +12,10 @@ const base: ModelView = {
 };
 
 describe('modelForm', () => {
+  it('类型筛选不含「全部」，第一项是图片', () => {
+    expect(TYPE_OPTIONS.map((o) => o.label)).toEqual(['图片', '视频', '音频', '文本']);
+  });
+
   it('modelToForm 读出可改字段，缺省值补 0', () => {
     const v = modelToForm({ ...base, genControl: null });
     expect(v).toMatchObject({ name: 'GPT Image 2', concurrency: 0, canvasMaxRetries: 0, canvasRetryIntervalSec: 0, uiDefaults: { ratio: '1:1' } });

@@ -26,7 +26,6 @@ export const MODEL_FIELD_LABELS: Record<string, string> = {
 };
 
 export const TYPE_OPTIONS = [
-  { value: 'all', label: '全部' },
   { value: 'image', label: '图片' },
   { value: 'video', label: '视频' },
   { value: 'audio', label: '音频' },

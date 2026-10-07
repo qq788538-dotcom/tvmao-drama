@@ -16,7 +16,7 @@ const SEEDANCE_HINT = 'Seedance 已校验素材注册在全局上游账号下，
 export function ModelCenterPage() {
   const { message, modal } = AntApp.useApp();
   const qc = useQueryClient();
-  const [type, setType] = useState('all');
+  const [type, setType] = useState('image');
   const [keyword, setKeyword] = useState('');
   const [editing, setEditing] = useState<ModelView | null>(null);
   const [form] = Form.useForm<ModelFormValues>();
