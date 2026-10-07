@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { App as AntApp, Button, Card, Form, Input, Space, Tag, Typography } from 'antd';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { errorText, getGeneral, restoreBaseDomain, updateUpstream, type GeneralSettings, type UpstreamUpdate } from '../api';
 import { RestoreDefaultButton } from './RestoreDefaultButton';
 
@@ -33,13 +33,16 @@ export function UpstreamCard() {
     qc.setQueryData(['settings-general'], g);
     form.setFieldsValue({ baseDomain: g.baseDomain, apiKey: '' });
   };
-  const save = useMutation({
+  // 变量里带明文 Key：不在 mutation 缓存里保留。
+  const save: UseMutationResult<GeneralSettings, Error, UpstreamUpdate> = useMutation({
+    gcTime: 0,
     mutationFn: updateUpstream,
     onSuccess: (g) => {
       onSaved(g);
       message.success('已保存');
     },
     onError: (e) => message.error(errorText(e)),
+    onSettled: () => save.reset(),
   });
   const clearKey = useMutation({
     mutationFn: () => updateUpstream({ clearApiKey: true }),

@@ -12,10 +12,6 @@ import {
   getGeneral,
   type DataDirCheck,
 } from '../api';
-import { buildUpstreamUpdate } from '../components/UpstreamCard';
-
-// 全局上游卡片已移到模型中心（UpstreamCard）；这里保留导出以兼容旧引用。
-export { buildUpstreamUpdate };
 
 type OpenDialog = (o: { directory: true; multiple: false; defaultPath?: string; title?: string }) => Promise<string | string[] | null>;
 

@@ -23,7 +23,6 @@ export const MODEL_FIELD_LABELS: Record<string, string> = {
   concurrency: '并发上限',
   canvasMaxRetries: '最大重试次数',
   canvasRetryIntervalSec: '重试间隔',
-  upstream: '独立上游',
 };
 
 export const TYPE_OPTIONS = [

@@ -15,17 +15,7 @@ vi.mock('../api', async (orig) => ({
 }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 
-import { buildUpstreamUpdate, dataDirChangeDialog, GeneralPage, pickDataDir } from './GeneralPage';
-
-const initial = { version: '1', dataDir: '/d', baseDomain: 'http://a', baseDomainModified: false, apiKeySet: true, apiKeyMasked: 'sk-••••••••abcd' };
-
-describe('buildUpstreamUpdate', () => {
-  it('只提交变化的字段；Key 输入框留空表示不修改', () => {
-    expect(buildUpstreamUpdate({ baseDomain: 'http://a', apiKey: '' }, initial)).toBeNull();
-    expect(buildUpstreamUpdate({ baseDomain: ' http://b ', apiKey: '' }, initial)).toEqual({ baseDomain: 'http://b' });
-    expect(buildUpstreamUpdate({ baseDomain: 'http://a', apiKey: ' sk-new ' }, initial)).toEqual({ apiKey: 'sk-new' });
-  });
-});
+import { dataDirChangeDialog, GeneralPage, pickDataDir } from './GeneralPage';
 
 describe('pickDataDir', () => {
   it('取消选择返回 null，选中后交给 sidecar 校验', async () => {

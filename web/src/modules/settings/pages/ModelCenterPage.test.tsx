@@ -25,11 +25,12 @@ const model = (over: Record<string, unknown> = {}) => ({
   upstream: { configured: false, baseUrl: '', apiKeyMasked: '' },
   ...over,
 });
+const CONFIRM = '切回全局后，将清除该模型已保存的独立地址和 API Key，确定吗？';
 const configured = { configured: true, baseUrl: 'https://u.example.com', apiKeyMasked: '••••abcd' };
 
-function renderPage() {
+function renderPage(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={qc}>
       <AntApp>
         <ModelCenterPage />
       </AntApp>
@@ -94,14 +95,68 @@ describe('ModelCenterPage 独立上游', () => {
     expect(p.upstream).not.toHaveProperty('apiKey');
   });
 
-  it('切回“使用全局”发出 upstream: null', async () => {
+  it('切回“使用全局”：弹二次确认，确定后发出 upstream: null', async () => {
     mocks.models = [model({ upstream: configured })];
     renderPage();
     await openEditor();
     fireEvent.click(screen.getByText('使用全局'));
     const saveBtns = screen.getAllByRole('button', { name: /保\s*存/ });
     fireEvent.click(saveBtns[saveBtns.length - 1]);
+    expect((await screen.findAllByText(CONFIRM)).length).toBeGreaterThan(0);
+    expect(mocks.patch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /确\s*定/ }));
     await waitFor(() => expect(mocks.patch).toHaveBeenCalledTimes(1));
     expect(mocks.patch.mock.calls[0][1]).toEqual({ upstream: null });
+  });
+
+  it('二次确认点取消：不保存', async () => {
+    mocks.models = [model({ upstream: configured })];
+    renderPage();
+    await openEditor();
+    fireEvent.click(screen.getByText('使用全局'));
+    const saveBtns = screen.getAllByRole('button', { name: /保\s*存/ });
+    fireEvent.click(saveBtns[saveBtns.length - 1]);
+    await screen.findAllByText(CONFIRM);
+    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
+    await waitFor(() => expect(screen.queryByText(/确定吗/)).toBeNull());
+    expect(mocks.patch).not.toHaveBeenCalled();
+  });
+
+  it('保存成功后 mutation 缓存里没有明文 Key，再次打开 Key 输入框为空', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderPage(qc);
+    await openEditor();
+    fireEvent.click(screen.getByText('单独配置'));
+    await waitFor(() => expect(screen.getAllByPlaceholderText(/your-gateway/).length).toBe(2));
+    fireEvent.change(screen.getAllByPlaceholderText(/your-gateway/)[1], { target: { value: 'https://u.example.com' } });
+    fireEvent.change(screen.getByPlaceholderText('sk-...'), { target: { value: 'sk-secret-plain' } });
+    const saveBtns = screen.getAllByRole('button', { name: /保\s*存/ });
+    fireEvent.click(saveBtns[saveBtns.length - 1]);
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledTimes(1));
+    expect(mocks.patch.mock.calls[0][1]).toEqual({ upstream: { baseUrl: 'https://u.example.com', apiKey: 'sk-secret-plain' } });
+    await waitFor(() => expect(JSON.stringify(qc.getMutationCache().getAll().map((m) => m.state))).not.toContain('sk-secret-plain'));
+    await waitFor(() => expect(screen.queryByText('独立上游', { selector: 'h5' })).toBeNull());
+    // 重新打开：Key 输入框为空
+    mocks.models = [model()];
+    fireEvent.click(await screen.findByRole('button', { name: /编\s*辑/ }));
+    await screen.findByText('独立上游', { selector: 'h5' });
+    fireEvent.click(screen.getByText('单独配置'));
+    const pw = await screen.findByPlaceholderText('sk-...');
+    expect((pw as HTMLInputElement).value).toBe('');
+  });
+
+  it('点 X 关闭编辑框：已输入的 Key 被清空', async () => {
+    renderPage();
+    await openEditor();
+    fireEvent.click(screen.getByText('单独配置'));
+    const pw = (await screen.findByPlaceholderText('sk-...')) as HTMLInputElement;
+    fireEvent.change(pw, { target: { value: 'sk-typed' } });
+    expect(pw.value).toBe('sk-typed');
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    await waitFor(() => expect(screen.queryByText('独立上游', { selector: 'h5' })).toBeNull());
+    fireEvent.click(await screen.findByRole('button', { name: /编\s*辑/ }));
+    await screen.findByText('独立上游', { selector: 'h5' });
+    fireEvent.click(screen.getByText('单独配置'));
+    expect(((await screen.findByPlaceholderText('sk-...')) as HTMLInputElement).value).toBe('');
   });
 });
