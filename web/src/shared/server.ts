@@ -141,6 +141,11 @@ export function buildMediaUrl(info: ServerInfo, path: string): string {
   return withToken(buildHttpUrl(info, path), info.token);
 }
 
+/** EventSource 同样带不了请求头，token 放查询参数。 */
+export function buildEventSourceUrl(info: ServerInfo, path: string): string {
+  return withToken(buildHttpUrl(info, path), info.token);
+}
+
 /** 浏览器没法给 WebSocket 握手设请求头，token 同样放查询参数。 */
 export function buildWsUrl(info: ServerInfo, path: string): string {
   return withToken(`ws://127.0.0.1:${info.port}${path}`, info.token);

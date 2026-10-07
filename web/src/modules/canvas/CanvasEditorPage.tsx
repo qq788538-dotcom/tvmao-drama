@@ -21,6 +21,7 @@ import {
   setCanvasOwnerToken,
   waitForCanvasMutationsIdle,
 } from '@/modules/canvas/editor/persistence/canvasMutations';
+import { useExternalChanges } from '@/modules/canvas/editor/hooks/useExternalChanges';
 import { loadLocalView } from '@/modules/canvas/editor/persistence/localView';
 import {
   type CanvasViewMode,
@@ -413,6 +414,14 @@ export function CanvasEditorPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // CLI 改了当前画布：空闲时整拉（CLI spec 第 6 节）
+  useExternalChanges({
+    projectId: pid,
+    enabled: ready,
+    initialVersion: snapshotQuery.data?.version ?? 0,
+    onReloaded: () => setLastSyncedAt(new Date().toISOString()),
+  });
 
   if (!Number.isFinite(pid) || pid <= 0) {
     return <div className="p-8 text-white">无效的项目 ID</div>;
