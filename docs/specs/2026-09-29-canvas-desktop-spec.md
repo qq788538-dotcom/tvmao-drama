@@ -63,7 +63,7 @@
 | X2 | 多人协作（presence、owner 编辑锁、团队） | 删除 | ✅ 已确认 |
 | X3 | 积分计费和估价 UI | 删除；是否保留"价格说明"文本另行决定 | ✅ 已确认 |
 | X4 | 登录、账户、修改密码、版本检查弹窗 | 删除，改为单个本地用户 | ✅ 已确认 |
-| X5 | Seedance 2.0 合规校验 | 保留，生成前强制校验不动；合规调用改走 newapi provider（接口路径配置在 models.json 的 `features.seedanceCompliance`，接口由用户后续在 newapi 上补充）；未配置时入口提示“合规接口未配置” <br>**2026-10-07 变更**：合规调用固定走全局上游，不受模型独立上游影响（短期方案，见 M2 与实施期裁定） <br>**2026-10-07 变更**：改为隐藏内置模型 seedance-asset，同步返回 asset_id，见 `docs/superpowers/specs/2026-10-07-seedance-asset-model-design.md` | ✏️ 已修改 |
+| X5 | Seedance 2.0 合规校验 | 保留，生成前强制校验不动；合规调用改走 newapi provider（接口路径配置在 models.json 的 `features.seedanceCompliance`，接口由用户后续在 newapi 上补充）；未配置时入口提示“合规接口未配置” <br>**2026-10-07 变更**：~~合规调用固定走全局上游~~（已被 seedance-asset 方案取代：注册走 seedance-asset 模型解析出的上游，见 M2） <br>**2026-10-07 变更**：改为隐藏内置模型 seedance-asset，同步返回 asset_id，见 `docs/superpowers/specs/2026-10-07-seedance-asset-model-design.md` | ✏️ 已修改 |
 | X6 | 脚本节点“剧本生成分镜”（Skill shell 执行） | 第一期就做：内置独立 Python 运行时 + 命令白名单（只允许执行 Skill 目录内脚本、只能写任务工作区）；需解决 Windows 没有 bash 的问题 | ✏️ 已修改 |
 | X7 | ChatPanel（参考仓的死代码） | 不迁移 | ✅ 已确认 |
 
