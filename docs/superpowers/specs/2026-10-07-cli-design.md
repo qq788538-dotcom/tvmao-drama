@@ -153,7 +153,7 @@ CLI 输出里的媒体 URL 照旧用媒体 token 签名，可以直接被 AI 助
 
 ### 7.1 打包
 
-- `scripts/` 里的构建脚本增加一步：按平台交叉编译 CLI，放到 `src-tauri/binaries/miaoju-<target-triple>`，加入 `tauri.conf.json` 的 `externalBin`（与 sidecar 同样的做法）。
+- `scripts/` 里的构建脚本增加一步：按平台交叉编译 CLI，放到 `src-tauri/binaries/miaoju-cli-<target-triple>`，加入 `tauri.conf.json` 的 `externalBin`（与 sidecar 同样的做法）。安装包内的文件名为 `miaoju-cli`（主程序已占用 `miaoju`），安装到终端时命名为 `miaoju`。
 - `ldflags` 注入 `main.version`，与应用版本一致。
 - skill 目录 `cli/skill/` 作为 Tauri resource 打进安装包。
 
