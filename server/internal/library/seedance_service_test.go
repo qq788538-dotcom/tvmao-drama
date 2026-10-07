@@ -693,3 +693,26 @@ func TestErrSeedanceDisabledMentionsUnconfigured(t *testing.T) {
 		t.Fatalf("文案 = %q", ErrSeedanceDisabled.Error())
 	}
 }
+
+type fakeSeedancePub struct{ configured bool }
+
+func (f fakeSeedancePub) Configured() bool { return f.configured }
+func (f fakeSeedancePub) Publish(_ context.Context, key string) (string, error) {
+	return "https://bucket.example.com/" + key, nil
+}
+
+func TestSeedanceSignedURLPublishesLoopback(t *testing.T) {
+	svc := NewSeedanceService(newFakeAssets(), &fakeGroupStore{}, &fakeLibrarySeedanceClient{}, enabledSettings(0),
+		signerStub(func(k string) string {
+			return "http://127.0.0.1:1234/media/" + strings.TrimPrefix(k, "media://")
+		}))
+	svc.SetMediaPublisher(fakeSeedancePub{configured: true})
+	got, err := svc.signedURL(context.Background(), "u1/a.png")
+	if err != nil || got != "https://bucket.example.com/u1/a.png" {
+		t.Fatalf("got %q err=%v", got, err)
+	}
+	svc.SetMediaPublisher(fakeSeedancePub{configured: false})
+	if _, err := svc.signedURL(context.Background(), "u1/a.png"); !errors.Is(err, ErrLocalMediaNoPublicURL) {
+		t.Fatalf("未配置应报 ErrLocalMediaNoPublicURL, err=%v", err)
+	}
+}

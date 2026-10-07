@@ -107,7 +107,7 @@ func TestAnalyzeVideoTool_LocalVideoReturnsS12Error(t *testing.T) {
 	}
 	tool := NewAnalyzeVideoTool(PlannerDeps{Media: newResolver()}, builder)
 	_, err := tool.InvokableRun(WithUserID(context.Background(), 1), `{"url":"media://u1/v.mp4","question":"讲了什么"}`)
-	if err == nil || !strings.Contains(err.Error(), "公网地址") {
+	if err == nil || !strings.Contains(err.Error(), "对象存储") {
 		t.Fatalf("应返回 S12 中文错误，得到 %v", err)
 	}
 	if fake.got != nil {
@@ -126,5 +126,32 @@ func TestAnalyzeImageTool_LocalImageSentAsDataURI(t *testing.T) {
 	}
 	if u := fake.got[0].MultiContent[1].ImageURL.URL; !strings.HasPrefix(u, "data:image/png;base64,") {
 		t.Fatalf("子模型收到的不是 data URI: %q", u)
+	}
+}
+
+type fakePub struct{ configured bool }
+
+func (f fakePub) Configured() bool { return f.configured }
+func (f fakePub) Publish(_ context.Context, key string) (string, error) {
+	return "https://bucket.example.com/" + key, nil
+}
+
+func TestResolverPublishesVideoAndAudio(t *testing.T) {
+	r := newResolver()
+	r.Publisher = fakePub{configured: true}
+	for _, kind := range []string{"video", "audio"} {
+		got, err := r.ResolveForLLM(context.Background(), kind, "media://u1/v.mp4")
+		if err != nil || got != "https://bucket.example.com/u1/v.mp4" {
+			t.Fatalf("%s: got %q err=%v", kind, got, err)
+		}
+	}
+}
+
+func TestResolverVideoUnconfiguredGuides(t *testing.T) {
+	r := newResolver()
+	r.Publisher = fakePub{configured: false}
+	_, err := r.ResolveForLLM(context.Background(), "video", "media://u1/v.mp4")
+	if !errors.Is(err, ErrMediaNeedsPublicURL) || !strings.Contains(err.Error(), "设置 → 配置 → 对象存储") {
+		t.Fatalf("err=%v", err)
 	}
 }

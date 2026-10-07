@@ -12,5 +12,11 @@ type LLMMediaResolver interface {
 	ResolveForLLM(ctx context.Context, kind, url string) (string, error)
 }
 
-// ErrMediaNeedsPublicURL：本机视频/音频目前没有办法交给上游（S12 待定）。
-var ErrMediaNeedsPublicURL = errors.New("本机视频和音频暂时无法发送给模型分析：上游需要公网地址，该方案尚未确定")
+// MediaPublisher 把本机媒体发布到用户配置的对象存储（*objectstore.Publisher 满足）。
+type MediaPublisher interface {
+	Configured() bool
+	Publish(ctx context.Context, mediaKey string) (string, error)
+}
+
+// ErrMediaNeedsPublicURL：本机视频/音频需要对象存储才能交给上游，但用户还没配置。
+var ErrMediaNeedsPublicURL = errors.New("未配置对象存储：视频和音频需要上传到你自己的对象存储，请在 设置 → 配置 → 对象存储 中填写")

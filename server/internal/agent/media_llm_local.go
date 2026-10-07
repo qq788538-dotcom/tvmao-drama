@@ -44,11 +44,12 @@ func IsLocalMediaURL(u string) bool {
 // LocalMediaResolver 是 S12 未定期间的实现：
 //   - 外链 / data URI：原样放行（上游自己能拿到）；
 //   - 本机图片：读出字节转 data URI（多数视觉模型接受）；
-//   - 本机视频 / 音频：返回 ErrMediaNeedsPublicURL——上游只认公网地址，方案待定。
+//   - 本机视频 / 音频：经对象存储发布；未配置时返回 ErrMediaNeedsPublicURL。
 type LocalMediaResolver struct {
 	Keys          MediaKeyExtractor
 	Objects       AttachmentObjectReader
-	MaxImageBytes int64 // 0 = 10MB
+	MaxImageBytes int64          // 0 = 10MB
+	Publisher     MediaPublisher // nil 或未配置：视频/音频报 ErrMediaNeedsPublicURL
 }
 
 func (r *LocalMediaResolver) ResolveForLLM(ctx context.Context, kind, u string) (string, error) {
@@ -71,7 +72,10 @@ func (r *LocalMediaResolver) ResolveForLLM(ctx context.Context, kind, u string) 
 		return u, nil
 	}
 	if kind != "image" && kind != "" {
-		return "", ErrMediaNeedsPublicURL
+		if r.Publisher == nil || !r.Publisher.Configured() {
+			return "", ErrMediaNeedsPublicURL
+		}
+		return r.Publisher.Publish(ctx, key)
 	}
 	if r.Objects == nil {
 		return "", fmt.Errorf("本机图片无法读取：存储未接入")
