@@ -4,7 +4,7 @@ import type { ModelView } from '../api';
 
 const m = (p: Partial<ModelView>): ModelView => ({
   id: 1, type: 'image', name: 'n', modelId: 'id', enabled: true, hidden: false, sortOrder: 0, basePath: '', imageInputFormat: 'url',
-  imageRequestMode: 'json', requestTemplate: {}, pollingTemplate: null, uiSchema: null, genControl: null, modifiedFields: [], references: [], ...p,
+  imageRequestMode: 'json', requestTemplate: {}, pollingTemplate: null, uiSchema: null, genControl: null, modifiedFields: [], references: [], upstream: { configured: false, baseUrl: '', apiKeyMasked: '' }, ...p,
 });
 
 describe('modelOptions', () => {
