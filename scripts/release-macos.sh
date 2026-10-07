@@ -21,10 +21,11 @@ verify_dmg() {
   [ -L "$mnt/Applications" ] || { echo "dmg 里缺少 Applications 快捷方式" >&2; ok=0; }
   [ -f "$mnt/首次打开说明.txt" ] || { echo "dmg 里缺少 首次打开说明.txt" >&2; ok=0; }
   codesign --verify --deep --strict "$mnt/$PRODUCT.app" || ok=0
-  for bin in miaoju sidecar; do
+  for bin in miaoju sidecar miaoju-cli; do
     [ "$(lipo -archs "$mnt/$PRODUCT.app/Contents/MacOS/$bin")" = "$lipo_arch" ] \
       || { echo "$bin 架构不是 $lipo_arch" >&2; ok=0; }
   done
+  [ -f "$mnt/$PRODUCT.app/Contents/Resources/cli-skill/SKILL.md" ] || { echo "dmg 里缺少 cli-skill" >&2; ok=0; }
   hdiutil detach "$mnt" >/dev/null
   rmdir "$mnt"
   [ "$ok" = 1 ]

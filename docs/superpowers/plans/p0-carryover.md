@@ -7,7 +7,7 @@
 - ~~**数据目录权限**：Go `main.go` 用 0o755、Rust `lib.rs` 的 `create_dir_all` 先建目录；两边都要改成仅当前用户可读写（Unix 0o700）。只改 Go 无效。~~ **已解决**：P1b 修复 9a456ec（Go 端 0700）与 P8 `data_dir::prepare`（Rust 端 0700）；自定义目录不再强制 0700（P8 修复轮），P4 迁移时在所选目录下建 0700 子目录。
 - ~~**开发源只在 debug 构建放行**：`http://localhost:5173` 现在在 release 里也在 Origin 白名单。改为默认不含，由壳在 `cfg!(debug_assertions)` 下通过 `--origins` 传入。~~ **已解决**：P8 `sidecar_args` 仅在 debug 下通过 `--origins` 传入。
 - ~~**优雅退出**：stdin EOF 时现在是 `os.Exit(0)`，壳退出时是直接 kill。有了 SQLite 和在飞的生成任务后，sidecar 需要退出钩子；壳应先关 stdin、短暂等待，再 kill。~~ **已解决**：Go 端 stdin EOF/`SHUTDOWN` 走同一条优雅退出路径（P1b 修复轮：先停 worker 再关库）；壳端 `SidecarManager::shutdown` 先写 `SHUTDOWN`、关 stdin、等待后才 kill（整合时补握手与测试）。注：生成管线/Seedance/Agent 刷新/脚本节点的后台 goroutine 另由 side-go（b469cbe）纳入等待。
-- `Authorization` 头必须真的带 `Bearer ` 前缀才接受（现在 `TrimPrefix` 不校验；`Basic <token>` 会挡住 `?token=` 回退）。
+- ~~`Authorization` 头必须真的带 `Bearer ` 前缀才接受（现在 `TrimPrefix` 不校验；`Basic <token>` 会挡住 `?token=` 回退）。~~ **已解决**：localauth 的 `HasPrefix` 校验，见 `TestAuthorizationWithoutBearerPrefixRejected`；CLI 路由同样只认 Bearer（CLI 计划 Task 1）。
 - 预检响应加 `Access-Control-Max-Age: 600`；P3 接入参考仓 API 客户端时核对 Allow-Headers 是否够用。
 - `http.Server` 加 `ReadHeaderTimeout`；`readToken` 加长度上限（低优先）。
 - 补测试：`Origin: null`、错 token + 白名单 Origin、带正确 token 的外来 Origin 预检、WebSocket 外来 Origin 403、二进制级的缺 `--data-dir` / 短 token / `--origins`、失败用例断言退出码 1 和 stderr 非空。

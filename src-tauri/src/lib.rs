@@ -3,6 +3,8 @@
 
 pub mod data_dir;
 pub mod datadir;
+pub mod cli_endpoint;
+mod cli_install;
 pub mod lifecycle;
 pub mod media_save;
 pub mod native_dialog;
@@ -242,6 +244,9 @@ fn shutdown_sidecar(app: &tauri::AppHandle) {
     let _ = tauri::async_runtime::block_on(async move {
         tokio::time::timeout(Duration::from_secs(6), manager.shutdown()).await
     });
+    if let Ok(dir) = default_data_dir(app) {
+        cli_endpoint::remove(&dir);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -285,6 +290,17 @@ pub fn run() {
             });
 
             let manager = SidecarManager::new(make_spec, emit.clone(), Timeouts::default());
+            {
+                let app_version = app.package_info().version.to_string();
+                let dir = default_data_dir(&handle);
+                manager.set_ready_hook(Arc::new(move |info: &ServerInfo| {
+                    let Ok(dir) = &dir else { return };
+                    if let Err(e) = cli_endpoint::write(dir, info, &app_version) {
+                        // 写失败只影响 CLI，不影响应用本身，记日志即可
+                        eprintln!("写 CLI 地址文件失败：{e}");
+                    }
+                }));
+            }
             app.manage(manager.clone());
             app.manage(datadir::DataDirState::default());
             // 异步启动：窗口立即出现，前端显示“正在启动本地服务…”。
@@ -345,7 +361,10 @@ pub fn run() {
             datadir::dismiss_data_dir_error,
             media_save::save_media,
             media_save::save_media_batch,
-            media_save::save_bytes
+            media_save::save_bytes,
+            cli_install::cli_tool_status,
+            cli_install::install_cli_tool,
+            cli_install::uninstall_cli_tool
         ])
         .build(tauri::generate_context!());
 

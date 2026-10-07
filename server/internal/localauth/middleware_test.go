@@ -177,6 +177,56 @@ func TestMediaTokenOnlyOpensMediaReads(t *testing.T) {
 	}
 }
 
+func cliCfg() Config {
+	return Config{
+		Token:          "web-token-0123456789abcdef0123456789",
+		MediaToken:     "media-token-0123456789abcdef01234567",
+		CLIToken:       "cli-token-0123456789abcdef012345678",
+		AllowedOrigins: []string{"http://tauri.localhost"},
+	}
+}
+
+// spec 3.3：CLI 路由只认 Bearer CLI token；CLI token 不能用于其他路由。
+func TestCLITokenIsolation(t *testing.T) {
+	cfg := cliCfg()
+	cases := []struct {
+		name    string
+		method  string
+		target  string
+		headers map[string]string
+		want    int
+	}{
+		{"cli 路由 + CLI token", "GET", "/api/v1/cli/ping", map[string]string{"Authorization": "Bearer " + cfg.CLIToken}, 200},
+		{"cli 路由 + 网页 token", "GET", "/api/v1/cli/ping", map[string]string{"Authorization": "Bearer " + cfg.Token}, 401},
+		{"cli 路由 + 媒体 token", "GET", "/api/v1/cli/ping", map[string]string{"Authorization": "Bearer " + cfg.MediaToken}, 401},
+		{"cli 路由 + 查询参数 token", "GET", "/api/v1/cli/ping?token=" + cfg.CLIToken, nil, 401},
+		{"cli 路由 + 非 Bearer", "GET", "/api/v1/cli/ping", map[string]string{"Authorization": "Basic " + cfg.CLIToken}, 401},
+		{"cli 路由 + 白名单 Origin 也拒绝", "GET", "/api/v1/cli/ping", map[string]string{"Authorization": "Bearer " + cfg.CLIToken, "Origin": "http://tauri.localhost"}, 403},
+		{"cli 路由 + 预检也拒绝", "OPTIONS", "/api/v1/cli/ping", map[string]string{"Origin": "http://tauri.localhost", "Access-Control-Request-Method": "GET"}, 403},
+		{"网页路由 + CLI token", "GET", "/api/v1/projects", map[string]string{"Authorization": "Bearer " + cfg.CLIToken}, 401},
+		{"网页路由 + CLI token 查询参数", "GET", "/api/v1/projects?token=" + cfg.CLIToken, nil, 401},
+		{"媒体路由 + CLI token", "GET", "/media/a.png?token=" + cfg.CLIToken, nil, 401},
+		{"网页路由 + 网页 token 不受影响", "GET", "/api/v1/projects", map[string]string{"Authorization": "Bearer " + cfg.Token}, 200},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := doWith(t, cfg, c.method, c.target, c.headers)
+			if rec.Code != c.want {
+				t.Fatalf("status=%d want %d", rec.Code, c.want)
+			}
+		})
+	}
+}
+
+func TestCLIRouteRejectsAllWhenCLITokenEmpty(t *testing.T) {
+	cfg := cliCfg()
+	cfg.CLIToken = ""
+	rec := doWith(t, cfg, "GET", "/api/v1/cli/ping", map[string]string{"Authorization": "Bearer "})
+	if rec.Code != 401 {
+		t.Fatalf("status=%d want 401", rec.Code)
+	}
+}
+
 func TestEmptyMediaTokenNeverMatches(t *testing.T) {
 	cfg := Config{Token: testToken, AllowedOrigins: []string{"tauri://localhost"}}
 	if got := doWith(t, cfg, "GET", "/media/u1/a.png?token=", nil).Code; got != http.StatusUnauthorized {

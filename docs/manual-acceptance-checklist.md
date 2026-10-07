@@ -214,6 +214,52 @@ side-dl（5156c50 + 审查修复 fc8356a）已在 integration 第四轮合入（
 - 预期：① 节点角标变「已通过」；② 上游请求里的素材是 `asset://…`；③ 角标显示上游返回的原文错误。
 - 出处：`docs/superpowers/specs/2026-10-07-seedance-asset-model-design.md`。
 
+## 命令行工具
+
+Windows 实机全部必做；macOS 上 sidecar 级冒烟（`project list`/`node create`/SSE 推送/退出码 8/Codex 沙箱退出码 9）已由 CLI Task 14 用独立 sidecar 覆盖，下列需要真实壳与网页的项仍需手工做。
+
+### L1 真实壳写地址文件
+- 步骤：`pnpm dev` 启动应用后执行 `cat ~/Library/Application\ Support/com.miaoju.desktop/cli-endpoint.json; stat -f %Lp <同一路径>`；再退出应用并查看该文件。
+- 预期：内容为 `{"version":1,"port":…,"token":"…","appVersion":"<package.json 版本>"}`，权限 `600`；退出应用后文件已被删除，再执行 `miaoju project list` 退出码为 8、stderr 为「喵剧未运行，请先打开应用」。
+- 出处：CLI 计划 Task 14 Step 2（控制端裁定改为手工项）。
+
+### L2 画布空闲刷新
+- 步骤：应用里打开一个项目，终端执行 `miaoju node create --type image-input --content <图片 URL> --project <ID>`。
+- 预期：画布在 1 秒内出现新节点，视口不跳动。
+- 出处：CLI 计划 Task 14 Step 2。
+
+### L3 设置卡片安装（macOS、Windows 各一次）
+- 步骤：设置 → 配置 → 命令行工具 → 安装；重新打开终端执行 `miaoju --help`。
+- 预期：命令可用。
+
+### L4 Windows：用户 Path
+- 步骤：安装后查看注册表 `HKCU\Environment\Path`。
+- 预期：`%USERPROFILE%\.miaoju\bin` 已出现在用户 Path 中；原有的 `%USERPROFILE%` 类变量仍能展开（值类型仍是 REG_EXPAND_SZ）。
+
+### L5 Windows：应用关闭时的退出码
+- 步骤：关闭应用，执行 `miaoju project list`。
+- 预期：退出码为 8（验证 WSAECONNREFUSED 的识别）。
+
+### L6 覆盖安装后的版本不一致
+- 步骤：覆盖安装新版本后打开设置里的命令行工具卡片，点「重新安装」。
+- 预期：先显示「版本不一致」；重新安装后恢复正常。
+
+### L7 拖拽与撤销
+- 步骤：在画布上按住拖动一个节点时，终端执行 `miaoju node create`；松手；再按撤销。
+- 预期：正在拖拽的节点不跳动；松手后新节点出现；撤销不会删掉 CLI 新建的节点。
+
+### L8 应用退出耗时
+- 步骤：打开一个项目（SSE 已连接）后退出应用，与接入 CLI 前的版本对比。
+- 预期：退出耗时没有明显变长（SSE 连接已立即断开）。
+
+### L9 卸载
+- 步骤：设置 → 配置 → 命令行工具 → 卸载，重新打开终端。
+- 预期：`~/.zshrc` 中的标记块已被移除，`miaoju` 命令已不存在。
+
+### L10 Codex 沙箱（Windows）
+- 步骤：Windows 上在 Codex 默认沙箱里执行 `miaoju project list`，再在允许网络的配置下执行一次。
+- 预期：前者退出码 9 并提示「网络被 AI 助手的沙箱拦截，请允许本命令访问网络后重试」（若 Windows 沙箱不拦截 loopback 则记录实际行为）；后者退出码 0。
+
 ## 条目统计
 
-macOS 5 项、Windows 9 项、通用 14 项、下载 7 项，共 35 项（C8、C9 内部另含子项），另有对象存储 1 项（O1，内含 6 个步骤）、合规校验 1 项（O2）。
+macOS 5 项、Windows 9 项、通用 14 项、下载 7 项，共 35 项（C8、C9 内部另含子项），另有对象存储 1 项（O1，内含 6 个步骤）、合规校验 1 项（O2）、命令行工具 10 项（L1–L10）。

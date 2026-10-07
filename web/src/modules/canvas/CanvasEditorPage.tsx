@@ -21,6 +21,7 @@ import {
   setCanvasOwnerToken,
   waitForCanvasMutationsIdle,
 } from '@/modules/canvas/editor/persistence/canvasMutations';
+import { useExternalChanges } from '@/modules/canvas/editor/hooks/useExternalChanges';
 import { loadLocalView } from '@/modules/canvas/editor/persistence/localView';
 import {
   type CanvasViewMode,
@@ -102,6 +103,8 @@ export function CanvasEditorPage() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const accessDeniedHandledRef = useRef(false);
   const loadedProjectRef = useRef<number | null>(null);
+  // useExternalChanges 在下方调用，先用 ref 把本地回执转发过去
+  const noteLocalVersionRef = useRef<(version: number) => void>(() => {});
   // 按 action 维度的落点账本，记录同一 action 已占用的网格格子号；让一次
   // action 产生的多个节点按序号排进 5 列网格，对齐且互不重叠。
   // 模型目录：agent 切模型时要按新模型的 uiSchema 重置比例/分辨率/时长，与
@@ -377,7 +380,11 @@ export function CanvasEditorPage() {
     // reset 抹掉。
     configureCanvasPersistence({
       projectID: pid,
-      onVersion: () => setLastSyncedAt(new Date().toISOString()),
+      onVersion: (v) => {
+        setLastSyncedAt(new Date().toISOString());
+        // 本地写入也会推高服务端版本，告诉外部变更订阅，免得重连补漏时多整拉一次
+        noteLocalVersionRef.current(v);
+      },
       onError: () => message.error('保存失败'),
     });
     setCanvasOwnerToken(LOCAL_OWNER_TOKEN);
@@ -413,6 +420,15 @@ export function CanvasEditorPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // CLI 改了当前画布：空闲时整拉（CLI spec 第 6 节）
+  const { noteLocalVersion } = useExternalChanges({
+    projectId: pid,
+    enabled: ready,
+    initialVersion: snapshotQuery.data?.version ?? 0,
+    onReloaded: () => setLastSyncedAt(new Date().toISOString()),
+  });
+  noteLocalVersionRef.current = noteLocalVersion;
 
   if (!Number.isFinite(pid) || pid <= 0) {
     return <div className="p-8 text-white">无效的项目 ID</div>;

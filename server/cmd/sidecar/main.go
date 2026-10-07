@@ -1,7 +1,7 @@
 // sidecar 是桌面端的本地服务进程，由 Tauri 壳拉起。
 //
 // 启动协议（壳与 sidecar 的唯一契约，改动要两边一起改，壳侧见 src-tauri/src/lib.rs）：
-//  1. 壳通过 stdin 写入一行 token；
+//  1. 壳通过 stdin 写入两行：第 1 行网页 token，第 2 行 CLI token（只放行 /api/v1/cli/，见 localauth）；
 //  2. sidecar 打开 <data-dir>/data.db 并迁移，监听 127.0.0.1 的随机端口，就绪后向 stdout 打印 "READY <port>"；
 //  3. 之后 stdin 上读到一行 "SHUTDOWN"（壳正常退出）或 EOF（壳崩溃、被强杀），两者走同一条优雅退出路径：
 //     取消 ctx、停止接收请求、等后台任务退出、关闭数据库后以 0 退出，整个过程不超过 shutdownTimeout。
@@ -82,9 +82,16 @@ func run() error {
 	}
 
 	stdin := bufio.NewReader(os.Stdin)
-	token, err := readToken(stdin)
+	token, err := readToken(stdin, "token")
 	if err != nil {
 		return err
+	}
+	cliToken, err := readToken(stdin, "CLI token")
+	if err != nil {
+		return err
+	}
+	if cliToken == token {
+		return errors.New("CLI token 不得与网页 token 相同")
 	}
 
 	// I4：打开 data.db 前锁住数据目录，同一目录不会有两个 sidecar（退出码 exitDataDirBusy，见 exit.go）。
@@ -124,6 +131,10 @@ func run() error {
 		ln.Close()
 		return fmt.Errorf("生成媒体 token: %w", err)
 	}
+	if mediaToken == cliToken {
+		ln.Close()
+		return errors.New("媒体 token 与 CLI token 冲突")
+	}
 	storage, err := assets.NewLocalStorage(assets.LocalConfig{
 		Root:    filepath.Join(*dataDir, "media"),
 		BaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
@@ -136,6 +147,7 @@ func run() error {
 
 	a, err := wire(conn, storage, localauth.Config{
 		Token:          token,
+		CLIToken:       cliToken,
 		MediaToken:     mediaToken,
 		AllowedOrigins: splitOrigins(*origins),
 	}, *dataDir, version)
@@ -180,6 +192,7 @@ func run() error {
 	attachCanvasNotifier(a, agentW.Hub)
 
 	apphttp.MustWire(a.deps)
+	apphttp.MustWireCLI(a.deps)
 	srv := &nethttp.Server{
 		Handler: apphttp.NewRouter(a.deps),
 		// P0 遗留：防慢速请求头占满连接。
@@ -221,10 +234,13 @@ func run() error {
 	select {
 	case err := <-serveErr:
 		cancel()
+		a.events.Close()
 		shutdownAndWait(shutdownTimeout, nil, drainGen, workers...)
 		return err
 	case <-ctx.Done():
 	}
+	// 先断开所有 SSE：srv.Shutdown 不会取消在途请求，长连接不关会拖满 shutdownTimeout。
+	a.events.Close()
 	// 关闭顺序：ctx 已取消（worker 不再开始新一轮）→ 停 HTTP、生成管线 Drain（停止领取、等在途任务收口，
 	// P1c M1）、等后台 worker 退出，三者并行，共用一个 shutdownTimeout 截止时间 → 关数据库（defer）。
 	// 必须等 worker 和 Drain 结束再关库：sql.DB.Close 不会等事务以外的后续语句，剩下的步骤只会拿到
@@ -315,22 +331,22 @@ func ensurePrivateDir(dir string) error {
 	return os.Chmod(dir, 0o700)
 }
 
-// readToken 读 stdin 第一行。ReadSlice 受 bufio 默认 4096 字节缓冲限制，超长输入直接报错，
-// 不会把任意长的一行读进内存。TrimSpace 同时处理 Windows 的 \r\n。
-func readToken(r *bufio.Reader) (string, error) {
+// readToken 读 stdin 的一行 token，label 用于报错指明是哪一个。ReadSlice 受 bufio 默认 4096 字节缓冲限制，
+// 超长输入直接报错，不会把任意长的一行读进内存。TrimSpace 同时处理 Windows 的 \r\n。
+func readToken(r *bufio.Reader, label string) (string, error) {
 	line, err := r.ReadSlice('\n')
 	if errors.Is(err, bufio.ErrBufferFull) {
-		return "", fmt.Errorf("token 长度超过 %d", maxTokenLen)
+		return "", fmt.Errorf("%s 长度超过 %d", label, maxTokenLen)
 	}
 	token := strings.TrimSpace(string(line))
 	if token == "" && err != nil {
-		return "", fmt.Errorf("读取 token: %w", err)
+		return "", fmt.Errorf("读取 %s: %w", label, err)
 	}
 	if len(token) < 32 {
-		return "", errors.New("token 长度不足 32")
+		return "", fmt.Errorf("%s 长度不足 32", label)
 	}
 	if len(token) > maxTokenLen {
-		return "", fmt.Errorf("token 长度超过 %d", maxTokenLen)
+		return "", fmt.Errorf("%s 长度超过 %d", label, maxTokenLen)
 	}
 	return token, nil
 }

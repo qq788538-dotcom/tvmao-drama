@@ -8,6 +8,7 @@ import {
   flushNodePatch,
   geometryPatchFromNode,
   getCanvasOwnerToken,
+  isCanvasPersistenceIdle,
   onCanvasOwnerLost,
   resetCanvasPersistence,
   resetCanvasPersistenceForTest,
@@ -25,6 +26,20 @@ describe('canvasMutations', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('inflight never goes negative when a counter reset races an in-flight mutation', async () => {
+    setCanvasOwnerToken('owner-token');
+    let release!: () => void;
+    const pending = enqueueCanvasMutation(
+      () => new Promise<void>((resolve) => { release = resolve; }),
+    );
+    await Promise.resolve();
+    // 计数在任务还没结束时被清零（测试隔离 reset）；任务结束的 finally 不能把它减成 -1
+    resetCanvasPersistenceForTest();
+    release();
+    await pending;
+    expect(isCanvasPersistenceIdle()).toBe(true);
   });
 
   it('runs queued mutations in order', async () => {

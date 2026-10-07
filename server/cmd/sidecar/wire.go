@@ -10,8 +10,10 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/assets"
 	"github.com/james/huabu_studio/apps/api/internal/builtin"
 	"github.com/james/huabu_studio/apps/api/internal/canvasowner"
+	"github.com/james/huabu_studio/apps/api/internal/cliapi"
 	"github.com/james/huabu_studio/apps/api/internal/directorlibrary"
 	"github.com/james/huabu_studio/apps/api/internal/directormodels"
+	"github.com/james/huabu_studio/apps/api/internal/events"
 	"github.com/james/huabu_studio/apps/api/internal/generation"
 	apphttp "github.com/james/huabu_studio/apps/api/internal/http"
 	"github.com/james/huabu_studio/apps/api/internal/library"
@@ -38,6 +40,8 @@ type app struct {
 	seedance *library.SeedanceService
 	// publisher 是对象存储发布器（用户自配 TOS/OSS），main 把它交给 wireAgent 的媒体解析。
 	publisher *objectstore.Publisher
+	// events 是项目变更事件中心：CLI 写画布后发布，网页经 SSE 订阅；退出时由 main 关闭。
+	events *events.Hub
 }
 
 // wire 是唯一的装配点（对应参考仓 cmd/server/main.go 里画布相关的那部分）。
@@ -69,6 +73,9 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		return nil, fmt.Errorf("装配生成链路: %w", err)
 	}
 
+	// 网页上传与 CLI 上传共用同一个 AssetHandler（CLIAssetHandler 复用它的落盘与登记）。
+	assetHandler := apphttp.NewAssetHandler(storage, assetsRepo, usersRepo, signer)
+
 	deps := apphttp.Deps{
 		Auth:              auth,
 		DataDir:           dataDir,
@@ -76,7 +83,7 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		MediaSigner:       signer,
 		Media:             apphttp.NewMediaHandler(storage, signer, apphttp.NewSQLMediaMimeStore(conn), reveal.InFileManager),
 		Me:                apphttp.NewMeHandler(usersRepo),
-		Asset:             apphttp.NewAssetHandler(storage, assetsRepo, usersRepo, signer),
+		Asset:             assetHandler,
 		Project:           apphttp.NewProjectHandler(projectsRepo, signer, storage, assetsRepo, usersRepo, genTasks, orphans, conn, duplicator),
 		CanvasMutation:    apphttp.NewCanvasMutationHandler(projectsRepo, canvasowner.NewLocal(), signer),
 		CanvasAssetImport: apphttp.NewCanvasAssetImportHandler(apphttp.NewSQLCanvasAssetRefStore(conn), assetsRepo),
@@ -107,6 +114,21 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	librarySeedanceSvc.SetMediaPublisher(publisher)
 	// 生成时真人素材自动以 asset://<id> 提交（参考仓 main.go 同名装配）。
 	genW.Gen.WithRealPersonResolver(librarySeedanceSvc)
+
+	// 自由画布 CLI 契约（参考仓 cmd/server/main.go 同名装配）：service 层及以下与网页共用。
+	// CLI 写画布成功后经事件中心通知网页（SSE），网页空闲时整拉快照。
+	hub := events.NewHub()
+	deps.Events = hub
+	cliStore := cliapi.WithChangeNotifier(projectsRepo, hub)
+	deps.CLI = apphttp.NewCLIHandler(
+		cliapi.NewService(cliStore, signer.Sign).
+			WithGeneration(genW.CanvasGen, modelsRepo).
+			// 合规校验复用网页那一个 library.SeedanceService：状态挂在 object_key 上，两条路共用一份。
+			WithSeedance(librarySeedanceSvc, storage),
+		cliapi.NewSQLiteIdempotency(conn),
+	)
+	deps.CLIModel = apphttp.NewCLIModelHandler(modelsRepo)
+	deps.CLIAsset = apphttp.NewCLIAssetHandler(assetHandler, assetsRepo, signer)
 
 	// 后处理（去字幕/转高清/转白模）直接入 P1c 的生成管线。
 	deps.CanvasPostprocess = apphttp.NewCanvasPostprocessHandler(settingsRepo, genW.CanvasGen, projectsRepo, assetsRepo, genW.Gen, modelsRepo, signer).
@@ -142,7 +164,7 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	}
 
 	cleaner := apphttp.NewProjectCleaner(projectsRepo, assetsRepo, usersRepo, genTasks, orphans, conn)
-	return &app{deps: deps, cleaner: cleaner, sweeper: sweeper, gen: genW, assets: assetsRepo, seedance: librarySeedanceSvc, publisher: publisher}, nil
+	return &app{deps: deps, cleaner: cleaner, sweeper: sweeper, gen: genW, assets: assetsRepo, seedance: librarySeedanceSvc, publisher: publisher, events: hub}, nil
 }
 
 // charImageStore 把 assets.Storage 适配成 aicharacters.ObjectStore（角色形象图缓存用）。

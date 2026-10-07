@@ -20,9 +20,10 @@ import (
 )
 
 const testToken = "0123456789abcdef0123456789abcdef"
+const testCLIToken = "fedcba9876543210fedcba9876543210"
 
 func TestReadToken(t *testing.T) {
-	got, err := readToken(bufio.NewReader(strings.NewReader(testToken + "\n")))
+	got, err := readToken(bufio.NewReader(strings.NewReader(testToken+"\n")), "token")
 	if err != nil || got != testToken {
 		t.Fatalf("got %q, %v", got, err)
 	}
@@ -30,20 +31,20 @@ func TestReadToken(t *testing.T) {
 
 // Windows 管道写入的行尾是 \r\n，不能把 \r 算进 token。
 func TestReadTokenTrimsCRLF(t *testing.T) {
-	got, err := readToken(bufio.NewReader(strings.NewReader(testToken + "\r\n")))
+	got, err := readToken(bufio.NewReader(strings.NewReader(testToken+"\r\n")), "token")
 	if err != nil || got != testToken {
 		t.Fatalf("got %q, %v", got, err)
 	}
 }
 
 func TestReadTokenRejectsShort(t *testing.T) {
-	if _, err := readToken(bufio.NewReader(strings.NewReader("short\n"))); err == nil {
+	if _, err := readToken(bufio.NewReader(strings.NewReader("short\n")), "token"); err == nil {
 		t.Fatal("过短的 token 应当报错")
 	}
 }
 
 func TestReadTokenRejectsEOF(t *testing.T) {
-	if _, err := readToken(bufio.NewReader(strings.NewReader(""))); err == nil {
+	if _, err := readToken(bufio.NewReader(strings.NewReader("")), "token"); err == nil {
 		t.Fatal("stdin 直接关闭应当报错")
 	}
 }
@@ -73,7 +74,7 @@ func startSidecar(t *testing.T, bin, dataDir string, extraArgs ...string) (*exec
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
-	fmt.Fprintf(stdin, "%s\n", testToken)
+	fmt.Fprintf(stdin, "%s\n%s\n", testToken, testCLIToken)
 
 	ready := make(chan string, 1)
 	go func() {
@@ -176,7 +177,7 @@ func TestFailsWithoutReadyWhenDataDirUnusable(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(stdin, "%s\n", testToken)
+	fmt.Fprintf(stdin, "%s\n%s\n", testToken, testCLIToken)
 	stdout, _ := io.ReadAll(out)
 	err := cmd.Wait()
 	if err == nil {
@@ -189,7 +190,7 @@ func TestFailsWithoutReadyWhenDataDirUnusable(t *testing.T) {
 
 func TestReadTokenRejectsTooLong(t *testing.T) {
 	for _, n := range []int{300, 5000} {
-		if _, err := readToken(bufio.NewReader(strings.NewReader(strings.Repeat("a", n) + "\n"))); err == nil {
+		if _, err := readToken(bufio.NewReader(strings.NewReader(strings.Repeat("a", n)+"\n")), "token"); err == nil {
 			t.Fatalf("%d 字节的 token 应被拒绝", n)
 		}
 	}
@@ -289,6 +290,13 @@ func TestOriginsFlagOverridesDefault(t *testing.T) {
 	}
 }
 
+func TestReadTokenLabelsError(t *testing.T) {
+	_, err := readToken(bufio.NewReader(strings.NewReader("short\n")), "CLI token")
+	if err == nil || !strings.Contains(err.Error(), "CLI token") {
+		t.Fatalf("err=%v，报错应带上是哪个 token", err)
+	}
+}
+
 // P0 遗留：启动失败必须以退出码 1 结束，并在 stderr 留下原因（壳据此显示错误页）。
 func TestStartupFailuresExitOneWithStderr(t *testing.T) {
 	bin := buildSidecar(t)
@@ -297,8 +305,10 @@ func TestStartupFailuresExitOneWithStderr(t *testing.T) {
 		args  []string
 		stdin string
 	}{
-		{"缺 --data-dir", nil, testToken + "\n"},
+		{"缺 --data-dir", nil, testToken + "\n" + testCLIToken + "\n"},
 		{"token 过短", []string{"--data-dir", t.TempDir()}, "short\n"},
+		{"缺第二行 CLI token", []string{"--data-dir", t.TempDir()}, testToken + "\n"},
+		{"两个 token 相同", []string{"--data-dir", t.TempDir()}, testToken + "\n" + testToken + "\n"},
 		{"stdin 直接关闭", []string{"--data-dir", t.TempDir()}, ""},
 	}
 	for _, c := range cases {
