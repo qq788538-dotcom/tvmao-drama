@@ -13,6 +13,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/cliapi"
 	"github.com/james/huabu_studio/apps/api/internal/directorlibrary"
 	"github.com/james/huabu_studio/apps/api/internal/directormodels"
+	"github.com/james/huabu_studio/apps/api/internal/events"
 	"github.com/james/huabu_studio/apps/api/internal/generation"
 	apphttp "github.com/james/huabu_studio/apps/api/internal/http"
 	"github.com/james/huabu_studio/apps/api/internal/library"
@@ -39,6 +40,8 @@ type app struct {
 	seedance *library.SeedanceService
 	// publisher 是对象存储发布器（用户自配 TOS/OSS），main 把它交给 wireAgent 的媒体解析。
 	publisher *objectstore.Publisher
+	// events 是项目变更事件中心：CLI 写画布后发布，网页经 SSE 订阅；退出时由 main 关闭。
+	events *events.Hub
 }
 
 // wire 是唯一的装配点（对应参考仓 cmd/server/main.go 里画布相关的那部分）。
@@ -117,7 +120,10 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	genW.Gen.WithRealPersonResolver(librarySeedanceSvc)
 
 	// 自由画布 CLI 契约（参考仓 cmd/server/main.go 同名装配）：service 层及以下与网页共用。
-	cliStore := cliapi.WithChangeNotifier(projectsRepo, nil) // 事件中心由 Task 6 在 main.go 注入后替换
+	// CLI 写画布成功后经事件中心通知网页（SSE），网页空闲时整拉快照。
+	hub := events.NewHub()
+	deps.Events = hub
+	cliStore := cliapi.WithChangeNotifier(projectsRepo, hub)
 	deps.CLI = apphttp.NewCLIHandler(
 		cliapi.NewService(cliStore, signer.Sign).
 			WithGeneration(genW.CanvasGen, modelsRepo).
@@ -162,7 +168,7 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	}
 
 	cleaner := apphttp.NewProjectCleaner(projectsRepo, assetsRepo, usersRepo, genTasks, orphans, conn)
-	return &app{deps: deps, cleaner: cleaner, sweeper: sweeper, gen: genW, assets: assetsRepo, seedance: librarySeedanceSvc, publisher: publisher}, nil
+	return &app{deps: deps, cleaner: cleaner, sweeper: sweeper, gen: genW, assets: assetsRepo, seedance: librarySeedanceSvc, publisher: publisher, events: hub}, nil
 }
 
 // charImageStore 把 assets.Storage 适配成 aicharacters.ObjectStore（角色形象图缓存用）。

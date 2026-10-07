@@ -236,10 +236,13 @@ func run() error {
 	select {
 	case err := <-serveErr:
 		cancel()
+		a.events.Close()
 		shutdownAndWait(shutdownTimeout, nil, drainGen, workers...)
 		return err
 	case <-ctx.Done():
 	}
+	// 先断开所有 SSE：srv.Shutdown 不会取消在途请求，长连接不关会拖满 shutdownTimeout。
+	a.events.Close()
 	// 关闭顺序：ctx 已取消（worker 不再开始新一轮）→ 停 HTTP、生成管线 Drain（停止领取、等在途任务收口，
 	// P1c M1）、等后台 worker 退出，三者并行，共用一个 shutdownTimeout 截止时间 → 关数据库（defer）。
 	// 必须等 worker 和 Drain 结束再关库：sql.DB.Close 不会等事务以外的后续语句，剩下的步骤只会拿到
