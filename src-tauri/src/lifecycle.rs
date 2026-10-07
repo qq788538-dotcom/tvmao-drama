@@ -4,6 +4,7 @@
 //! - restart()：前端“重试”或 P4 切换数据目录后调用；清零自动重启计数。
 //! - shutdown()：应用退出时调用，之后不再拉起。先置位 closing（不拿锁），正在进行的启动随即被取消，
 //!   所以退出不会卡在等 READY 上。
+//!
 //! 不依赖 Tauri：状态变化通过 Emitter 回调发出（lib.rs 里转成 `sidecar-state` 事件）。
 
 use std::sync::Arc;
