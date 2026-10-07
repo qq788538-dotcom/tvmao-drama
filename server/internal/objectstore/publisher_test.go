@@ -21,7 +21,8 @@ type fakeClient struct {
 	putErr    error
 	delay     time.Duration
 	panicMsg  string
-	panicOnce atomic.Bool // 置位后下一次 Put 触发 panic（只一次）
+	panicOnce atomic.Bool       // 置位后下一次 Put 触发 panic（只一次）
+	ctypes    map[string]string // key -> Put 收到的 Content-Type
 }
 
 func newFake() *fakeClient { return &fakeClient{objects: map[string][]byte{}} }
@@ -32,7 +33,7 @@ func (f *fakeClient) Exists(_ context.Context, key string) (bool, error) {
 	_, ok := f.objects[key]
 	return ok, nil
 }
-func (f *fakeClient) Put(_ context.Context, key string, r io.Reader, _ int64, _ string) error {
+func (f *fakeClient) Put(_ context.Context, key string, r io.Reader, _ int64, ctype string) error {
 	time.Sleep(f.delay)
 	if f.panicOnce.CompareAndSwap(true, false) {
 		panic("boom " + f.panicMsg)
@@ -43,6 +44,10 @@ func (f *fakeClient) Put(_ context.Context, key string, r io.Reader, _ int64, _ 
 	b, _ := io.ReadAll(r)
 	f.mu.Lock()
 	f.objects[key] = b
+	if f.ctypes == nil {
+		f.ctypes = map[string]string{}
+	}
+	f.ctypes[key] = ctype
 	f.mu.Unlock()
 	f.puts.Add(1)
 	return nil
@@ -229,5 +234,30 @@ func TestPublisherPanicDoesNotWedgeKey(t *testing.T) {
 	defer cancel()
 	if _, err := p.Publish(ctx, "u1/2026/10/v.mp4"); err != nil {
 		t.Fatalf("panic 后同 key 应可重试: %v", err)
+	}
+}
+
+// 生成产物的 key 无扩展名：应按文件头嗅探出 .mp4 与 video/mp4。
+func TestPublisherSniffsExtensionForExtensionlessKey(t *testing.T) {
+	fc := newFake()
+	p, _, _ := setup(t, fc)
+	mp4 := append([]byte{0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm'}, make([]byte, 32)...)
+	p.objects = memObjects{"u1/gen/task-9-0": mp4}
+	url, err := p.Publish(context.Background(), "u1/gen/task-9-0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(url, ".mp4?") {
+		t.Fatalf("url=%s 应以 .mp4 结尾", url)
+	}
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	for k, ct := range fc.ctypes {
+		if !strings.HasSuffix(k, ".mp4") || ct != "video/mp4" {
+			t.Fatalf("key=%s ctype=%s", k, ct)
+		}
+	}
+	if len(fc.ctypes) != 1 {
+		t.Fatalf("puts=%d", len(fc.ctypes))
 	}
 }

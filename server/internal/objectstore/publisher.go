@@ -141,6 +141,12 @@ func (p *Publisher) publish(ctx context.Context, c Config, mediaKey string) (str
 	size := int64(n) + rest
 	ext := strings.ToLower(path.Ext(mediaKey))
 	ctype := mime.TypeByExtension(ext)
+	if ext == "" {
+		// 生成产物的 key 不带扩展名：按文件头嗅探，补上扩展名与 Content-Type
+		if e, ct := sniffMedia(head[:n]); e != "" {
+			ext, ctype = e, ct
+		}
+	}
 	if ctype == "" {
 		ctype = http.DetectContentType(head[:n])
 	}
