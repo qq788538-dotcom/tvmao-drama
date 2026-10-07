@@ -252,8 +252,12 @@ impl SidecarManager {
                 self.watch_crash(generation, handle.exited());
                 inner.handle = Some(handle);
                 self.set_phase(Phase::Ready(info.clone()));
-                if let Some(h) = self.ready_hook.lock().unwrap().clone() {
-                    h(&info);
+                // 先取出钩子、语句结束即释放锁，再在锁外调用。钩子会写文件并 fsync，放到阻塞线程池里跑；
+                // 仍然 await 它（此时持有 inner 锁），保证多次启动的钩子按顺序执行，旧端口不会覆盖新端口。
+                let hook = self.ready_hook.lock().unwrap().clone();
+                if let Some(h) = hook {
+                    let i = info.clone();
+                    let _ = tokio::task::spawn_blocking(move || h(&i)).await;
                 }
                 Ok(info)
             }
@@ -590,6 +594,26 @@ mod manager_tests {
         assert_ne!(seen[0].cli_token, seen[1].cli_token, "每次启动都要换新 CLI token");
         assert_ne!(seen[0].cli_token, seen[0].token, "CLI token 不得等于网页 token");
         drop(seen);
+        m.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn ready_hook_runs_off_runtime_thread_without_holding_hook_lock() {
+        let (f, _) = scripted(vec![SERVE_4001]);
+        let m = SidecarManager::new(f, recorder().0, fast());
+        let weak = Arc::downgrade(&m);
+        let seen: Arc<std::sync::Mutex<Vec<(bool, std::thread::ThreadId)>>> = Arc::default();
+        let s = seen.clone();
+        m.set_ready_hook(Arc::new(move |_: &ServerInfo| {
+            // 钩子里能拿到 ready_hook 锁，说明调用方没有持锁调用
+            let unlocked = weak.upgrade().map(|m| m.ready_hook.try_lock().is_ok()).unwrap_or(false);
+            s.lock().unwrap().push((unlocked, std::thread::current().id()));
+        }));
+        m.start().await.unwrap();
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 1, "start 返回前钩子必须已执行完");
+        assert!(seen[0].0, "调用钩子时不能持有 ready_hook 锁");
+        assert_ne!(seen[0].1, std::thread::current().id(), "钩子要在阻塞线程池里跑，不能在 async 线程上同步 fsync");
         m.shutdown().await;
     }
 

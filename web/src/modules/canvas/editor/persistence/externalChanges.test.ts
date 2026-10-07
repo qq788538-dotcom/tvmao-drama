@@ -40,6 +40,18 @@ describe('isCanvasIdle', () => {
     ta.remove();
   });
 
+  it('idle when the window lost focus even if a text input still holds activeElement', () => {
+    const ta = document.createElement('textarea');
+    document.body.appendChild(ta);
+    ta.focus();
+    const spy = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    expect(isCanvasIdle()).toBe(true);
+    spy.mockReturnValue(true);
+    expect(isCanvasIdle()).toBe(false);
+    spy.mockRestore();
+    ta.remove();
+  });
+
   it('not idle while local mutations are in flight', () => {
     idle.mockReturnValue(false);
     expect(isCanvasIdle()).toBe(false);
@@ -71,5 +83,29 @@ describe('reloadCanvasFromServer', () => {
     await expect(reloadCanvasFromServer(14)).resolves.toBeNull();
     expect(useCanvasStore.getState().nodes.map((n) => n.id)).toEqual(['a']);
     expect(seed).not.toHaveBeenCalled();
+  });
+
+  it('discards the snapshot when the user started editing while it was fetching', async () => {
+    useCanvasStore.setState({ nodes: [{ id: 'a' } as never] });
+    const ta = document.createElement('textarea');
+    document.body.appendChild(ta);
+    const spy = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    getSnapshot.mockImplementation(async () => {
+      ta.focus(); // 拉取期间用户点进了输入框
+      return { payload: { nodes: [{ id: 'c' }], connections: [] }, version: 9, syncedAt: null };
+    });
+    await expect(reloadCanvasFromServer(14)).resolves.toBeNull();
+    expect(useCanvasStore.getState().nodes.map((n) => n.id)).toEqual(['a']);
+    expect(seed).not.toHaveBeenCalled();
+    spy.mockRestore();
+    ta.remove();
+  });
+
+  it('treats non-array nodes/connections as empty', async () => {
+    getSnapshot.mockResolvedValue({ payload: { nodes: { bad: 1 }, connections: 'x' }, version: 9, syncedAt: null });
+    await expect(reloadCanvasFromServer(14)).resolves.toBe(9);
+    expect(useCanvasStore.getState().nodes).toEqual([]);
+    expect(useCanvasStore.getState().connections).toEqual([]);
+    expect(seed).toHaveBeenCalledWith([]);
   });
 });

@@ -390,7 +390,7 @@ function enqueueCanvasMutationInContext(
         throw err;
       }
     } finally {
-      inflight -= 1;
+      inflight = Math.max(0, inflight - 1);
     }
   };
 

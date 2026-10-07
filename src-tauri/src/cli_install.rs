@@ -184,10 +184,16 @@ fn skill_entry(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 /// 已安装命令的 `version` 输出；最多等 3 秒（Gatekeeper / 杀毒扫描可能卡住），超时按"版本不一致"处理。
 fn installed_output(cmd: &Path) -> Option<String> {
-    output_with_timeout(
-        std::process::Command::new(cmd).arg("version"),
-        std::time::Duration::from_secs(3),
-    )
+    let mut c = std::process::Command::new(cmd);
+    c.arg("version");
+    // 从 GUI 进程拉起 .cmd 会闪出控制台窗口
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+    }
+    output_with_timeout(&mut c, std::time::Duration::from_secs(3))
 }
 
 fn status(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
