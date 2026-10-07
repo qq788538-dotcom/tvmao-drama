@@ -5,7 +5,7 @@ pub mod data_dir;
 pub mod datadir;
 pub mod cli_endpoint;
 mod cli_install;
-mod lifecycle;
+pub mod lifecycle;
 pub mod media_save;
 pub mod native_dialog;
 pub mod sidecar;

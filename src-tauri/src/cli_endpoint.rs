@@ -42,10 +42,30 @@ pub fn write(dir: &Path, info: &ServerInfo, app_version: &str) -> io::Result<()>
     f.write_all(&body)?;
     f.sync_all()?;
     drop(f);
-    std::fs::rename(&tmp, &path)?;
+    rename_with_retry(&tmp, &path, |a, b| std::fs::rename(a, b))?;
     #[cfg(not(windows))]
     std::fs::File::open(dir)?.sync_all()?;
     Ok(())
+}
+
+/// Windows 上 CLI 正在读目标文件时 rename 会失败（共享冲突），隔 50ms 重试，最多 3 次。
+fn rename_with_retry(
+    from: &Path,
+    to: &Path,
+    mut rename: impl FnMut(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
+    const RETRIES: u32 = 3;
+    let mut attempt = 0;
+    loop {
+        match rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(e) if attempt >= RETRIES => return Err(e),
+            Err(_) => {
+                attempt += 1;
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+    }
 }
 
 /// 应用退出时删除。文件不存在不算错（幂等）。
@@ -79,6 +99,25 @@ mod tests {
         write(d.path(), &info(), "1.2.0").unwrap();
         let mode = std::fs::metadata(d.path().join(FILE_NAME)).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn rename_retries_up_to_three_times() {
+        let mut calls = 0;
+        let r = rename_with_retry(Path::new("a"), Path::new("b"), |_, _| {
+            calls += 1;
+            if calls < 3 { Err(io::Error::from(io::ErrorKind::PermissionDenied)) } else { Ok(()) }
+        });
+        assert!(r.is_ok());
+        assert_eq!(calls, 3);
+
+        let mut calls = 0;
+        let r = rename_with_retry(Path::new("a"), Path::new("b"), |_, _| {
+            calls += 1;
+            Err(io::Error::from(io::ErrorKind::PermissionDenied))
+        });
+        assert!(r.is_err());
+        assert_eq!(calls, 4, "首次 + 重试 3 次");
     }
 
     #[test]
