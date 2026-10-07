@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "bash scripts/build-sidecar.sh && cargo tauri dev",
+    "dev": "bash scripts/build-sidecar.sh && bash scripts/build-cli.sh && cargo tauri dev",
     "build": "bash scripts/release-macos.sh aarch64",
     "release:mac": "bash scripts/release-macos.sh all",
     "release:win": "bash scripts/package-windows.sh",

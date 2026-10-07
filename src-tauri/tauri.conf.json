@@ -22,8 +22,8 @@
   "bundle": {
     "active": true,
     "targets": ["app"],
-    "externalBin": ["binaries/sidecar"],
-    "resources": { "resources/python/": "python/" },
+    "externalBin": ["binaries/sidecar", "binaries/miaoju-cli"],
+    "resources": { "resources/python/": "python/", "resources/cli-skill/": "cli-skill/" },
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "macOS": { "minimumSystemVersion": "14.0", "signingIdentity": "-" }
   }

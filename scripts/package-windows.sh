@@ -14,7 +14,7 @@ bash scripts/lib/require-python.sh "$TARGET"
 cargo tauri build --runner cargo-xwin --target "$TARGET" --no-bundle
 
 REL="src-tauri/target/$TARGET/release"
-for f in miaoju.exe sidecar.exe; do
+for f in miaoju.exe sidecar.exe miaoju-cli.exe; do
   [ -f "$REL/$f" ] || { echo "缺少构建产物 $REL/$f" >&2; exit 1; }
 done
 
@@ -23,7 +23,7 @@ STAGE="out/$NAME"
 ZIP="out/$NAME.zip"
 rm -rf "$STAGE" "$ZIP"
 mkdir -p "$STAGE"
-cp "$REL/miaoju.exe" "$REL/sidecar.exe" "$STAGE/"
+cp "$REL/miaoju.exe" "$REL/sidecar.exe" "$REL/miaoju-cli.exe" "$STAGE/"
 
 # 内置 Python：sidecar 在自身所在目录的 python/ 下找解释器（Windows 版本已由 require-python.sh 校验）。
 # --no-bundle 不处理 bundle.resources：按 {源: 目标} 映射复制到 exe 同目录
@@ -39,6 +39,7 @@ while IFS=$'\t' read -r src dest; do
 done < <(node scripts/lib/list-resources.mjs src-tauri/tauri.conf.json)
 # 占位说明和下载戳不进发布包
 rm -f "$STAGE/python/README.md" "$STAGE/python/.stamp"
+[ -f "$STAGE/cli-skill/SKILL.md" ] || { echo "缺少 cli-skill" >&2; exit 1; }
 
 # 说明文件：UTF-8 BOM + CRLF，老版本记事本打开也不乱码
 { printf '\xEF\xBB\xBF'; sed 's/$/\r/' "packaging/首次打开说明-Windows.txt"; } > "$STAGE/首次打开说明.txt"
