@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
+	"github.com/james/huabu_studio/apps/api/internal/events"
 	"github.com/james/huabu_studio/apps/api/internal/localauth"
 )
 
@@ -17,6 +18,9 @@ type Deps struct {
 	Auth    localauth.Config
 	DataDir string
 	Version string
+
+	// Events 是项目变更事件中心；非 nil 时挂项目 SSE 路由。
+	Events *events.Hub
 
 	MediaSigner       *MediaSigner
 	Media             *MediaHandler
@@ -217,6 +221,9 @@ func NewRouter(d Deps) nethttp.Handler {
 				r.Put("/", d.Project.Update)
 				r.Delete("/", d.Project.Delete)
 				r.Get("/snapshot", d.Project.GetSnapshot)
+				if d.Events != nil {
+					r.Get("/events", ProjectEvents(d.Events))
+				}
 				r.Get("/images", d.Project.ListImages)
 				r.Put("/cover", d.Project.SetCover)
 				r.Post("/duplicate", d.Project.Duplicate)

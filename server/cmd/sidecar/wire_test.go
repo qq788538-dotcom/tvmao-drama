@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
@@ -396,4 +397,70 @@ func TestMustWireCLIPanicsOnMissingHandler(t *testing.T) {
 		}
 	}()
 	apphttp.MustWireCLI(apphttp.Deps{})
+}
+
+// CLI 写画布后，同项目的网页 SSE 订阅者收到 source=cli 的事件。
+func TestCLIWritePublishesProjectEvent(t *testing.T) {
+	conn := dbtest.Open(t)
+	dataDir := t.TempDir()
+	storage, err := assets.NewLocalStorage(assets.LocalConfig{Root: filepath.Join(dataDir, "media"), BaseURL: "http://127.0.0.1:1", Token: e2eMediaToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := localauth.Config{Token: strings.Repeat("w", 32), CLIToken: strings.Repeat("c", 32), MediaToken: e2eMediaToken}
+	a, err := wire(conn, storage, auth, dataDir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	apphttp.MustWire(a.deps)
+	apphttp.MustWireCLI(a.deps)
+	srv := httptest.NewServer(apphttp.NewRouter(a.deps))
+	defer srv.Close()
+
+	cliPost := func(path, body string) []byte {
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+auth.CLIToken)
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		if res.StatusCode/100 != 2 {
+			t.Fatalf("POST %s status=%d body=%s", path, res.StatusCode, b)
+		}
+		return b
+	}
+	var proj struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(cliPost("/api/v1/cli/projects", `{"name":"t"}`), &proj); err != nil || proj.ID == 0 {
+		t.Fatalf("建项目失败 id=%d err=%v", proj.ID, err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/v1/projects/%d/events?token=%s", srv.URL, proj.ID, auth.Token), nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("SSE status=%d", res.StatusCode)
+	}
+	sc := bufio.NewScanner(res.Body)
+	sc.Scan() // ": ok"，订阅已建立
+
+	cliPost(fmt.Sprintf("/api/v1/cli/projects/%d/nodes", proj.ID), `{"type":"image-input"}`)
+	for sc.Scan() {
+		if strings.HasPrefix(sc.Text(), "data: ") {
+			if !strings.Contains(sc.Text(), fmt.Sprintf(`"projectId":%d`, proj.ID)) || !strings.Contains(sc.Text(), `"source":"cli"`) {
+				t.Fatalf("line=%q", sc.Text())
+			}
+			return
+		}
+	}
+	t.Fatal("没收到事件")
 }
