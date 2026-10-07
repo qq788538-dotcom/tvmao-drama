@@ -77,6 +77,60 @@ pub fn remove_from_path_list(list: &str, dir: &str) -> String {
         .join(";")
 }
 
+/// 规范化 Windows Path 列表：去掉空项（含结尾的 `;`），用于判断新旧值是否语义相同。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn normalize_path_list(list: &str) -> String {
+    list.split(';')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+/// 运行命令，`timeout` 内没退出就杀掉并返回 None；退出码非 0 也返回 None。
+pub fn output_with_timeout(
+    cmd: &mut std::process::Command,
+    timeout: std::time::Duration,
+) -> Option<String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    // stdout 在单独线程里读：子进程再拉起的孙进程可能一直占着管道，主流程不能卡在 read 上。
+    let mut stdout = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        let _ = tx.send(buf);
+    });
+    let deadline = Instant::now() + timeout;
+    let exit = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break st,
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    if !exit.success() {
+        return None;
+    }
+    let rest = deadline
+        .saturating_duration_since(Instant::now())
+        .max(Duration::from_millis(200));
+    let buf = rx.recv_timeout(rest).ok()?;
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
 pub fn version_matches(output: &str, app_version: &str) -> bool {
     !app_version.is_empty() && output.contains(app_version)
 }
@@ -128,14 +182,12 @@ fn skill_entry(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("cli-skill").join("SKILL.md"))
 }
 
+/// 已安装命令的 `version` 输出；最多等 3 秒（Gatekeeper / 杀毒扫描可能卡住），超时按"版本不一致"处理。
 fn installed_output(cmd: &Path) -> Option<String> {
-    let out = std::process::Command::new(cmd)
-        .arg("version")
-        .output()
-        .ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    output_with_timeout(
+        std::process::Command::new(cmd).arg("version"),
+        std::time::Duration::from_secs(3),
+    )
 }
 
 fn status(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
@@ -154,14 +206,34 @@ fn status(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
     })
 }
 
-#[tauri::command]
-pub fn cli_tool_status(app: tauri::AppHandle) -> Result<CliToolStatus, String> {
-    status(&app)
+/// 三个命令都是 async + spawn_blocking：同步命令在 Tauri v2 里跑在主线程，
+/// 拉起子进程、改 rc 文件、Windows 广播 WM_SETTINGCHANGE 都可能卡住窗口。
+async fn blocking(
+    app: tauri::AppHandle,
+    f: fn(&tauri::AppHandle) -> Result<CliToolStatus, String>,
+) -> Result<CliToolStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || f(&app))
+        .await
+        .map_err(|e| format!("命令行工具操作失败：{e}"))?
 }
 
 #[tauri::command]
-pub fn install_cli_tool(app: tauri::AppHandle) -> Result<CliToolStatus, String> {
-    let home = home(&app)?;
+pub async fn cli_tool_status(app: tauri::AppHandle) -> Result<CliToolStatus, String> {
+    blocking(app, status).await
+}
+
+#[tauri::command]
+pub async fn install_cli_tool(app: tauri::AppHandle) -> Result<CliToolStatus, String> {
+    blocking(app, install).await
+}
+
+#[tauri::command]
+pub async fn uninstall_cli_tool(app: tauri::AppHandle) -> Result<CliToolStatus, String> {
+    blocking(app, uninstall).await
+}
+
+fn install(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
+    let home = home(app)?;
     let bin = bin_dir(&home);
     std::fs::create_dir_all(&bin).map_err(|e| format!("创建 {} 失败：{e}", bin.display()))?;
     let src = bundled_cli()?;
@@ -181,12 +253,11 @@ pub fn install_cli_tool(app: tauri::AppHandle) -> Result<CliToolStatus, String> 
         let dir = bin.display().to_string();
         win_path::update(|cur| add_to_path_list(cur, &dir))?;
     }
-    status(&app)
+    status(app)
 }
 
-#[tauri::command]
-pub fn uninstall_cli_tool(app: tauri::AppHandle) -> Result<CliToolStatus, String> {
-    let home = home(&app)?;
+fn uninstall(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
+    let home = home(app)?;
     let bin = bin_dir(&home);
     let _ = std::fs::remove_file(bin.join(command_file()));
     #[cfg(unix)]
@@ -199,7 +270,7 @@ pub fn uninstall_cli_tool(app: tauri::AppHandle) -> Result<CliToolStatus, String
         let dir = bin.display().to_string();
         win_path::update(|cur| remove_from_path_list(cur, &dir))?;
     }
-    status(&app)
+    status(app)
 }
 
 #[cfg(unix)]
@@ -238,10 +309,13 @@ mod win_path {
                     .to_string(),
                 v.vtype,
             ),
-            Err(_) => (String::new(), REG_EXPAND_SZ),
+            // 只有"值不存在"才当空 Path；其他读取错误若也当空，写回时会冲掉用户原有的 Path。
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (String::new(), REG_EXPAND_SZ),
+            Err(e) => return Err(format!("读取注册表 Path 失败：{e}")),
         };
         let next = f(&cur);
-        if next == cur {
+        // 语义相同（只差空项 / 结尾的 `;`）就不写，避免无谓改动用户的 Path。
+        if super::normalize_path_list(&next) == super::normalize_path_list(&cur) {
             return Ok(());
         }
         let bytes: Vec<u8> = next
@@ -330,5 +404,64 @@ mod tests {
         assert!(version_matches("1.2.0\n", "1.2.0"));
         assert!(!version_matches("1.1.9", "1.2.0"));
         assert!(!version_matches("", "1.2.0"));
+    }
+
+    #[test]
+    fn normalize_path_list_ignores_empty_items() {
+        assert_eq!(normalize_path_list(r"C:\a;;C:\b;"), r"C:\a;C:\b");
+        assert_eq!(normalize_path_list(""), "");
+        assert_eq!(normalize_path_list(";"), "");
+        assert_eq!(normalize_path_list(r"C:\a"), r"C:\a");
+    }
+
+    #[cfg(unix)]
+    fn script(dir: &std::path::Path, body: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join("fake-cli");
+        std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_with_timeout_returns_stdout() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = script(dir.path(), "echo 1.2.0");
+        let out = output_with_timeout(
+            std::process::Command::new(&p).arg("version"),
+            std::time::Duration::from_secs(3),
+        );
+        assert_eq!(out.as_deref(), Some("1.2.0\n"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_with_timeout_none_on_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = script(dir.path(), "echo 1.2.0; exit 3");
+        assert!(output_with_timeout(
+            &mut std::process::Command::new(&p),
+            std::time::Duration::from_secs(3)
+        )
+        .is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_with_timeout_kills_hung_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = script(dir.path(), "echo started; exec sleep 30");
+        let t = std::time::Instant::now();
+        let out = output_with_timeout(
+            &mut std::process::Command::new(&p),
+            std::time::Duration::from_millis(300),
+        );
+        assert!(out.is_none());
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(5),
+            "超时后必须及时返回：{:?}",
+            t.elapsed()
+        );
     }
 }
