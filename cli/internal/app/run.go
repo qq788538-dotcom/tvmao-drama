@@ -26,10 +26,10 @@ func newNodeRunCommand(st *runtimeState) *cobra.Command {
 		Use:   "run <节点ID>",
 		Short: "运行生成节点",
 		Long: strings.TrimSpace(`
-提交一次生成。这是 CLI 里唯一会消耗积分的命令。
+提交一次生成。这是 CLI 里唯一会调用上游模型的命令。
 
 --param 覆盖的参数会合并进节点并落盘，下次不带也生效。
-节点若已在生成中，本命令会拒绝而不是再冻结一次积分。
+节点若已在生成中，本命令会拒绝而不是再提交一次。
 节点若没有保存模型（历史节点常见），必须用 --model 显式指定——服务端不会替你猜。
 `),
 		Args: cobra.ExactArgs(1),

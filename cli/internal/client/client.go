@@ -1,7 +1,7 @@
 // Package client 是 /api/v1/cli/* 的 typed HTTP 客户端。
 //
 // 重试策略是这层最要紧的决定：**写请求只有携带 Idempotency-Key 时才允许重试**。
-// 否则一次网络抖动重发「运行节点」，就是第二次冻结积分 + 第二次跑上游。
+// 否则一次网络抖动重发「运行节点」，就是第二次跑上游。
 package client
 
 import (
@@ -173,7 +173,15 @@ func (c *Client) connect(ctx context.Context, refresh bool) error {
 			}
 			return &AppNotRunningError{Err: err}
 		}
-		return err
+		// 连接层错误已分类，原样返回；其余（ping 返回 404、200 但不是 JSON 等）
+		// 说明端口上不是喵剧（常见于应用崩溃后端口被别的程序占用）。
+		var ne *NetworkError
+		var anr *AppNotRunningError
+		var sb *SandboxBlockedError
+		if errors.As(err, &ne) || errors.As(err, &anr) || errors.As(err, &sb) {
+			return err
+		}
+		return &AppNotRunningError{Err: err}
 	}
 	if p.App != pingApp {
 		return &AppNotRunningError{Err: fmt.Errorf("端口 %d 上不是喵剧（app=%q）", info.Port, p.App)}

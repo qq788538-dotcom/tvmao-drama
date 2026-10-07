@@ -212,6 +212,19 @@ func reportError(root *cobra.Command, err error, stderr io.Writer) int {
 		return exitcode.Usage
 	}
 
+	// AppNotRunning/SandboxBlocked 必须先于 APIError 判断：
+	// 401 连续两次后的 AppNotRunningError 里包着 APIError。
+	var anr *client.AppNotRunningError
+	if errors.As(err, &anr) {
+		fmt.Fprintln(stderr, "喵剧未运行，请先打开应用")
+		return exitcode.AppNotRunning
+	}
+	var sb *client.SandboxBlockedError
+	if errors.As(err, &sb) {
+		fmt.Fprintln(stderr, "网络被 AI 助手的沙箱拦截，请允许本命令访问网络后重试")
+		return exitcode.SandboxBlocked
+	}
+
 	var ae *client.APIError
 	if errors.As(err, &ae) {
 		fmt.Fprintf(stderr, "错误：%s\n", ae.Message)
