@@ -20,6 +20,7 @@ type fakeClient struct {
 	puts      atomic.Int32
 	putErr    error
 	delay     time.Duration
+	panicMsg  string
 	panicOnce atomic.Bool // 置位后下一次 Put 触发 panic（只一次）
 }
 
@@ -34,7 +35,7 @@ func (f *fakeClient) Exists(_ context.Context, key string) (bool, error) {
 func (f *fakeClient) Put(_ context.Context, key string, r io.Reader, _ int64, _ string) error {
 	time.Sleep(f.delay)
 	if f.panicOnce.CompareAndSwap(true, false) {
-		panic("boom")
+		panic("boom " + f.panicMsg)
 	}
 	if f.putErr != nil {
 		return f.putErr
@@ -210,10 +211,19 @@ func TestPublisherLeaderCancelDoesNotFailWaiters(t *testing.T) {
 func TestPublisherPanicDoesNotWedgeKey(t *testing.T) {
 	fc := newFake()
 	fc.panicOnce.Store(true)
-	p, _, _ := setup(t, fc)
+	fc.panicMsg = "leak SECRET-xyz ACCESS-abc"
+	p, s, _ := setup(t, fc)
+	cfg := validCfg()
+	cfg.SecretKey, cfg.AccessKey = "SECRET-xyz", "ACCESS-abc"
+	if err := Save(s, cfg); err != nil {
+		t.Fatal(err)
+	}
 	_, err := p.Publish(context.Background(), "u1/2026/10/v.mp4")
 	if err == nil || !strings.HasPrefix(err.Error(), "上传到对象存储失败：") {
 		t.Fatalf("err=%v", err)
+	}
+	if !strings.Contains(err.Error(), "***") || strings.Contains(err.Error(), "SECRET-xyz") || strings.Contains(err.Error(), "ACCESS-abc") {
+		t.Fatalf("panic 错误未脱敏: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()

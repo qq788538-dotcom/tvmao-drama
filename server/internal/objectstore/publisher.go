@@ -17,6 +17,9 @@ import (
 // PresignTTL：交给上游的地址有效期（沿用 generation.inputMediaURLExpiry）。
 const PresignTTL = 24 * time.Hour
 
+// uploadTimeout：共享上传的整体超时。上传已脱离调用方 ctx，需要自己的兜底，避免 SDK 挂死时 goroutine 与 inflight 永不释放。
+const uploadTimeout = 30 * time.Minute
+
 // ObjectReader：本地存储（*assets.LocalStorage 满足）。
 type ObjectReader interface {
 	GetObject(ctx context.Context, key string) (io.ReadCloser, error)
@@ -81,7 +84,7 @@ func (p *Publisher) Publish(ctx context.Context, mediaKey string) (string, error
 		cl = &call{done: make(chan struct{})}
 		p.inflight[mediaKey] = cl
 		// 共享上传脱离任何单个调用方的 ctx：某个调用方放弃不会取消其他等待者。
-		go p.run(context.WithoutCancel(ctx), cl, c, mediaKey)
+		go p.run(ctx, cl, c, mediaKey)
 	}
 	p.mu.Unlock()
 
@@ -96,11 +99,14 @@ func (p *Publisher) Publish(ctx context.Context, mediaKey string) (string, error
 
 // run 执行共享上传。defer 顺序：先写结果（含 panic 转错误）、再摘除 inflight、最后 close(done)，
 // 保证等待者看到的结果已就绪且该 key 不会被永久卡死。
-func (p *Publisher) run(ctx context.Context, cl *call, c Config, mediaKey string) {
+func (p *Publisher) run(parent context.Context, cl *call, c Config, mediaKey string) {
+	// 脱离调用方取消，但保留超时兜底
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), uploadTimeout)
 	defer func() {
+		cancel()
 		if r := recover(); r != nil {
-			// panic 内容不透出细节，避免泄露密钥
-			cl.url, cl.err = "", fmt.Errorf("上传到对象存储失败：内部错误 %v", r)
+			// panic 文本经 redact 脱敏，避免泄露密钥
+			cl.url, cl.err = "", fmt.Errorf("上传到对象存储失败：内部错误 %s", redact(fmt.Sprint(r), c))
 		}
 		p.mu.Lock()
 		delete(p.inflight, mediaKey)
