@@ -20,3 +20,4 @@ server/bin/
 # 内置 Python（scripts/fetch-python.sh 生成）
 src-tauri/resources/python/*
 !src-tauri/resources/python/README.md
+src-tauri/resources/cli-skill/
