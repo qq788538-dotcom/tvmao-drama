@@ -176,41 +176,6 @@ func lightSetting(t *testing.T, models string, template string, presets string) 
 	return seedSettingLine(t, SettingCanvasLightControl, `{"models":`+models+`,"template":"`+template+`","presets":`+presets+`}`)
 }
 
-func TestApplySettingOverrideKeptAndStructureUpdated(t *testing.T) {
-	conn := dbtest.Open(t)
-	img := []string{seedModelLine(t, 1, "img-a", "image", nil)}
-	mustApply(t, conn, mustSeed(t, img, []string{
-		lightSetting(t, `["img-a"]`, "旧 {light}", `[{"key":"p1","name":"P1","prompt":"内置 p1"}]`),
-	}))
-	simulateUserEdit(t, conn, `UPDATE settings SET value = ?, user_overrides = '["presets[p1].prompt"]' WHERE "key" = ?`,
-		`{"models":["img-a"],"presets":[{"key":"p1","name":"P1","prompt":"我的 p1"}],"template":"旧 {light}"}`, SettingCanvasLightControl)
-	mustApply(t, conn, mustSeed(t, img, []string{
-		lightSetting(t, `["img-a"]`, "新 {light}", `[{"key":"p1","name":"P1 新名","prompt":"内置 p1 v2"},{"key":"p2","name":"P2","prompt":"p2"}]`),
-	}))
-	got := settingByKey(t, conn, SettingCanvasLightControl)
-	// 键序跟新版种子原文（P2a M8）。
-	want := `{"models":["img-a"],"template":"新 {light}","presets":[{"key":"p1","name":"P1 新名","prompt":"我的 p1"},{"key":"p2","name":"P2","prompt":"p2"}]}`
-	if got.Value != want || !reflect.DeepEqual(got.Overrides, []string{"presets[p1].prompt"}) {
-		t.Fatalf("got  %s %v\nwant %s", got.Value, got.Overrides, want)
-	}
-}
-
-// Review Focus 2：用户选的候选模型在新版里被删了 → 丢弃该覆盖，用新版候选列表。
-func TestApplyDropsSettingOverrideReferencingRemovedModel(t *testing.T) {
-	conn := dbtest.Open(t)
-	v1 := mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil)},
-		[]string{lightSetting(t, `["img-a"]`, "{light}", `[]`)})
-	mustApply(t, conn, v1)
-	simulateUserEdit(t, conn, `UPDATE settings SET value = '{"models":["img-b"],"presets":[],"template":"{light}"}', user_overrides = '["models"]' WHERE "key" = ?`, SettingCanvasLightControl)
-	v2 := mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil)},
-		[]string{lightSetting(t, `["img-a"]`, "{light}", `[]`)})
-	mustApply(t, conn, v2)
-	got := settingByKey(t, conn, SettingCanvasLightControl)
-	if seedV, _ := v2.Setting(SettingCanvasLightControl); got.Value != seedV.Value || got.Overrides != nil {
-		t.Fatalf("got %s %v", got.Value, got.Overrides)
-	}
-}
-
 // Review Focus 4：合并中途失败 → 整体回滚，哈希不写入，下次启动重试。
 func TestApplyRollsBackOnFailure(t *testing.T) {
 	conn := dbtest.Open(t)

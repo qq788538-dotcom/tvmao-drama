@@ -25,7 +25,7 @@ var seedFS embed.FS
 
 // seedFormatVersion 并入种子哈希。合并算法或可改字段白名单的语义变化时递增，
 // 让已安装的用户在升级后的首次启动重新合并一次（即使种子文件本身没变）。
-const seedFormatVersion = "p2a-1"
+const seedFormatVersion = "p2a-2" // p2a-2：五项画布配置写死（2026-10-07）
 
 // DatasetModelCenter 是本包在 builtin_seed_state 里使用的数据集名（模型中心 + 画布配置）。
 // P2b 的 Skill、Agent 工具等数据集各用自己的名字。

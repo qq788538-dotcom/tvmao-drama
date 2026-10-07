@@ -2,8 +2,9 @@
 // （spec A3：从参考仓生产库导出，见仓库根 seed/README.md）写入 SQLite。
 //
 // 四张表全部内置、用户不能新建或编辑（spec A4），所以语义是"种子即真相"：
-// 每次启动整表同步——种子里没有的行删除，有的行按 id 覆盖。唯一的用户数据是
-// agent_backbone_models.model_name（设置页切换，spec A2），由 model_name_overridden 保护。
+// 每次启动整表同步——种子里没有的行删除，有的行按 id 覆盖。
+// agent_backbone_models.model_name 曾可在设置页切换（spec A2，由 model_name_overridden 保护）；
+// 2026-10-07 起写死为种子值：每次启动无条件覆盖并清除标记，不再提供修改入口。
 package agentseed
 
 import (
@@ -237,7 +238,7 @@ func Import(conn *sql.DB) (Result, error) {
 			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT (id) DO UPDATE SET
 			  alias=excluded.alias, provider=excluded.provider,
-			  model_name=CASE WHEN agent_backbone_models.model_name_overridden=1 THEN agent_backbone_models.model_name ELSE excluded.model_name END,
+			  model_name=excluded.model_name, model_name_overridden=0,
 			  role=excluded.role, thinking_enabled=excluded.thinking_enabled, thinking_budget=excluded.thinking_budget,
 			  max_tokens=excluded.max_tokens, context_window=excluded.context_window, temperature=excluded.temperature,
 			  is_active=excluded.is_active, sort_weight=excluded.sort_weight, description=excluded.description`,
@@ -248,18 +249,4 @@ func Import(conn *sql.DB) (Result, error) {
 		res.Backbones++
 	}
 	return res, tx.Commit()
-}
-
-// DefaultBackboneModelName 返回某行大模型的内置 model_name，供设置页"恢复默认"。
-func DefaultBackboneModelName(id int64) (string, bool) {
-	rows, err := readJSONL[backboneRow]("agent_backbone_models")
-	if err != nil {
-		return "", false
-	}
-	for _, b := range rows {
-		if b.ID == id {
-			return b.ModelName, true
-		}
-	}
-	return "", false
 }

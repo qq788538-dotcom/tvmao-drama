@@ -229,8 +229,7 @@ func NewRouter(d Deps) nethttp.Handler {
 				r.Get("/skills/featured", d.Skills.Featured)
 			}
 			if d.AdminAgent != nil {
-				// 只读列表。切换 / 恢复默认只走设置页的 /settings/agent-models（P4），这里不再注册写接口，
-				// 避免同一能力两条写入路径。
+				// 只读列表。Agent 模型写死为内置值（2026-10-07），不注册任何写接口。
 				r.Get("/admin/agent/backbone-models", d.AdminAgent.List)
 			}
 

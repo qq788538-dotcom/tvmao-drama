@@ -1,7 +1,7 @@
 package http
 
-// 审查 I7：画布配置的白名单在适配器层强制执行。用真实库 + 真实内置种子 + 真实 builtin.Service，
-// 经设置页的 HTTP 接口提交，断言白名单以外的改动一律 400、且库里的值和“已修改”记录都不变。
+// 用真实库 + 真实内置种子 + 真实 builtin.Service 挂设置接口的测试环境。
+// 画布配置的白名单用例已随五项配置写死（2026-10-07）删除，见 settings_hardcoded_test.go。
 
 import (
 	"bytes"
@@ -49,7 +49,7 @@ func newWhitelistEnv(t *testing.T) *wlEnv {
 		Models:      mr,
 		ModelEdit:   NewPolicyModelEdit(policy, mr),
 		SettingEdit: NewPolicySettingEdit(policy, sr),
-		Agent:       NewBackboneAgentModels(agent.NewBackboneRepo(conn), agent.NewBackboneSwitcher(conn), agentseed.DefaultBackboneModelName),
+		Agent:       NewBackboneAgentModels(agent.NewBackboneRepo(conn)),
 		DataDir:     t.TempDir(),
 		Version:     "test",
 	})
@@ -86,117 +86,6 @@ func (e *wlEnv) modified(key string) bool {
 		}
 	}
 	return false
-}
-
-// mutate 读出当前值，交给 f 改，返回 PUT 用的请求体。
-func (e *wlEnv) mutate(key string, f func(doc map[string]any)) string {
-	e.t.Helper()
-	var doc map[string]any
-	if err := json.Unmarshal([]byte(e.raw(key)), &doc); err != nil {
-		e.t.Fatal(err)
-	}
-	f(doc)
-	b, _ := json.Marshal(map[string]any{"value": doc})
-	return string(b)
-}
-
-func presetsOf(doc map[string]any) []any { a, _ := doc["presets"].([]any); return a }
-
-func TestSettingsWhitelistRejectsNonEditableChanges(t *testing.T) {
-	cases := []struct {
-		name string
-		key  string
-		f    func(doc map[string]any)
-	}{
-		{"多角度：新增预设", "canvas_multi_angle", func(d map[string]any) {
-			d["presets"] = append(presetsOf(d), map[string]any{"key": "evil", "name": "新", "rotation": 0, "tilt": 0, "zoom": "medium", "prompt": "x"})
-		}},
-		{"多角度：删除预设", "canvas_multi_angle", func(d map[string]any) { d["presets"] = presetsOf(d)[1:] }},
-		{"多角度：改 rotation", "canvas_multi_angle", func(d map[string]any) {
-			p := presetsOf(d)[0].(map[string]any)
-			p["rotation"] = 123.0
-			p["prompt"] = "顺带改一下提示词" // 混在合法改动里也不行
-		}},
-		{"多角度：改 presets[i].key", "canvas_multi_angle", func(d map[string]any) { presetsOf(d)[0].(map[string]any)["key"] = "renamed" }},
-		{"打光：改 direction", "canvas_light_control", func(d map[string]any) { presetsOf(d)[0].(map[string]any)["direction"] = "上帝视角" }},
-		{"打光：新增预设", "canvas_light_control", func(d map[string]any) {
-			d["presets"] = append(presetsOf(d), map[string]any{"key": "evil", "name": "新", "prompt": "x"})
-		}},
-		{"脚本：改 styles", "canvas_script_config", func(d map[string]any) { d["styles"] = []any{map[string]any{"key": "evil", "name": "注入"}} }},
-		{"后处理：加 upscaleModels", "canvas_postprocess_config", func(d map[string]any) { d["upscaleModels"] = []any{"task-doubao-video-enhance"} }},
-		{"后处理：加 whiteModelModel", "canvas_postprocess_config", func(d map[string]any) { d["whiteModelModel"] = "x" }},
-		{"绘图预设：新增预设", "gen_image_prompt_presets", func(d map[string]any) {
-			d["presets"] = append(presetsOf(d), map[string]any{"key": "evil", "value": map[string]any{"name": "新", "prompt": "x"}})
-		}},
-		{"绘图预设：删除预设", "gen_image_prompt_presets", func(d map[string]any) { d["presets"] = presetsOf(d)[1:] }},
-		{"绘图预设：改 value.name", "gen_image_prompt_presets", func(d map[string]any) {
-			presetsOf(d)[0].(map[string]any)["value"].(map[string]any)["name"] = "改名"
-		}},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			e := newWhitelistEnv(t)
-			before := e.raw(c.key)
-			code, body := e.do("PUT", "/configs/"+c.key, e.mutate(c.key, c.f))
-			if code != 400 {
-				t.Fatalf("应 400，got %d %s", code, body)
-			}
-			if after := e.raw(c.key); after != before {
-				t.Fatalf("库里的值被改了：\nbefore=%s\nafter=%s", before, after)
-			}
-			if e.modified(c.key) {
-				t.Fatal("不应留下改动记录")
-			}
-		})
-	}
-}
-
-func TestSettingsWhitelistAcceptsEditableChanges(t *testing.T) {
-	e := newWhitelistEnv(t)
-	// 多角度：改模板和一条提示词（预设顺序打乱也不算结构改动之外的东西——这里不打乱，只改值）。
-	body := e.mutate("canvas_multi_angle", func(d map[string]any) {
-		d["template"] = "角度：{angle}"
-		presetsOf(d)[0].(map[string]any)["prompt"] = "新的提示词"
-	})
-	if code, out := e.do("PUT", "/configs/canvas_multi_angle", body); code != 200 {
-		t.Fatalf("%d %s", code, out)
-	}
-	var doc map[string]any
-	json.Unmarshal([]byte(e.raw("canvas_multi_angle")), &doc)
-	if doc["template"] != "角度：{angle}" || presetsOf(doc)[0].(map[string]any)["prompt"] != "新的提示词" {
-		t.Fatalf("合法改动没有写入：%s", e.raw("canvas_multi_angle"))
-	}
-	if !e.modified("canvas_multi_angle") {
-		t.Fatal("应记为已修改")
-	}
-	// 原样提交（没有任何变化）→ 200，不产生新记录。
-	before := e.raw("canvas_script_config")
-	if code, out := e.do("PUT", "/configs/canvas_script_config", e.mutate("canvas_script_config", func(map[string]any) {})); code != 200 {
-		t.Fatalf("%d %s", code, out)
-	}
-	if e.raw("canvas_script_config") != before || e.modified("canvas_script_config") {
-		t.Fatal("原样提交不应改库")
-	}
-}
-
-func TestSettingsWhitelistGenImagePresetsRequireModels(t *testing.T) {
-	e := newWhitelistEnv(t)
-	before := e.raw("gen_image_prompt_presets")
-	code, body := e.do("PUT", "/configs/gen_image_prompt_presets", e.mutate("gen_image_prompt_presets", func(d map[string]any) { d["models"] = []any{} }))
-	if code != 400 || !strings.Contains(body, `"field":"models"`) {
-		t.Fatalf("空 models 应 400：%d %s", code, body)
-	}
-	if e.raw("gen_image_prompt_presets") != before {
-		t.Fatal("不应写库")
-	}
-}
-
-func TestSettingsAgentModelRejectsExtraFields(t *testing.T) {
-	e := newWhitelistEnv(t)
-	code, body := e.do("PUT", "/agent-models/1", `{"modelName":"canvas-agent-gpt-5.5","max_tokens":99}`)
-	if code != 400 {
-		t.Fatalf("多余字段应 400：%d %s", code, body)
-	}
 }
 
 // 模型补丁只认白名单字段，请求模板等一律 400（handler 严格解码），库不变。

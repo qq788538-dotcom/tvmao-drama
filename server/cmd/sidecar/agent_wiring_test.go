@@ -180,7 +180,7 @@ func TestAgentE2E_MissingUpstreamConfigEndsAction(t *testing.T) {
 	}
 }
 
-// 写接口已取消注册（设置页 /settings/agent-models 覆盖同一能力），只读列表仍在。
+// 写接口不注册（Agent 模型写死为内置值，2026-10-07），只读列表仍在。
 func TestAgentE2E_AdminBackboneWritesNotRegistered(t *testing.T) {
 	e := setupE2E(t, "http://unused", "k")
 	if out := e.do(t, "GET", "/api/v1/admin/agent/backbone-models", ``); out["data"] == nil {

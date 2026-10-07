@@ -7,14 +7,14 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/builtin"
 )
 
-// P4 T15：设置接口由真实装配接上 builtin.Service；/admin/canvas/* 的整份覆盖写接口不存在，
-// 画布配置只能经 /api/v1/settings/configs/* 改（白名单强制）。
+// P4 T15：设置接口由真实装配接上 builtin.Service；/admin/canvas/* 的整份覆盖写接口不存在。
+// 2026-10-07 起五项画布配置与 Agent 模型写死：/api/v1/settings/configs/*、/agent-models 也已注销。
 func TestE2ESettingsCenterWiredAndAdminCanvasAbsent(t *testing.T) {
 	e := newE2E(t)
 	if err := builtin.Apply(e.conn); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{"/api/v1/settings/general", "/api/v1/settings/models", "/api/v1/settings/configs/canvas_multi_angle", "/api/v1/settings/agent-models"} {
+	for _, p := range []string{"/api/v1/settings/general", "/api/v1/settings/models"} {
 		if resp, body := e.callJSON(t, "GET", p, ""); resp.StatusCode != 200 {
 			t.Errorf("GET %s → %d %s", p, resp.StatusCode, body)
 		}
@@ -27,10 +27,34 @@ func TestE2ESettingsCenterWiredAndAdminCanvasAbsent(t *testing.T) {
 			}
 		}
 	}
-	// 白名单外的改动经真实装配同样被拒。
-	resp, body := e.callJSON(t, "PUT", "/api/v1/settings/configs/canvas_script_config", `{"value":{"styles":[]}}`)
-	if resp.StatusCode != 400 || !strings.Contains(string(body), "error") {
-		t.Fatalf("应 400：%d %s", resp.StatusCode, body)
+	// 写死的配置经真实装配也写不进去。
+	before := map[string]string{}
+	for _, k := range []string{"canvas_script_config", "canvas_multi_angle"} {
+		var v string
+		if err := e.conn.QueryRow(`SELECT value FROM settings WHERE "key" = ?`, k).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		before[k] = v
+	}
+	for _, c := range []struct{ method, path, body string }{
+		{"GET", "/api/v1/settings/configs/canvas_multi_angle", ""},
+		{"PUT", "/api/v1/settings/configs/canvas_script_config", `{"value":{"styles":[]}}`},
+		{"POST", "/api/v1/settings/configs/canvas_multi_angle/restore-default", ""},
+		{"GET", "/api/v1/settings/agent-models", ""},
+		{"PUT", "/api/v1/settings/agent-models/1", `{"modelName":"gpt-5.5"}`},
+		{"POST", "/api/v1/settings/agent-models/1/restore-default", ""},
+	} {
+		resp, body := e.callJSON(t, c.method, c.path, c.body)
+		if resp.StatusCode != 404 && resp.StatusCode != 405 {
+			t.Errorf("%s %s 应 404/405：%d %s", c.method, c.path, resp.StatusCode, body)
+		}
+	}
+	for k, v := range before {
+		var now string
+		_ = e.conn.QueryRow(`SELECT value FROM settings WHERE "key" = ?`, k).Scan(&now)
+		if now != v {
+			t.Errorf("%s 被改动", k)
+		}
 	}
 }
 

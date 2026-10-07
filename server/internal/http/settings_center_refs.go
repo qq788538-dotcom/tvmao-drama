@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-// settingsConfigKeys 是设置页可编辑的五项画布配置（settings 表的 key），顺序即界面顺序。
+// settingsConfigKeys 是五项内置画布配置（settings 表的 key）。2026-10-07 起写死为内置值、设置页不再展示，
+// 这里只用于模型中心标注模型被哪些配置引用（modelReferences）。
 var settingsConfigKeys = []string{
 	"canvas_postprocess_config",
 	"gen_image_prompt_presets",

@@ -66,20 +66,18 @@ type SettingEditService interface {
 	ModifiedSettings(ctx context.Context) ([]string, error)
 }
 
-// AgentModelItem 是 Agent 模型页的一行（spec A2：只能换 model_name）。
+// AgentModelItem 是一个 Agent 大模型（只读）。
 type AgentModelItem struct {
 	ID        int64  `json:"id"`
 	Role      string `json:"role"`
 	Alias     string `json:"alias"`
 	ModelName string `json:"modelName"`
-	Modified  bool   `json:"modified"`
 }
 
-// AgentModelService 由合并适配器基于 P5 的 agent.BackboneRepo 与 P2a 的种子默认值实现。
+// AgentModelService 列出 Agent 大模型，供模型中心标注“被 Agent 引用”。
+// Agent 模型写死为内置值（2026-10-07 用户要求），不再提供切换 / 恢复默认，设置页也没有 Agent 模型页。
 type AgentModelService interface {
 	ListAgentModels(ctx context.Context) ([]AgentModelItem, error)
-	SwitchAgentModel(ctx context.Context, id int64, modelName string) error
-	RestoreAgentModelDefault(ctx context.Context, id int64) error
 }
 
 // SettingsValidationError 是面向用户的校验错误，映射为 400。

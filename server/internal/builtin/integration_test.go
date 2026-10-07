@@ -42,9 +42,6 @@ func TestServiceEditsSurviveUpgradeAndRestoreFollowsSeed(t *testing.T) {
 	if _, err := svc.UpdateModel(ctx, "img-c", edits("name", `"C v1"`)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.UpdateSetting(ctx, SettingCanvasLightControl, edits("presets[p1].prompt", `"我的提示词"`)); err != nil {
-		t.Fatal(err)
-	}
 
 	if err := applySeed(ctx, conn, v2); err != nil {
 		t.Fatal(err)
@@ -57,27 +54,8 @@ func TestServiceEditsSurviveUpgradeAndRestoreFollowsSeed(t *testing.T) {
 	if ui := *modelByID(t, conn, "img-a").Parts.UISchema; !strings.Contains(ui, `"default":"16:9"`) {
 		t.Errorf("img-a 的默认比例应保留用户值：%s", ui)
 	}
-	light := settingByKey(t, conn, SettingCanvasLightControl).Value
-	if !strings.Contains(light, `"prompt":"我的提示词"`) || !strings.Contains(light, `"template":"v2 {light}"`) {
-		t.Errorf("light=%s", light)
-	}
-}
-
-// 真实种子：Service 能在内置数据上完成一次典型编辑。
-func TestNewServiceOnEmbeddedSeed(t *testing.T) {
-	conn := dbtest.Open(t)
-	if err := Apply(conn); err != nil {
-		t.Fatal(err)
-	}
-	svc, err := NewService(conn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	if _, err := svc.UpdateSetting(ctx, SettingGenImagePresets, edits("presets[storyboard].value.prompt", `"我的故事板"`)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := svc.UpdateModel(ctx, "gpt-image-2", edits("gen_control.modules.canvas.maxRetries", `1`)); err != nil {
-		t.Fatal(err)
+	// 打光已写死：升级后就是新版内置值。
+	if seedLight, _ := v2.Setting(SettingCanvasLightControl); settingByKey(t, conn, SettingCanvasLightControl).Value != seedLight.Value {
+		t.Errorf("light 应等于新版内置值")
 	}
 }

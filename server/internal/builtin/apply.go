@@ -26,7 +26,7 @@ func applySeed(ctx context.Context, conn *sql.DB, s *Seed) error {
 		return err
 	}
 	if ok && h == s.Hash {
-		return nil
+		return resetLockedSettings(ctx, conn, s)
 	}
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
@@ -183,4 +183,28 @@ func applyMergeSetting(pl policy, st SeedSetting, cur settingRow, cat Catalog) (
 		return settingRow{}, err
 	}
 	return settingRow{Key: st.Key, Value: v, Overrides: kept}, nil
+}
+
+// resetLockedSettings 把写死的配置（白名单为空，见 policy.go）里残留的用户修改清掉、恢复为种子值。
+// 种子没变的启动也要跑：库可能是写死之前的版本留下的。只碰这几项配置，不碰模型和 base_domain。
+// 正常情况下只有几次只读查询；需要改时才写库。
+func resetLockedSettings(ctx context.Context, conn *sql.DB, s *Seed) error {
+	for _, st := range s.Settings {
+		pl, ok := settingPolicies[st.Key]
+		if !ok || !pl.locked() {
+			continue
+		}
+		cur, found, err := loadSettingRow(ctx, conn, st.Key)
+		if err != nil {
+			return err
+		}
+		if !found || (len(cur.Overrides) == 0 && cur.Value == st.Value) {
+			continue
+		}
+		log.Printf("内置数据：配置 %s 已写死为内置值，丢弃用户修改 %v", st.Key, cur.Overrides)
+		if err := upsertSettingRow(ctx, conn, settingRow{Key: st.Key, Value: st.Value}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

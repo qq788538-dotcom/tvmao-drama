@@ -1,8 +1,6 @@
 package builtin
 
 import (
-	"encoding/json"
-	"errors"
 	"reflect"
 	"testing"
 
@@ -63,96 +61,6 @@ func TestApplyToleratesMalformedUserOverrides(t *testing.T) {
 	}
 }
 
-// ---- M3：只剔除下线的模型，保留用户列表的其余部分 ----
-
-func TestApplyListOverridePrunesOnlyRemovedModels(t *testing.T) {
-	conn := dbtest.Open(t)
-	three := []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil), seedModelLine(t, 3, "img-c", "image", nil)}
-	mustApply(t, conn, mustSeed(t, three, []string{lightSetting(t, `["img-a"]`, "{light}", `[]`)}))
-	simulateUserEdit(t, conn, `UPDATE settings SET value = '{"models":["img-b","img-a","img-c"],"presets":[],"template":"{light}"}', user_overrides = '["models"]' WHERE "key" = ?`, SettingCanvasLightControl)
-	mustApply(t, conn, mustSeed(t, three[:2], []string{lightSetting(t, `["img-a"]`, "{light}", `[]`)}))
-	got := settingByKey(t, conn, SettingCanvasLightControl)
-	// 键序跟新版种子原文（models, template, presets），不是字母序（P2a M8）。
-	if want := `{"models":["img-b","img-a"],"template":"{light}","presets":[]}`; got.Value != want || !reflect.DeepEqual(got.Overrides, []string{"models"}) {
-		t.Fatalf("got %s %v", got.Value, got.Overrides)
-	}
-}
-
-// 用户列表里的模型全部下线：剔除后为空等于把功能关掉，不是用户本意，回到新版默认。
-func TestApplyListOverrideAllRemovedFallsBackToSeed(t *testing.T) {
-	conn := dbtest.Open(t)
-	two := []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil)}
-	mustApply(t, conn, mustSeed(t, two, []string{lightSetting(t, `["img-a"]`, "{light}", `[]`)}))
-	simulateUserEdit(t, conn, `UPDATE settings SET value = '{"models":["img-b"],"presets":[],"template":"{light}"}', user_overrides = '["models"]' WHERE "key" = ?`, SettingCanvasLightControl)
-	mustApply(t, conn, mustSeed(t, two[:1], []string{lightSetting(t, `["img-a"]`, "{light}", `[]`)}))
-	got := settingByKey(t, conn, SettingCanvasLightControl)
-	if want := `{"models":["img-a"],"template":"{light}","presets":[]}`; got.Value != want || got.Overrides != nil {
-		t.Fatalf("got %s %v", got.Value, got.Overrides)
-	}
-}
-
-// 去字幕列表：用户改了 B 的 label，新版下线了 C → B 的 label 保留，C 随之消失。
-func TestApplyDesubOverrideFollowsSeedStructure(t *testing.T) {
-	conn := dbtest.Open(t)
-	vids := []string{seedModelLine(t, 1, "v-a", "video", nil), seedModelLine(t, 2, "v-b", "video", nil), seedModelLine(t, 3, "v-c", "video", nil)}
-	post := func(items string) string {
-		return seedSettingLine(t, SettingCanvasPostprocess, `{"subtitleRemovalModels":`+items+`,"upscaleModel":""}`)
-	}
-	item := func(id, label string) string {
-		return `{"modelId":"` + id + `","label":"` + label + `","subtitle":"","isTimeLimited":false}`
-	}
-	mustApply(t, conn, mustSeed(t, vids, []string{post(`[` + item("v-a", "A") + `,` + item("v-b", "B") + `,` + item("v-c", "C") + `]`)}))
-	simulateUserEdit(t, conn, `UPDATE settings SET value = ?, user_overrides = '["subtitleRemovalModels"]' WHERE "key" = ?`,
-		`{"subtitleRemovalModels":[`+item("v-a", "A")+`,`+item("v-b", "我的B")+`,`+item("v-c", "C")+`],"upscaleModel":""}`, SettingCanvasPostprocess)
-	mustApply(t, conn, mustSeed(t, vids[:2], []string{post(`[` + item("v-a", "A") + `,` + item("v-b", "B") + `]`)}))
-	got := settingByKey(t, conn, SettingCanvasPostprocess)
-	// 覆盖后整列按 Go 键序重新编码（已知，见终审 M8），所以按 JSON 语义比较。
-	want := mustDecode(t, `{"subtitleRemovalModels":[`+item("v-a", "A")+`,`+item("v-b", "我的B")+`],"upscaleModel":""}`)
-	if !jsonEqual(mustDecode(t, got.Value), want) {
-		t.Fatalf("got %s", got.Value)
-	}
-}
-
-// ---- M4：列表型条目不能增删、不能改 id/model，只能改展示与开关字段 ----
-
-func TestListRulesForbidAddRemoveReorderAndIDChange(t *testing.T) {
-	cat := Catalog{"vid": "video", "vid2": "video", "txt": "text", "txt2": "text"}
-	post := mustDecode(t, `{"subtitleRemovalModels":[{"modelId":"vid","label":"标准","subtitle":"","isTimeLimited":false},{"modelId":"vid2","label":"B"}],"upscaleModel":"vid"}`)
-	script := mustDecode(t, `{"modelCandidates":[{"modelId":"txt","displayName":"T"},{"modelId":"txt2","displayName":"T2"}],"concurrency":5}`)
-	cases := []struct {
-		name, key string
-		doc       any
-		path      string
-		val       string
-		bad       bool
-	}{
-		{"去字幕：改展示字段", SettingCanvasPostprocess, post, "subtitleRemovalModels", `[{"modelId":"vid","label":"L","subtitle":"s","isTimeLimited":true},{"modelId":"vid2","label":"B"}]`, false},
-		{"去字幕：不能删条目", SettingCanvasPostprocess, post, "subtitleRemovalModels", `[{"modelId":"vid","label":"标准"}]`, true},
-		{"去字幕：不能增条目", SettingCanvasPostprocess, post, "subtitleRemovalModels", `[{"modelId":"vid","label":"a"},{"modelId":"vid2","label":"B"},{"modelId":"vid2","label":"c"}]`, true},
-		{"去字幕：不能换 modelId", SettingCanvasPostprocess, post, "subtitleRemovalModels", `[{"modelId":"vid2","label":"a"},{"modelId":"vid2","label":"B"}]`, true},
-		{"去字幕：不能调换顺序", SettingCanvasPostprocess, post, "subtitleRemovalModels", `[{"modelId":"vid2","label":"B"},{"modelId":"vid","label":"a"}]`, true},
-		{"脚本候选：改 displayName", SettingCanvasScript, script, "modelCandidates", `[{"modelId":"txt","displayName":"X"},{"modelId":"txt2","displayName":"Y"}]`, false},
-		{"脚本候选：不能删", SettingCanvasScript, script, "modelCandidates", `[{"modelId":"txt","displayName":"X"}]`, true},
-		{"脚本候选：不能清空", SettingCanvasScript, script, "modelCandidates", `[]`, true},
-		{"脚本候选：不能换 modelId", SettingCanvasScript, script, "modelCandidates", `[{"modelId":"txt2","displayName":"X"},{"modelId":"txt2","displayName":"Y"}]`, true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			_, _, err := applyEdits(settingPolicies[c.key], c.doc, c.doc, nil, map[string]json.RawMessage{c.path: json.RawMessage(c.val)}, cat)
-			var ve *ValidationError
-			if !c.bad {
-				if err != nil {
-					t.Fatalf("意外报错：%v", err)
-				}
-				return
-			}
-			if !errors.As(err, &ve) || ve.Path != c.path {
-				t.Fatalf("err=%v，want ValidationError on %s", err, c.path)
-			}
-		})
-	}
-}
-
 // ---- M9：用户值与新版种子值相同时，覆盖记录退回“跟随内置” ----
 
 func TestOverlayDropsOverrideEqualToNewSeed(t *testing.T) {
@@ -175,12 +83,13 @@ func TestPolicyPatternsSnapshot(t *testing.T) {
 	want := map[string][]string{
 		"<model>": {"name", "enabled", "hidden", "sort_order", "ui_schema.*.default", "gen_control.concurrency",
 			"gen_control.modules.canvas.maxRetries", "gen_control.modules.canvas.retryIntervalSec"},
-		SettingBaseDomain:         {"$"},
-		SettingCanvasLightControl: {"models", "template", "presets[*].prompt"},
-		SettingCanvasMultiAngle:   {"models", "template", "presets[*].prompt"},
-		SettingGenImagePresets:    {"models", "presets[*].value.prompt", "presets[*].value.params[*].options[*].prompt"},
-		SettingCanvasPostprocess:  {"subtitleRemovalModels", "upscaleModel"},
-		SettingCanvasScript:       {"modelCandidates", "concurrency", "maxRetries"},
+		SettingBaseDomain: {"$"},
+		// 五项画布配置写死（2026-10-07）：全只读。
+		SettingCanvasLightControl: {},
+		SettingCanvasMultiAngle:   {},
+		SettingGenImagePresets:    {},
+		SettingCanvasPostprocess:  {},
+		SettingCanvasScript:       {},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("可改字段白名单变了：请递增 seed.go 的 seedFormatVersion（当前 %s），再更新本快照。\ngot  %v\nwant %v", seedFormatVersion, got, want)

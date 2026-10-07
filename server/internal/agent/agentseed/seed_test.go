@@ -73,23 +73,27 @@ func TestImportIsIdempotentAndKeepsUseCount(t *testing.T) {
 	}
 }
 
-func TestImportKeepsOverriddenModelName(t *testing.T) {
+// Agent 模型写死为内置值（2026-10-07 用户要求）：旧版设置页切换过的 model_name（model_name_overridden=1）
+// 在导入时恢复为种子值并清除标记，其余参数同样回到内置值。
+func TestImportResetsOverriddenModelName(t *testing.T) {
 	conn := dbtest.Open(t)
 	insertModels(t, conn, toolModelIDs...)
 	if _, err := Import(conn); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := conn.Exec(`UPDATE agent_backbone_models SET model_name='gpt-5.5', model_name_overridden=1, max_tokens=1 WHERE id=1`); err != nil {
+	var seedName string
+	_ = conn.QueryRow(`SELECT model_name FROM agent_backbone_models WHERE id=1`).Scan(&seedName)
+	if _, err := conn.Exec(`UPDATE agent_backbone_models SET model_name='user-pick', model_name_overridden=1, max_tokens=1 WHERE id=1`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Import(conn); err != nil {
 		t.Fatal(err)
 	}
 	var name string
-	var maxTokens int
-	_ = conn.QueryRow(`SELECT model_name, max_tokens FROM agent_backbone_models WHERE id=1`).Scan(&name, &maxTokens)
-	if name != "gpt-5.5" {
-		t.Fatalf("用户切换过的模型被覆盖为 %s", name)
+	var maxTokens, overridden int
+	_ = conn.QueryRow(`SELECT model_name, max_tokens, model_name_overridden FROM agent_backbone_models WHERE id=1`).Scan(&name, &maxTokens, &overridden)
+	if name != seedName || overridden != 0 {
+		t.Fatalf("用户切换过的模型应恢复为种子值 %q：got %q overridden=%d", seedName, name, overridden)
 	}
 	if maxTokens != 0 {
 		t.Fatalf("其余参数应恢复内置值，max_tokens=%d", maxTokens)
@@ -126,15 +130,6 @@ func TestImportRemovesRowsNotInSeed(t *testing.T) {
 	}
 	if n := count(t, conn, `SELECT COUNT(*) FROM skills WHERE id='retired'`); n != 0 {
 		t.Fatal("下架的内置 Skill 未删除")
-	}
-}
-
-func TestDefaultBackboneModelName(t *testing.T) {
-	if name, ok := DefaultBackboneModelName(1); !ok || name != "gpt-5.5" {
-		t.Fatalf("got %q %v", name, ok)
-	}
-	if _, ok := DefaultBackboneModelName(999); ok {
-		t.Fatal("不存在的 id 应返回 false")
 	}
 }
 
@@ -182,8 +177,8 @@ func TestImportHandlesSwappedCategoryNames(t *testing.T) {
 	}
 }
 
-// 旧库里 model_name 仍是合并前的 canvas-agent-gpt-5.5（未被用户覆盖）：升级导入后变成 gpt-5.5；
-// 被用户在设置页覆盖过的行（model_name_overridden=1）保持用户的选择。
+// 旧库里 model_name 仍是合并前的 canvas-agent-gpt-5.5：升级导入后变成 gpt-5.5；
+// 被用户在设置页覆盖过的行（model_name_overridden=1）同样回到种子值（Agent 模型已写死，2026-10-07）。
 func TestImportUpgradesMergedGPT55ModelName(t *testing.T) {
 	conn := dbtest.Open(t)
 	insertModels(t, conn, toolModelIDs...)
@@ -209,7 +204,7 @@ func TestImportUpgradesMergedGPT55ModelName(t *testing.T) {
 	if m1 != "gpt-5.5" {
 		t.Fatalf("未覆盖的旧行应升级为 gpt-5.5，got %q", m1)
 	}
-	if m2 != "canvas-agent-gpt-5.5" {
-		t.Fatalf("用户覆盖过的行应保持，got %q", m2)
+	if m2 == "canvas-agent-gpt-5.5" {
+		t.Fatalf("用户覆盖过的行也应回到种子值，got %q", m2)
 	}
 }
