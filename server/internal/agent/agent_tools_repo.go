@@ -103,7 +103,7 @@ func (r *sqliteAgentToolsRepo) ListPublished() ([]AgentToolRow, error) {
 }
 
 func (r *sqliteAgentToolsRepo) MaxUpdatedAt() (time.Time, error) {
-	// MAX() 的结果没有声明类型，modernc 以字符串返回（见 p1-research §6），扫成 string 再解析。
+	// MAX() 的结果没有声明类型，驱动以字符串返回（不会解析成 time.Time），扫成 string 再解析。
 	var max sql.NullString
 	if err := r.db.QueryRow(`SELECT MAX(updated_at) FROM agent_tools`).Scan(&max); err != nil {
 		return time.Time{}, err

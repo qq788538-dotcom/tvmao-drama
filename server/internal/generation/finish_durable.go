@@ -7,6 +7,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"github.com/ncruces/go-sqlite3"
 )
 
 // finishRetryDelays：成功收口遇到瞬时错误（SQLITE_BUSY 等）时的退避间隔，次数即重试上限。
@@ -22,7 +24,9 @@ const finishAttemptTimeout = 15 * time.Second
 // 走到这里时上游额度已经花掉、产物已经写盘建了 asset 行：收口失败会让任务停在 running，
 // 被接管器判成"结果无法确认"标失败。所以：
 //   - 不继承执行 ctx 的取消（关闭、30 分钟队列超时都不该丢结果），每次尝试用独立超时；
-//   - SQLITE_BUSY / locked / 单次超时这类瞬时错误有界退避重试；
+//   - SQLITE_BUSY / locked / 单次超时（含语句执行中途超时被 SQLite 中断）这类瞬时错误有界退避重试；
+//   - 执行 ctx 被主动取消（关闭流程、心跳失租）时只做手头这一次，不再重试：关闭不该被退避拖住，
+//     失租了重试也只会 CAS 落空；30 分钟队列超时是 DeadlineExceeded，不算主动取消，照常重试；
 //   - 失租（won=false, err=nil）和其他错误立刻返回。
 func (s *Service) finishSuccessDurable(ctx context.Context, taskID, lease int64, out finishOutcome) (bool, error) {
 	fn := s.finishSuccessHook
@@ -34,7 +38,7 @@ func (s *Service) finishSuccessDurable(ctx context.Context, taskID, lease int64,
 		actx, cancel := context.WithTimeout(base, finishAttemptTimeout)
 		won, err := fn(actx, taskID, lease, out)
 		cancel()
-		if err == nil || !isTransientDBError(err) || attempt >= len(finishRetryDelays) {
+		if err == nil || !isTransientDBError(err) || attempt >= len(finishRetryDelays) || errors.Is(ctx.Err(), context.Canceled) {
 			if err != nil {
 				log.Printf("[gen-finish] task=%d 成功收口失败(尝试 %d 次): %v; 已持久化产物=%s",
 					taskID, attempt+1, err, persistedURLsForLog(out.sinkRes.OutputURLs))
@@ -48,11 +52,16 @@ func (s *Service) finishSuccessDurable(ctx context.Context, taskID, lease int64,
 }
 
 // isTransientDBError：写锁争用、单次尝试超时等重试可能成功的错误。
+//
+// ncruces 驱动下，语句执行中途 ctx 到期会被 sqlite3_interrupt 打断，返回的是 sqlite3.INTERRUPT
+// （"sqlite3: interrupted"），不带 context.DeadlineExceeded，所以要按错误码认。
+// 主动取消（context.Canceled）不是瞬时错误。
 func isTransientDBError(err error) bool {
-	if err == nil {
+	if err == nil || errors.Is(err, context.Canceled) {
 		return false
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, sqlite3.BUSY) || errors.Is(err, sqlite3.LOCKED) || errors.Is(err, sqlite3.INTERRUPT) {
 		return true
 	}
 	msg := err.Error()

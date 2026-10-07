@@ -223,7 +223,7 @@ func (r *sqliteRepo) ListMessagesPageBefore(threadID, beforeID string, limit int
 			return nil, false, err
 		}
 		// 行值比较直接比库内定宽微秒文本 + id，与排序键完全一致；不把时间扫进 Go 再绑回去
-		// （modernc 会把 time.Time 写成带时区的另一种格式，比较就错了）。
+		// （驱动会把 time.Time 写成秒级文本，丢掉微秒，比较就错了；见 db.Open 的说明）。
 		rows, err = r.db.Query(cols+` WHERE thread_id=? AND summarized_at IS NULL
 			AND (created_at, id) < (SELECT created_at, id FROM agent_messages WHERE id=?)
 			ORDER BY created_at DESC, id DESC LIMIT ?`,
