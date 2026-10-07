@@ -100,8 +100,10 @@ type SettingsCenterDeps struct {
 	ModelEdit     ModelEditService
 	SettingEdit   SettingEditService
 	Agent         AgentModelService
-	DataDir       string
-	Version       string
+	// ObjectStore 为 nil 时不注册 /object-storage/test（其余对象存储接口只依赖 Settings）。
+	ObjectStore ObjectStoreProber
+	DataDir     string
+	Version     string
 }
 
 // settingsRouteRegistrars 由各 handler 文件在 init() 里追加；路径相对 /api/v1/settings。

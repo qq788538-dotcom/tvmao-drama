@@ -121,6 +121,7 @@ type scEnv struct {
 	agent       *fakeAgent
 	dataDir     string
 	ids         map[string]int64
+	objectStore ObjectStoreProber
 }
 
 const (
@@ -172,17 +173,22 @@ func newSCEnv(t *testing.T) *scEnv {
 	e.agent = &fakeAgent{
 		items: []AgentModelItem{{ID: 1, Role: "planner", Alias: "主Agent", ModelName: "canvas-gpt-5.5"}},
 	}
+	e.rebuild()
+	return e
+}
+
+// rebuild 在改了 env 依赖后重新挂路由。
+func (e *scEnv) rebuild() {
 	r := chi.NewRouter()
 	mountSettingsCenter(r, e.deps())
 	e.handler = r
-	return e
 }
 
 func (e *scEnv) deps() SettingsCenterDeps {
 	return SettingsCenterDeps{
 		Settings: e.settings, Models: e.models, ModelUpstream: e.models,
 		ModelEdit: e.modelEdit, SettingEdit: e.settingEdit, Agent: e.agent,
-		DataDir: e.dataDir, Version: "9.9.9",
+		DataDir: e.dataDir, Version: "9.9.9", ObjectStore: e.objectStore,
 	}
 }
 
