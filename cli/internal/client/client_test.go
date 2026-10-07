@@ -2,20 +2,50 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/james/huabu_studio/apps/cli/internal/endpoint"
 )
+
+const testCLIToken = "cli-test-token"
+
+// pingWrap 让测试服务器响应 /api/v1/cli/ping，其余请求交给 h。
+func pingWrap(app string, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/cli/ping" {
+			if r.Header.Get("Authorization") != "Bearer "+testCLIToken {
+				w.WriteHeader(401)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"app": app, "version": "1.0.0"})
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func infoFor(t *testing.T, srv *httptest.Server, token, appVersion string) endpoint.Info {
+	t.Helper()
+	u, _ := url.Parse(srv.URL)
+	port, _ := strconv.Atoi(u.Port())
+	return endpoint.Info{Version: 1, Port: port, Token: token, AppVersion: appVersion}
+}
 
 func newTestClient(t *testing.T, h http.HandlerFunc) (*Client, *httptest.Server) {
 	t.Helper()
-	srv := httptest.NewServer(h)
+	srv := httptest.NewServer(pingWrap("miaoju-desktop", h))
 	t.Cleanup(srv.Close)
-	return New(Options{Server: srv.URL, Token: "jwt-abc", Version: "9.9.9", RequestID: "req-fixed"}), srv
+	info := infoFor(t, srv, testCLIToken, "9.9.9")
+	return New(Options{Resolve: func() (endpoint.Info, error) { return info, nil }, Version: "9.9.9", RequestID: "req-fixed"}), srv
 }
 
 func TestClientSendsAuthUserAgentAndRequestID(t *testing.T) {
@@ -28,7 +58,7 @@ func TestClientSendsAuthUserAgentAndRequestID(t *testing.T) {
 	if _, err := c.ListProjects(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if gotAuth != "Bearer jwt-abc" {
+	if gotAuth != "Bearer "+testCLIToken {
 		t.Fatalf("Authorization = %q", gotAuth)
 	}
 	if gotUA != "miaoju-cli/9.9.9" {
@@ -162,27 +192,32 @@ func TestClientDoesNotRetryBusinessErrors(t *testing.T) {
 			_, _ = w.Write([]byte(`{"error":{"code":"NODE_NOT_FOUND","message":"x","retryable":false}}`))
 		})
 		_, _ = c.ListProjects(context.Background())
-		if got := atomic.LoadInt32(&calls); got != 1 {
-			t.Errorf("status %d 被重试了 %d 次", status, got)
+		want := int32(1)
+		if status == 401 {
+			want = 2 // 401 不退避重试，但会重读地址文件后再发一次
+		}
+		if got := atomic.LoadInt32(&calls); got != want {
+			t.Errorf("status %d 被请求了 %d 次，应为 %d", status, got, want)
 		}
 	}
 }
 
 func TestClientTraceNeverLogsTokenOrBody(t *testing.T) {
 	var log strings.Builder
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(pingWrap("miaoju-desktop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"id":1}`))
-	}))
+	})))
 	t.Cleanup(srv.Close)
 
+	info := infoFor(t, srv, testCLIToken, "")
 	c := New(Options{
-		Server: srv.URL, Token: "super-secret-jwt", Version: "1",
+		Resolve: func() (endpoint.Info, error) { return info, nil }, Version: "1",
 		Trace: func(format string, a ...any) { log.WriteString(format) },
 	})
 	_, _ = c.CreateProject(context.Background(), "机密项目名", "机密描述", "")
 
 	out := log.String()
-	for _, leak := range []string{"super-secret-jwt", "Authorization", "机密项目名", "机密描述"} {
+	for _, leak := range []string{testCLIToken, "Authorization", "机密项目名", "机密描述"} {
 		if strings.Contains(out, leak) {
 			t.Fatalf("trace 泄漏 %q: %s", leak, out)
 		}
@@ -213,12 +248,13 @@ func TestClientHonorsContextCancel(t *testing.T) {
 // 取消后不该继续重试——那会把用户的 Ctrl+C 拖成几秒。
 func TestClientDoesNotRetryAfterCancel(t *testing.T) {
 	var calls int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(pingWrap("miaoju-desktop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&calls, 1)
 		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
+	})))
 	t.Cleanup(srv.Close)
-	c := New(Options{Server: srv.URL, Token: "t", Version: "1"})
+	info := infoFor(t, srv, testCLIToken, "")
+	c := New(Options{Resolve: func() (endpoint.Info, error) { return info, nil }, Version: "1"})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -282,5 +318,92 @@ func TestClientIfMatchHeader(t *testing.T) {
 	}
 	if got != "" {
 		t.Fatalf("不该发 If-Match, got %q", got)
+	}
+}
+
+func TestMissingEndpointIsAppNotRunning(t *testing.T) {
+	c := New(Options{Resolve: func() (endpoint.Info, error) { return endpoint.Info{}, endpoint.ErrNotRunning }})
+	_, err := c.ListProjects(context.Background())
+	var anr *AppNotRunningError
+	if !errors.As(err, &anr) {
+		t.Fatalf("err=%T %v", err, err)
+	}
+}
+
+func TestConnRefusedIsAppNotRunningWithoutRetry(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	info := infoFor(t, srv, testCLIToken, "")
+	srv.Close() // 端口已无人监听
+	c := New(Options{Resolve: func() (endpoint.Info, error) { return info, nil }})
+	start := time.Now()
+	_, err := c.ListProjects(context.Background())
+	var anr *AppNotRunningError
+	if !errors.As(err, &anr) {
+		t.Fatalf("err=%T %v", err, err)
+	}
+	if time.Since(start) > 250*time.Millisecond {
+		t.Fatal("连接被拒不应退避重试")
+	}
+}
+
+func TestPingRejectsForeignApp(t *testing.T) {
+	srv := httptest.NewServer(pingWrap("something-else", http.NotFoundHandler()))
+	defer srv.Close()
+	info := infoFor(t, srv, testCLIToken, "")
+	c := New(Options{Resolve: func() (endpoint.Info, error) { return info, nil }})
+	_, err := c.ListProjects(context.Background())
+	var anr *AppNotRunningError
+	if !errors.As(err, &anr) {
+		t.Fatalf("端口上不是喵剧应视为未运行，err=%T %v", err, err)
+	}
+}
+
+func TestUnauthorizedRereadsEndpointOnce(t *testing.T) {
+	srv := httptest.NewServer(pingWrap("miaoju-desktop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+	})))
+	defer srv.Close()
+	calls := 0
+	c := New(Options{Resolve: func() (endpoint.Info, error) {
+		calls++
+		tok := "stale-token"
+		if calls > 1 {
+			tok = testCLIToken // 应用重启后文件已重写
+		}
+		return infoFor(t, srv, tok, ""), nil
+	}})
+	if _, err := c.ListProjects(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("Resolve 调用 %d 次，应为 2（401 后重读一次）", calls)
+	}
+}
+
+func TestUnauthorizedTwiceIsAppNotRunning(t *testing.T) {
+	srv := httptest.NewServer(pingWrap("miaoju-desktop", http.NotFoundHandler()))
+	defer srv.Close()
+	calls := 0
+	c := New(Options{Resolve: func() (endpoint.Info, error) { calls++; return infoFor(t, srv, "wrong", ""), nil }})
+	_, err := c.ListProjects(context.Background())
+	var anr *AppNotRunningError
+	if !errors.As(err, &anr) || calls != 2 {
+		t.Fatalf("err=%T calls=%d", err, calls)
+	}
+}
+
+func TestVersionMismatchWarnsOnce(t *testing.T) {
+	srv := httptest.NewServer(pingWrap("miaoju-desktop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+	})))
+	defer srv.Close()
+	var warns []string
+	info := infoFor(t, srv, testCLIToken, "2.0.0")
+	c := New(Options{Resolve: func() (endpoint.Info, error) { return info, nil }, Version: "1.0.0",
+		Warn: func(s string) { warns = append(warns, s) }})
+	_, _ = c.ListProjects(context.Background())
+	_, _ = c.ListProjects(context.Background())
+	if len(warns) != 1 || !strings.Contains(warns[0], "2.0.0") {
+		t.Fatalf("warns=%v", warns)
 	}
 }

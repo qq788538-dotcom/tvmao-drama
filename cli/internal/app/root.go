@@ -18,24 +18,21 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/james/huabu_studio/apps/cli/internal/client"
+	"github.com/james/huabu_studio/apps/cli/internal/endpoint"
 	"github.com/james/huabu_studio/apps/cli/internal/exitcode"
 	"github.com/james/huabu_studio/apps/cli/internal/output"
 	"github.com/james/huabu_studio/apps/cli/internal/workspace"
 )
 
-// ClientFactory 造 HTTP client。测试注入假实现即可绕开网络。
-type ClientFactory func() *client.Client
-
 type Dependencies struct {
-	ClientFactory ClientFactory
-	Stdin         io.Reader
-	Stdout        io.Writer
-	Stderr        io.Writer
-	Version       string
+	Stdin   io.Reader
+	Stdout  io.Writer
+	Stderr  io.Writer
+	Version string
 	// WorkDir 是解析 .miaoju/project.json 的基准目录。
 	WorkDir string
-	// Env 供测试注入环境变量；nil 时读真实环境。
-	Env func(string) string
+	// EndpointDir 是 cli-endpoint.json 所在目录；空时用 endpoint.DefaultDir()。测试注入临时目录。
+	EndpointDir string
 }
 
 // UsageError 表示参数/本地配置问题，映射退出码 2 并打印精简 usage。
@@ -60,25 +57,42 @@ type runtimeState struct {
 	flagIdemKey string
 	flagTrace   bool
 	flagProject int64
+
+	// cl 在一条命令内复用：连接（读地址文件 + ping）只做一次。
+	cl *client.Client
 }
 
-func (s *runtimeState) env(key string) string {
-	if s.deps.Env != nil {
-		return s.deps.Env(key)
-	}
-	return os.Getenv(key)
-}
-
-// client 按需构造 HTTP client。
+// client 按需构造 HTTP client。地址文件懒加载——直到第一次发请求才读，
+// 所以应用没开时 `miaoju version` 之类不联网的命令照样能跑。
 func (s *runtimeState) client() *client.Client {
-	if s.deps.ClientFactory != nil {
-		return s.deps.ClientFactory()
+	if s.cl != nil {
+		return s.cl
 	}
 	var trace func(string, ...any)
 	if s.flagTrace {
 		trace = func(format string, a ...any) { s.out.Warn("[trace] "+format, a...) }
 	}
-	return client.New(client.Options{Version: s.deps.Version, RequestID: s.flagReqID, Trace: trace})
+	s.cl = client.New(client.Options{
+		Resolve:   s.resolveEndpoint,
+		Version:   s.deps.Version,
+		RequestID: s.flagReqID,
+		Trace:     trace,
+		Warn:      func(msg string) { s.out.Warn("%s", msg) },
+	})
+	return s.cl
+}
+
+// resolveEndpoint 每次调用都重新读地址文件（应用重启后端口与 token 会变）。
+func (s *runtimeState) resolveEndpoint() (endpoint.Info, error) {
+	dir := s.deps.EndpointDir
+	if dir == "" {
+		d, err := endpoint.DefaultDir()
+		if err != nil {
+			return endpoint.Info{}, err
+		}
+		dir = d
+	}
+	return endpoint.Load(dir)
 }
 
 // project 解析当前操作的项目。

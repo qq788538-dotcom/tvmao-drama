@@ -18,10 +18,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/james/huabu_studio/apps/cli/internal/endpoint"
 )
 
 const (
-	// apiPrefix 是 CLI 契约的固定前缀。server 只能是 origin，这里负责拼。
+	// apiPrefix 是 CLI 契约的固定前缀。server 是地址文件给出的 origin，这里负责拼。
 	apiPrefix = "/api/v1/cli"
 
 	dialTimeout    = 10 * time.Second
@@ -60,9 +62,39 @@ type NetworkError struct {
 func (e *NetworkError) Error() string { return e.Err.Error() }
 func (e *NetworkError) Unwrap() error { return e.Err }
 
+// AppNotRunningError：地址文件不存在、连接被拒，或端口上不是本应用。
+type AppNotRunningError struct{ Err error }
+
+func (e *AppNotRunningError) Error() string { return "喵剧未运行，请先打开应用" }
+func (e *AppNotRunningError) Unwrap() error { return e.Err }
+
+// SandboxBlockedError：AI 助手的沙箱拦截了网络（CLI spec 3.4、3.5）。必须与"未运行"区分，
+// 否则 AI 助手会以为应用没开，而不是去申请网络权限。
+type SandboxBlockedError struct{ Err error }
+
+func (e *SandboxBlockedError) Error() string {
+	return "网络被 AI 助手的沙箱拦截，请允许本命令访问网络后重试"
+}
+func (e *SandboxBlockedError) Unwrap() error { return e.Err }
+
+func classifyNetErr(err error) error {
+	if isPermDenied(err) {
+		return &SandboxBlockedError{Err: err}
+	}
+	if isConnRefused(err) {
+		return &AppNotRunningError{Err: err}
+	}
+	return &NetworkError{Err: err}
+}
+
 type Client struct {
+	// server / token 由 connect 从地址文件读出后赋值；应用重启后会换。
 	server    string
 	token     string
+	resolve   func() (endpoint.Info, error)
+	warn      func(string)
+	version   string
+	connected bool
 	userAgent string
 	requestID string
 	hc        *http.Client
@@ -72,13 +104,15 @@ type Client struct {
 }
 
 type Options struct {
-	Server    string
-	Token     string
+	// Resolve 读本机地址文件（endpoint.Load）。每次连接/401 后重读都会调用，不缓存。
+	Resolve   func() (endpoint.Info, error)
 	Version   string
 	RequestID string
 	// HTTPClient 供测试注入；nil 时用带超时的默认 client。
 	HTTPClient *http.Client
 	Trace      func(format string, a ...any)
+	// Warn 输出非致命提示（如 CLI 与应用版本不一致）；nil 时不提示。
+	Warn func(string)
 }
 
 func New(opts Options) *Client {
@@ -100,8 +134,9 @@ func New(opts Options) *Client {
 		version = "dev"
 	}
 	return &Client{
-		server:    strings.TrimRight(opts.Server, "/"),
-		token:     opts.Token,
+		resolve:   opts.Resolve,
+		warn:      opts.Warn,
+		version:   version,
 		userAgent: "miaoju-cli/" + version,
 		requestID: opts.RequestID,
 		hc:        hc,
@@ -109,7 +144,52 @@ func New(opts Options) *Client {
 	}
 }
 
-func (c *Client) Server() string { return c.server }
+const pingApp = "miaoju-desktop"
+
+type pingResult struct {
+	App     string `json:"app"`
+	Version string `json:"version"`
+}
+
+// connect 读地址文件并 ping 一次，确认端口上确实是本应用。refresh=true 表示上一次的 token 被拒，重读后再试。
+func (c *Client) connect(ctx context.Context, refresh bool) error {
+	if c.resolve == nil {
+		return &AppNotRunningError{Err: errors.New("未配置地址解析")}
+	}
+	info, err := c.resolve()
+	if errors.Is(err, endpoint.ErrNotRunning) {
+		return &AppNotRunningError{Err: err}
+	}
+	if err != nil {
+		return err
+	}
+	c.server, c.token = info.BaseURL(), info.Token
+	var p pingResult
+	if err := c.attemptJSON(ctx, http.MethodGet, "/ping", &p); err != nil {
+		var api *APIError
+		if errors.As(err, &api) && api.Status == http.StatusUnauthorized {
+			if !refresh {
+				return c.connect(ctx, true)
+			}
+			return &AppNotRunningError{Err: err}
+		}
+		return err
+	}
+	if p.App != pingApp {
+		return &AppNotRunningError{Err: fmt.Errorf("端口 %d 上不是喵剧（app=%q）", info.Port, p.App)}
+	}
+	if !c.connected && c.warn != nil && c.version != "" && c.version != "dev" &&
+		info.AppVersion != "" && info.AppVersion != c.version {
+		c.warn(fmt.Sprintf("命令行工具版本 %s 与喵剧 %s 不一致，请在喵剧 设置 → 配置 → 命令行工具 中重新安装", c.version, info.AppVersion))
+	}
+	c.connected = true
+	return nil
+}
+
+// attemptJSON 发一次请求（不重试），≥400 走 decodeAPIError，否则把 body 解到 out。
+func (c *Client) attemptJSON(ctx context.Context, method, path string, out any) error {
+	return c.attempt(ctx, request{method: method, path: path}, nil, out)
+}
 
 // request 描述一次调用。
 type request struct {
@@ -127,8 +207,30 @@ type request struct {
 	contentType string
 }
 
-// do 执行请求并把响应 JSON 解进 out（out 为 nil 时丢弃 body）。
+// do 确保已连上本机应用后执行请求；遇 401 重读地址文件再试一次。
 func (c *Client) do(ctx context.Context, req request, out any) error {
+	if !c.connected {
+		if err := c.connect(ctx, false); err != nil {
+			return err
+		}
+	}
+	err := c.doOnce(ctx, req, out)
+	var api *APIError
+	if errors.As(err, &api) && api.Status == http.StatusUnauthorized {
+		// 应用重启过：端口和 token 都换了，重读地址文件再试一次（不占用 maxRetries）
+		if cerr := c.connect(ctx, true); cerr != nil {
+			return cerr
+		}
+		err = c.doOnce(ctx, req, out)
+		if errors.As(err, &api) && api.Status == http.StatusUnauthorized {
+			return &AppNotRunningError{Err: err}
+		}
+	}
+	return err
+}
+
+// doOnce 执行请求（含退避重试）并把响应 JSON 解进 out（out 为 nil 时丢弃 body）。
+func (c *Client) doOnce(ctx context.Context, req request, out any) error {
 	var payload []byte
 	if req.rawBody != nil {
 		payload = req.rawBody
@@ -217,7 +319,7 @@ func (c *Client) attempt(ctx context.Context, req request, payload []byte, out a
 
 	resp, err := hc.Do(httpReq)
 	if err != nil {
-		return &NetworkError{Err: err}
+		return classifyNetErr(err)
 	}
 	defer resp.Body.Close()
 
@@ -273,6 +375,11 @@ func isSafeMethod(m string) bool {
 // shouldRetry：网络错误恒可重试；HTTP 错误只信服务端自己标的 retryable，
 // 外加 429/502/503/504 这几个「肯定是基础设施而不是业务」的状态。
 func shouldRetry(err error) bool {
+	var anr *AppNotRunningError
+	var sb *SandboxBlockedError
+	if errors.As(err, &anr) || errors.As(err, &sb) {
+		return false // 重试无意义，只会让用户多等几秒
+	}
 	var ne *NetworkError
 	if errors.As(err, &ne) {
 		return true
