@@ -338,13 +338,11 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	// doubao-seedance* 对真人图有上游校验：真人图必须以 asset://<素材库id> 形式引用。
 	// 引用图若命中该用户画布真人图库（已入库 active）则自动替换；命中但未就绪直接拒绝，
 	// 让用户看到明确原因而不是上游的模糊报错。未命中的图原样透传。
-	if s.realPerson != nil && strings.HasPrefix(input.ModelID, "doubao-seedance") {
-		replaced, err := s.replaceRealPersonImageRefs(input.UserID, input.Inputs)
-		if err != nil {
-			return nil, err
-		}
-		input.Inputs = replaced
+	replaced, err := s.applyRealPersonRefs(input.UserID, model, input.Inputs)
+	if err != nil {
+		return nil, err
 	}
+	input.Inputs = replaced
 
 	// 带 sink → 队列模式(v5 §5.4):Submit 是 SubmitTx 的自开事务薄包装。
 	// 建行与冻结同事务、行以 queued 出生;网络性准备(签图/预取)完全跳过——
@@ -541,7 +539,7 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 	// 这是接管分流的唯一判据：没有它，被中断的任务全都会被当成"什么都没发生"而重排，
 	// 包括那些已经发出请求的——上游会被调第二次，用户被扣两次钱。
 	// 写失败必须中止：宁可这次不做，也不能在"外部副作用不可追踪"的状态下调上游。
-	if won, err := s.repo.MarkUpstreamCalled(taskID, lease); err != nil || !won {
+	if won, err := s.repo.MarkUpstreamCalled(taskID, lease, models.UpstreamFingerprint(baseDomain, apiKey)); err != nil || !won {
 		if err == nil {
 			// 失租:代次已被接管——静默退出,新持有者会走完(v5 §5.3 失租语义)。
 			log.Printf("generation: task=%d MarkUpstreamCalled 失租,静默退出", taskID)
@@ -798,6 +796,14 @@ func (s *Service) ResumeOrphanedTasks() {
 		if err != nil || !won {
 			continue
 		}
+		// I-1：上游配置在任务进行中被改过（换地址/换 Key/切回全局），当前凭据查不到这个上游
+		// 任务——上游对 4xx 一律按"不确定"退避重试，会白等整个轮询窗口（最长 24h）。立即失败退款，
+		// 文案带上游任务 ID 方便用户去原账号找。旧任务没有指纹，放行。
+		if upstreamFingerprintChanged(task.UpstreamFingerprint, baseDomain, apiKey) {
+			log.Printf("generation: resume task %d: 上游指纹不一致，判失败 (model %s)", task.ID, task.ModelID)
+			_, _ = s.finishFailureTx(context.Background(), task.ID, lease, upstreamChangedMessage(task.UpstreamTaskID), ledgerNote(model, inputCapture.Note))
+			continue
+		}
 		if len(model.PollingTemplate) == 0 {
 			log.Printf("generation: resume task %d: model %s has no pollingTemplate, finishing failed", task.ID, task.ModelID)
 			// 旧代码只标失败不退款(:679 的洞)——finishFailureTx 原子退款,自动修好。
@@ -810,6 +816,15 @@ func (s *Service) ResumeOrphanedTasks() {
 		resumed++
 	}
 	log.Printf("generation: ResumeOrphanedTasks resumed %d/%d processing tasks", resumed, len(tasks))
+}
+
+// upstreamFingerprintChanged 报告任务提交时记下的上游指纹与当前凭据是否不一致；空指纹（旧任务）视为一致。
+func upstreamFingerprintChanged(recorded, baseDomain, apiKey string) bool {
+	return recorded != "" && recorded != models.UpstreamFingerprint(baseDomain, apiKey)
+}
+
+func upstreamChangedMessage(upstreamTaskID string) string {
+	return "该任务提交时使用的上游配置已变更，无法继续查询结果（上游任务 ID：" + upstreamTaskID + "）"
 }
 
 // completeAsync 在自己的 goroutine 里跑，跟 HTTP 请求解耦：

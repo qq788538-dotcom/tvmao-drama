@@ -61,6 +61,12 @@ func applyModels(ctx context.Context, q querier, s *Seed) error {
 	// 1. 新版种子里没有的模型删除。M8 规定模型全部内置、用户不能新增，所以库里不存在需要保留的“用户模型”。
 	for id := range cur {
 		if _, ok := s.Model(id); !ok {
+			// 独立上游是本机用户数据，随行删除（契约）；打一条日志，升级后"独立上游"标签消失、
+			// 请求改走全局时有据可查（审查 M-6）。只记地址，不记 Key。
+			var upBase string
+			if err := q.QueryRowContext(ctx, `SELECT upstream_base_url FROM model_configs WHERE model_id = ?`, id).Scan(&upBase); err == nil && upBase != "" {
+				log.Printf("builtin: 新版种子移除了模型 %s，它单独配置的独立上游（%s）随之删除，之后改走全局上游", id, upBase)
+			}
 			if err := deleteModelRow(ctx, q, id); err != nil {
 				return err
 			}

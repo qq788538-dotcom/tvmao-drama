@@ -291,7 +291,12 @@ func buildModelForUser(ctx context.Context, userID int64, role string, deps Plan
 	// 设置页切过去的模型被种子删掉后 Agent 就永久不可用。
 	mb := noBilling
 	var mcfg *models.ModelConfig
-	if m, merr := deps.Models.GetByModelID(cfg.ModelName); merr != nil || m == nil {
+	m, merr := deps.Models.GetByModelID(cfg.ModelName)
+	if merr != nil && !errors.Is(merr, models.ErrNotFound) {
+		// 数据库瞬时错误等：不能静默回落全局——那可能是另一个计费账号（审查 M-5）。
+		return nil, nil, noBilling, fmt.Errorf("%s backbone: 读取模型 %q 配置失败: %w", role, cfg.ModelName, merr)
+	}
+	if merr != nil || m == nil {
 		log.Printf("%s backbone: model_configs 里没有 %q 的计费配置，按无计费继续: %v", role, cfg.ModelName, merr)
 	} else {
 		mcfg = m

@@ -71,7 +71,7 @@ func TestStaleLeaseWritesAllLose(t *testing.T) {
 	if won, err := repo.Heartbeat(id, 4); err != nil || !won {
 		t.Fatal("有效代次心跳应成功")
 	}
-	if won, err := repo.MarkUpstreamCalled(id, 3); err != nil || won {
+	if won, err := repo.MarkUpstreamCalled(id, 3, ""); err != nil || won {
 		t.Fatal("旧代次 MarkUpstreamCalled 必须落空")
 	}
 	if won, err := repo.MarkUpstream(id, 3, "up-x"); err != nil || won {

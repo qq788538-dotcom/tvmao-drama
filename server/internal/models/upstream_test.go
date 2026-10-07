@@ -103,3 +103,55 @@ func TestSetUpstreamRoundTripAndHiddenFromJSON(t *testing.T) {
 		t.Fatalf("不存在的模型应返回 ErrNotFound, got %v", err)
 	}
 }
+
+// M-1：地址末尾的 / 和 /v1 一律规范化掉，各条调用路径自己再补 /v1，不会出现 /v1/v1。
+func TestNormalizeUpstreamBaseURL(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://a.example":        "https://a.example",
+		"https://a.example/":       "https://a.example",
+		" https://a.example/v1 ":   "https://a.example",
+		"https://a.example/v1/":    "https://a.example",
+		"https://a.example/V1":     "https://a.example",
+		"https://a.example/api/v1": "https://a.example/api",
+		"https://a.example/v1beta": "https://a.example/v1beta",
+		"https://a.example/xv1":    "https://a.example/xv1",
+		"":                         "",
+	} {
+		if got := NormalizeUpstreamBaseURL(in); got != want {
+			t.Errorf("%q → %q, want %q", in, got, want)
+		}
+	}
+}
+
+// 已经存下的旧值（带 /v1）在解析出口兜住：模型自己的和全局的都规范化。
+func TestResolveUpstreamNormalizesStoredBase(t *testing.T) {
+	g := mapSettings{"base_domain": "http://global/v1/", "upstream_api_key": "sk-global"}
+	if base, _, _ := ResolveUpstream(nil, g); base != "http://global" {
+		t.Fatalf("全局: %q", base)
+	}
+	m := &ModelConfig{UpstreamBaseURL: "https://own.example/v1", UpstreamAPIKey: "sk-own"}
+	if base, _, _ := ResolveUpstream(m, g); base != "https://own.example" {
+		t.Fatalf("模型: %q", base)
+	}
+}
+
+// 指纹 = 规范化地址 + Key 的 sha256 前 16 位；不含 Key 明文。
+func TestUpstreamFingerprint(t *testing.T) {
+	a := UpstreamFingerprint("https://a.example/v1/", "sk-secret-1234")
+	if a != UpstreamFingerprint("https://a.example", " sk-secret-1234 ") {
+		t.Fatal("地址规范化后相同、Key 相同，指纹应一致")
+	}
+	if strings.Contains(a, "secret") {
+		t.Fatalf("指纹不能含 Key 明文: %s", a)
+	}
+	// sha256("sk-secret-1234") 的前 16 个十六进制字符。
+	if !strings.HasPrefix(a, "https://a.example#") || len(a) != len("https://a.example#")+16 {
+		t.Fatalf("指纹格式不对: %s", a)
+	}
+	if a == UpstreamFingerprint("https://a.example", "sk-other") {
+		t.Fatal("换 Key 指纹应变化")
+	}
+	if a == UpstreamFingerprint("https://b.example", "sk-secret-1234") {
+		t.Fatal("换地址指纹应变化")
+	}
+}

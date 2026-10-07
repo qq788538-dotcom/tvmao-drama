@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/james/huabu_studio/apps/api/internal/models"
 )
 
 type upstreamViewResp struct {
@@ -225,5 +228,33 @@ func TestMaskAPIKeyShortKeyFullyMasked(t *testing.T) {
 	}
 	if v := decodeTo[modelUpstreamResp](t, body); v.Upstream.APIKeyMasked != "••••••••" || strings.Contains(body, "short-key") {
 		t.Fatalf("不足 12 位应全掩: %s", body)
+	}
+}
+
+// M-1：独立上游地址保存时去掉末尾的 / 和 /v1。
+func TestPatchModelUpstreamStripsTrailingV1(t *testing.T) {
+	e := newSCEnv(t)
+	path := fmt.Sprintf("/models/%d", e.ids["gpt-image-2"])
+	for in, want := range map[string]string{
+		"https://own.example/v1":      "https://own.example",
+		"https://own.example/v1/":     "https://own.example",
+		"https://own.example/api/v1/": "https://own.example/api",
+	} {
+		code, body := e.do("PATCH", path, map[string]any{"upstream": map[string]any{"baseUrl": in, "apiKey": secretKey}})
+		if code != 200 {
+			t.Fatalf("%s → %d %s", in, code, body)
+		}
+		if base, _ := e.upstreamOf("gpt-image-2"); base != want {
+			t.Fatalf("%s 落库为 %q, want %q", in, base, want)
+		}
+	}
+}
+
+// M-7：SetUpstream 的 ErrUpstreamUnpaired 是校验错误，应返回 400 而不是 500。
+func TestScWriteErrorUpstreamUnpairedIs400(t *testing.T) {
+	rec := httptest.NewRecorder()
+	scWriteError(rec, fmt.Errorf("wrap: %w", models.ErrUpstreamUnpaired))
+	if rec.Code != 400 || !strings.Contains(rec.Body.String(), `"field":"upstream"`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
 }

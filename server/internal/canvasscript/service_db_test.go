@@ -42,9 +42,13 @@ func (f *fakeSettings) Set(key, value string) error {
 type fakeModels struct {
 	missing  map[string]bool
 	upstream map[string][2]string // model_id → {独立上游地址, Key}
+	err      error                // 非 nil 时模拟数据库瞬时错误
 }
 
 func (f fakeModels) GetByModelID(id string) (*models.ModelConfig, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	if f.missing[id] {
 		return nil, models.ErrNotFound
 	}

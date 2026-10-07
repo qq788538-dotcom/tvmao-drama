@@ -139,6 +139,9 @@ func scWriteError(w nethttp.ResponseWriter, err error) {
 			body["field"] = ve.Field
 		}
 		writeJSON(w, nethttp.StatusBadRequest, body)
+	case errors.Is(err, models.ErrUpstreamUnpaired):
+		// M-7：handler 已先校验，正常走不到；别的调用方漏校验时也应是 400 而非 500。
+		writeJSON(w, nethttp.StatusBadRequest, map[string]any{"error": models.ErrUpstreamUnpaired.Error(), "field": "upstream"})
 	case errors.Is(err, ErrSettingsNotFound), errors.Is(err, models.ErrNotFound):
 		writeJSON(w, nethttp.StatusNotFound, map[string]any{"error": "要修改的项目不存在"})
 	default:

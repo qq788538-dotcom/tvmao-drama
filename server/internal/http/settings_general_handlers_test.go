@@ -147,3 +147,12 @@ func TestDataDirCheck(t *testing.T) {
 		}
 	}
 }
+
+// M-1：全局上游地址保存时去掉末尾的 / 和 /v1。
+func TestUpstreamBaseDomainStripsTrailingV1(t *testing.T) {
+	e := newSCEnv(t)
+	code, body := e.do("PUT", "/upstream", map[string]any{"baseDomain": "https://gw.example.com/v1/"})
+	if g := decodeTo[generalResp](t, body); code != 200 || g.BaseDomain != "https://gw.example.com" {
+		t.Fatalf("%d %s", code, body)
+	}
+}

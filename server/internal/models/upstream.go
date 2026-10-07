@@ -1,6 +1,8 @@
 package models
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 )
@@ -28,7 +30,7 @@ func (m *ModelConfig) HasOwnUpstream() bool {
 // 场景报“未配置”；err 只表示读全局配置失败。
 func ResolveUpstream(m *ModelConfig, global UpstreamSettings) (baseURL, apiKey string, err error) {
 	if m.HasOwnUpstream() {
-		return strings.TrimSpace(m.UpstreamBaseURL), strings.TrimSpace(m.UpstreamAPIKey), nil
+		return NormalizeUpstreamBaseURL(m.UpstreamBaseURL), strings.TrimSpace(m.UpstreamAPIKey), nil
 	}
 	if global == nil {
 		return "", "", errors.New("全局上游配置未接入")
@@ -39,7 +41,27 @@ func ResolveUpstream(m *ModelConfig, global UpstreamSettings) (baseURL, apiKey s
 	if apiKey, err = global.Get(SettingUpstreamAPIKey); err != nil {
 		return "", "", err
 	}
-	return baseURL, apiKey, nil
+	return NormalizeUpstreamBaseURL(baseURL), apiKey, nil
+}
+
+// NormalizeUpstreamBaseURL 去掉地址首尾空白、末尾的 "/" 和一段 "/v1"（不区分大小写）。
+//
+// 上游地址约定填 newapi 根地址：画布生成拼 base + base_path（种子里的 base_path 自带 /v1），
+// Agent 与剧本生成在 base 后补 /v1。用户常直接粘贴 "https://x/v1"，不去掉就会在画布生成
+// 路径拼出 /v1/v1。保存时规范化一次，解析出口（ResolveUpstream）再兜一次存量旧值。
+func NormalizeUpstreamBaseURL(s string) string {
+	s = strings.TrimRight(strings.TrimSpace(s), "/")
+	if n := len(s); n >= 3 && strings.EqualFold(s[n-3:], "/v1") {
+		s = strings.TrimRight(s[:n-3], "/")
+	}
+	return s
+}
+
+// UpstreamFingerprint 标识"哪个上游账号"：规范化地址 + "#" + Key 的 sha256 前 16 个十六进制字符。
+// 不含 Key 明文，可以落库（生成任务记录提交时的上游，重启续轮询时比对）。
+func UpstreamFingerprint(baseURL, apiKey string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(apiKey)))
+	return NormalizeUpstreamBaseURL(baseURL) + "#" + hex.EncodeToString(sum[:])[:16]
 }
 
 // GlobalWithKey 包一层全局配置：upstream_api_key 改由 key() 提供，其余 key 照常读 s。

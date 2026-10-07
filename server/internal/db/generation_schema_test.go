@@ -31,7 +31,7 @@ func TestGenerationTablesCreated(t *testing.T) {
 	want := map[string][]string{
 		"generation_tasks": {"attempt", "audit_flag", "cost_cents", "created_at", "error", "frozen_cents",
 			"heartbeat_at", "id", "input", "lease_version", "model_id", "next_retry_at", "output", "output_kind",
-			"owner_instance", "project_id", "sink", "status", "updated_at", "upstream_called_at", "upstream_task_id", "user_id"},
+			"owner_instance", "project_id", "sink", "status", "updated_at", "upstream_called_at", "upstream_fingerprint", "upstream_task_id", "user_id"},
 		"generation_sink_outbox": {"attempt", "created_at", "delivery_version", "id", "last_error", "locked_until",
 			"next_retry_at", "payload", "sink", "state", "task_id", "updated_at"},
 	}

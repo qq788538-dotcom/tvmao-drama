@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -104,5 +105,36 @@ func TestBackboneModelOwnUpstreamWithoutGlobal(t *testing.T) {
 	})
 	if auths, _ := own.calls(); len(auths) != 1 {
 		t.Fatalf("应打到独立上游: %v", auths)
+	}
+}
+
+// M-1：独立上游地址存成了 .../v1（旧值），Agent 仍只拼一层 /v1。
+func TestBackboneOwnUpstreamWithTrailingV1(t *testing.T) {
+	own := newChatUpstream(t)
+	generateOnce(t, PlannerDeps{
+		Backbones:   &stubBackboneRepo{active: &BackboneModel{ModelName: "gpt-x", MaxTokens: 100}},
+		Settings:    stubSettings{},
+		UpstreamKey: stubKeyResolver{},
+		Models:      stubModels{cfg: &models.ModelConfig{ModelID: "gpt-x", UpstreamBaseURL: own.srv.URL + "/v1/", UpstreamAPIKey: "sk-own"}},
+	})
+	if _, paths := own.calls(); len(paths) != 1 || paths[0] != "/v1/chat/completions" {
+		t.Fatalf("paths=%v", paths)
+	}
+}
+
+// M-5：查模型行遇到 ErrNotFound 以外的错误时直接失败，不静默回落全局账号。
+func TestBackboneModelLookupErrorDoesNotFallBackToGlobal(t *testing.T) {
+	global := newChatUpstream(t)
+	_, err := BuildPlannerForUser(context.Background(), 1, PlannerDeps{
+		Backbones:   &stubBackboneRepo{active: &BackboneModel{ModelName: "gpt-x", MaxTokens: 100}},
+		Settings:    stubSettings{base: global.srv.URL},
+		UpstreamKey: stubKeyResolver{key: "sk-global"},
+		Models:      stubModels{err: errors.New("database is locked")},
+	})
+	if err == nil {
+		t.Fatal("应返回错误")
+	}
+	if auths, _ := global.calls(); len(auths) != 0 {
+		t.Fatalf("不应打到全局: %v", auths)
 	}
 }

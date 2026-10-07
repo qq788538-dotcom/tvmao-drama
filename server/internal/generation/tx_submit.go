@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/james/huabu_studio/apps/api/internal/billing"
 )
@@ -62,13 +61,11 @@ func (s *Service) SubmitTx(ctx context.Context, tx *sql.Tx, input SubmitInput) (
 	if err := s.resolveInputDuration(ctx, model.InputDuration(), input.Inputs); err != nil {
 		return nil, err
 	}
-	if s.realPerson != nil && strings.HasPrefix(input.ModelID, "doubao-seedance") {
-		replaced, err := s.replaceRealPersonImageRefs(input.UserID, input.Inputs)
-		if err != nil {
-			return nil, err
-		}
-		input.Inputs = replaced
+	replaced, err := s.applyRealPersonRefs(input.UserID, model, input.Inputs)
+	if err != nil {
+		return nil, err
 	}
+	input.Inputs = replaced
 	if containsDataURI(input.Inputs) {
 		return nil, ErrDataURIInput
 	}

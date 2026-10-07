@@ -1,8 +1,11 @@
 package builtin
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"log"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -310,5 +313,20 @@ func TestModelUpstreamColumnsMustBePaired(t *testing.T) {
 	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil)}, nil))
 	if _, err := conn.Exec(`UPDATE model_configs SET upstream_base_url = 'https://a.example' WHERE model_id = 'img-a'`); err == nil {
 		t.Fatal("只写地址不写 Key 应被 CHECK 拒绝")
+	}
+}
+
+// M-6：种子删掉带独立上游的模型时打一条日志，方便排查"升级后独立上游标签消失"。Key 不进日志。
+func TestApplyRemovedModelWithUpstreamLogs(t *testing.T) {
+	conn := dbtest.Open(t)
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil)}, nil))
+	simulateUserEdit(t, conn, `UPDATE model_configs SET upstream_base_url = 'https://b.example', upstream_api_key = 'sk-bbbbbbbbbbbb' WHERE model_id = 'img-b'`)
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil)}, nil))
+	out := buf.String()
+	if !strings.Contains(out, "img-b") || !strings.Contains(out, "独立上游") || strings.Contains(out, "sk-bbbb") {
+		t.Fatalf("日志不对: %s", out)
 	}
 }

@@ -48,3 +48,17 @@ func TestUpstreamCredentialsModelOwnWithoutGlobal(t *testing.T) {
 		t.Fatalf("未配置地址时应报地址未配置, got %v", err)
 	}
 }
+
+// M-1：画布生成拼 baseDomain + base_path（种子 base_path 自带 /v1）。独立上游存成 .../v1
+// 的旧值时，执行计划里的 baseDomain 已去掉 /v1，最终 URL 只有一层 /v1。
+func TestPrepareExecutionStripsTrailingV1(t *testing.T) {
+	m := &models.ModelConfig{ModelID: "m", Enabled: true, BasePath: "/v1/chat/completions", RequestTemplate: json.RawMessage(`{"prompt":"{{prompt}}"}`),
+		UpstreamBaseURL: "https://own.example/v1/", UpstreamAPIKey: "sk-own"}
+	plan, err := planService(m, okSettings(), "sk-global").prepareExecution(context.Background(), 1, "m", map[string]any{"prompt": "p"}, "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := plan.baseDomain + m.BasePath; got != "https://own.example/v1/chat/completions" {
+		t.Fatalf("got %q", got)
+	}
+}

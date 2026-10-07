@@ -399,9 +399,14 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	}
 	// 上游地址与 Key 经 models.ResolveUpstream 解析：任务记录的模型单独配了上游就用模型的，
 	// 否则回落全局（Key 走 keyResolver）。模型行查不到时同样回落全局。
+	// 只有 ErrNotFound 才回落全局；数据库瞬时错误直接失败重试，不把剧本发到可能是另一个
+	// 计费账号的全局上游（审查 M-5）。
 	var mcfg *models.ModelConfig
 	if m, merr := s.models.GetByModelID(t.Model); merr == nil {
 		mcfg = m
+	} else if !errors.Is(merr, models.ErrNotFound) {
+		fail("读取模型配置失败，请稍后重试", merr.Error())
+		return
 	}
 	global := models.GlobalWithKey(s.settings, func() (string, error) { return s.keys.Resolve(t.UserID) })
 	baseDomain, sk, err := models.ResolveUpstream(mcfg, global)
