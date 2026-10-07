@@ -227,7 +227,7 @@ export function ModelCenterPage() {
                       name="upstreamApiKey"
                       dependencies={['upstreamMode', 'upstreamBaseUrl']}
                     rules={[{ validator: () => { const err = upstreamFieldErrors(editing, form.getFieldsValue()).apiKey; return err ? Promise.reject(new Error(err)) : Promise.resolve(); } }]}
-                      extra={editing.upstream?.configured ? <span>当前：{editing.upstream.apiKeyMasked}</span> : '尚未设置。Key 以明文保存在本机 data.db 中。'}
+                      extra={editing.upstream?.configured ? <span>当前：{editing.upstream.apiKeyMasked}</span> : '尚未设置。Key 加密保存在本机 data.db 中。'}
                     >
                       <Input.Password placeholder={editing.upstream?.configured ? '留空则保留已保存的 Key' : 'sk-...'} autoComplete="new-password" />
                     </Form.Item>

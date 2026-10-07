@@ -100,7 +100,7 @@ export function UpstreamCard() {
                 </Button>
               </Space>
             ) : (
-              '尚未设置。Key 以明文保存在本机数据目录的 data.db 中，请勿把数据目录发给他人。'
+              '尚未设置。Key 加密保存在本机数据目录的 data.db 中，请勿把数据目录发给他人。'
             )
           }
         >
