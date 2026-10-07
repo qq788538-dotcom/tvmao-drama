@@ -15,8 +15,7 @@ type SeedanceAsset struct {
 	UserID    int64   `json:"-"`
 	AssetID   *string `json:"assetId,omitempty"`
 	Version   *int    `json:"-"`
-	// AssetType 是上游 AssetType 原值（Image/Video/Audio）。worker 重试提交时要重放
-	// 它，所以必须持久化——那一刻没有前端上下文（见 0084）。
+	// AssetType 是上游 AssetType 原值（Image/Video/Audio）。落库供状态角标与排查使用。
 	AssetType     string     `json:"assetType"`
 	Status        string     `json:"status"`
 	Error         *string    `json:"error,omitempty"`
@@ -29,14 +28,11 @@ var ErrSeedanceAssetNotFound = errors.New("seedance asset not found")
 type SeedanceAssetsRepository interface {
 	Get(objectKey string) (*SeedanceAsset, error)
 	GetMany(userID int64, objectKeys []string) (map[string]SeedanceAsset, error)
-	// Upsert 提交校验时写入/重置一行（status=pending，清空上一轮的错误与失败计时）。
+	// Upsert 写入/重置一行：总是清空上一轮的 error 与 first_failed_at，重新提交成功后不会残留旧错误。
 	Upsert(a SeedanceAsset) error
 	SetStatus(objectKey, status string) error
-	// SetError 落失败状态 + 原因，并记录本轮首次失败时间（已有值保持不变）——
-	// 它驱动 service 层的 1 小时重试兜底窗口。
+	// SetError 落失败状态 + 原因，并记录本轮首次失败时间（已有值保持不变）。
 	SetError(objectKey, status, errMsg string) error
-	// ListPending 取所有待轮询的行（pending 或可重试的 failed），供 worker 收敛。
-	ListPending(currentVersion int) ([]SeedanceAsset, error)
 }
 
 type SQLiteSeedanceAssetsRepository struct{ db *sql.DB }
@@ -164,26 +160,4 @@ func (r *SQLiteSeedanceAssetsRepository) SetError(objectKey, status, errMsg stri
 		`UPDATE seedance_assets SET status=?, error=?, first_failed_at=COALESCE(first_failed_at, CURRENT_TIMESTAMP) WHERE object_key=?`,
 		status, e, objectKey)
 	return err
-}
-
-// ListPending：待收敛的行 = 还没拿到当前版本 active 结果的。
-// 终态 failed_permanent 不进待办（同图重试必然同样结果）；failed 仍进，
-// 由 service 的 1 小时兜底窗口决定何时转终态。
-func (r *SQLiteSeedanceAssetsRepository) ListPending(currentVersion int) ([]SeedanceAsset, error) {
-	rows, err := r.db.Query(`SELECT `+seedanceAssetCols+` FROM seedance_assets
-        WHERE status <> 'failed_permanent'
-          AND (status <> 'active' OR version IS NULL OR version <> ?)`, currentVersion)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []SeedanceAsset
-	for rows.Next() {
-		a, err := scanSeedanceAsset(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, a)
-	}
-	return out, rows.Err()
 }

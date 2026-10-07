@@ -209,6 +209,11 @@ side-dl（5156c50 + 审查修复 fc8356a）已在 integration 第四轮合入（
 - 预期：① 显示连接正常；② 生成成功，桶里出现 `miaoju-inputs/<哈希>.mp4`；③ 桶里不新增对象；④ 同 ①–②；⑤ 生成成功且桶里没有新增图片；⑥ 报「未配置对象存储…」。
 - 出处：对象存储设计 `docs/superpowers/specs/2026-10-07-object-storage-design.md`。
 
+### O2 Seedance 合规校验（内置模型 seedance-asset）
+- 步骤：配置对象存储和上游后，① 对一张图、一段视频点「合规校验」；② 用校验过的素材跑一次 seedance 生成；③ 故意用不合规素材（如含真人）校验。
+- 预期：① 节点角标变「已通过」；② 上游请求里的素材是 `asset://…`；③ 角标显示上游返回的原文错误。
+- 出处：`docs/superpowers/specs/2026-10-07-seedance-asset-model-design.md`。
+
 ## 命令行工具
 
 Windows 实机全部必做；macOS 上 sidecar 级冒烟（`project list`/`node create`/SSE 推送/退出码 8/Codex 沙箱退出码 9）已由 CLI Task 14 用独立 sidecar 覆盖，下列需要真实壳与网页的项仍需手工做。
@@ -257,4 +262,4 @@ Windows 实机全部必做；macOS 上 sidecar 级冒烟（`project list`/`node 
 
 ## 条目统计
 
-macOS 5 项、Windows 9 项、通用 14 项、下载 7 项，共 35 项（C8、C9 内部另含子项），另有对象存储 1 项（O1，内含 6 个步骤）、命令行工具 10 项（L1–L10）。
+macOS 5 项、Windows 9 项、通用 14 项、下载 7 项，共 35 项（C8、C9 内部另含子项），另有对象存储 1 项（O1，内含 6 个步骤）、合规校验 1 项（O2）、命令行工具 10 项（L1–L10）。

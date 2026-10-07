@@ -31,7 +31,7 @@ miaoju asset download --node "$GEN" --out ./out.mp4
 ```
 
 用 `doubao-seedance*` 时,在 `node run` 之前插一步合规校验(先让输入素材有内容、
-`verify` 提交、`status` 等到 `active`),见 [../commands/compliance.md](../commands/compliance.md)。
+`verify` 提交,返回即出结果),见 [../commands/compliance.md](../commands/compliance.md)。
 
 **创建与执行严格分离**:可以先把整张图搭完、审核一遍,再决定是否运行(运行才会调用上游模型)。
 `node create` 与 `edge create` 永远不会隐式触发生成。

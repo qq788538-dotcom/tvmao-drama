@@ -46,7 +46,7 @@ Authorization: Bearer <api key>
 ```
 
 - `image_input_format` 设为 `url`：这个模型不经过 `prepareImageInputs`，该字段不起作用。`TestSeedImagesAreInline` 要按 `model_id` 排除它。
-- 上游地址与 Key 用 `models.ResolveUpstream(model, settings)` 解析：与其他模型一致，没有给这个模型单独配置上游时，用全局 base_domain + API Key。这一条取代 X5 原来"合规固定走全局上游"的说法。
+- 上游地址与 Key 用 `models.ResolveUpstream(model, settings)` 解析：与其他模型一致，没有给这个模型单独配置上游时，用全局 base_domain + API Key。这一条取代 X5 原来"合规固定走全局上游"的说法。相应地，生成前的上游一致性检查（`ErrVerifiedAssetUpstreamMismatch`）比对的是 `doubao-seedance*` 模型与 `seedance-asset` 各自解析出的上游指纹，不再与全局比对：素材注册在哪个上游，就只能在哪个上游引用（终审 I1）。
 
 ## 3. 后端改造
 
@@ -78,9 +78,10 @@ func (r *Registrar) Register(ctx context.Context, url, assetType string) (assetI
 ### 3.2 `server/internal/library/seedance_service.go`（简化）
 
 - `seedanceAPI` 接口改为 `{ Configured() bool; Register(ctx, url, assetType string) (string, error) }`。
-- `Submit`：已通过（`status=active` 且有 `asset_id`）就直接返回；否则 `signedURL`（对象存储发布）→ `Register`：
+- `Submit`：已通过（`status=active` 且有 `asset_id`）就直接返回；否则 `signedURL`（对象存储发布）→ 先 Upsert 一条临时 `status=pending` 行（写入 `asset_type`，清空 `error`）→ `Register`：
   - 成功：Upsert `status=active`、`asset_id`；
   - 失败：Upsert `status=failed_permanent`、`error=上游原文`，并返回错误。HTTP 层回 400，前端弹出原文。用户可以再点一次校验重试，因为 Submit 只跳过 active 状态。
+  - 临时 `pending` 只存在于同步调用期间（终审 I3，最长约 300 秒）：节点角标显示「正在进行」并触发前端现有的 5 秒轮询；生成侧 `Resolve` 遇到 pending 报「正在进行 Seedance 合规校验，请稍候再试」，不会把未校验的签名 URL 原样透传。注册调用免费，不做在途去重：pending 行同样会被重新提交，应用崩溃遗留的 pending 行再点一次校验即可覆盖。
 - 删除：`RunWorker`、`ReconcileAll`、`reconcileOne`、`ensureGroup`、1 小时重试窗口、`config()` 和版本号逻辑（写入时 `version` 固定为 1）、`seedanceGroupStore` 依赖及其仓库文件 `seedance_groups_repo.go`。
 - `Configured()` 改为 `client.Configured()`；`ErrSeedanceDisabled` 文案改为「合规校验模型 seedance-asset 未启用或上游未配置」。
 - `Resolve`、`Status`、公共资产（AI 角色）逻辑保持不变。
@@ -92,12 +93,13 @@ func (r *Registrar) Register(ctx context.Context, url, assetType string) (assetI
 
 ### 3.4 前端
 
-只做一处核对：`useMediaNodeMenu.tsx:143` 对 `pending`/`failed` 每 5 秒轮询；新流程只会写入 `active` / `failed_permanent`，不会触发轮询，所以无需改动。`failed_permanent` 角标显示 `error` 原文（`:263`），符合 A2。
+- `useMediaNodeMenu.tsx` 对 `pending`/`failed` 每 5 秒轮询；新流程在同步调用期间写入临时 `pending`（§3.2），复用这套轮询与「正在进行」角标。`failed_permanent` 角标显示 `error` 原文，符合 A2。
+- 校验请求结束后（无论成功还是失败）都要刷新该素材的 `seedance-status` 查询，否则失败角标要等到无关的重新拉取才出现（终审 I2）。菜单入口以及 `SegmentReshootBar`、`VideoContinuationBar` 里不等待结果的校验调用都要这样做。
 
 ## 4. 测试
 
 - `seedance`：用 `httptest.Server` 覆盖：请求体逐字段正确（model、image、metadata.asset_type）、Authorization 头、成功取到 asset_id、2xx 但没有 asset_id、4xx/5xx 时取到 `error.message` 原文、非 JSON 错误体截断、模型未启用或不存在时 `Configured()=false`、错误信息里没有 Key。
-- `library`：Submit 成功写 active；失败写 failed_permanent 和原文；已 active 跳过；未配置对象存储时报引导文案；未配置模型时报 `ErrSeedanceDisabled`。删除轮询、重试、建组相关的旧测试。
+- `library`：Submit 注册前先写 pending（调用期间 Resolve 报「请稍候」）；成功写 active；失败写 failed_permanent 和原文；遗留 pending 可重新提交；已 active 跳过；未配置对象存储时报引导文案；未配置模型时报 `ErrSeedanceDisabled`。删除轮询、重试、建组相关的旧测试。
 - `http`：`TestSeedanceVerify*` 适配同步结果（已通过直接返回 active）。
 - `builtin`：种子包含 `seedance-asset` 且 `hidden=1`；`TestSeedImagesAreInline` 排除它。
 - `cmd/sidecar`：装配测试确认没有合规 worker，`Configured()` 跟随模型状态。

@@ -63,7 +63,7 @@
 | X2 | 多人协作（presence、owner 编辑锁、团队） | 删除 | ✅ 已确认 |
 | X3 | 积分计费和估价 UI | 删除；是否保留"价格说明"文本另行决定 | ✅ 已确认 |
 | X4 | 登录、账户、修改密码、版本检查弹窗 | 删除，改为单个本地用户 | ✅ 已确认 |
-| X5 | Seedance 2.0 合规校验 | 保留，生成前强制校验不动；合规调用改走 newapi provider（接口路径配置在 models.json 的 `features.seedanceCompliance`，接口由用户后续在 newapi 上补充）；未配置时入口提示“合规接口未配置” <br>**2026-10-07 变更**：合规调用固定走全局上游，不受模型独立上游影响（短期方案，见 M2 与实施期裁定） | ✏️ 已修改 |
+| X5 | Seedance 2.0 合规校验 | 保留，生成前强制校验不动；合规调用改走 newapi provider（接口路径配置在 models.json 的 `features.seedanceCompliance`，接口由用户后续在 newapi 上补充）；未配置时入口提示“合规接口未配置” <br>**2026-10-07 变更**：~~合规调用固定走全局上游~~（已被 seedance-asset 方案取代：注册走 seedance-asset 模型解析出的上游，见 M2） <br>**2026-10-07 变更**：改为隐藏内置模型 seedance-asset，同步返回 asset_id，见 `docs/superpowers/specs/2026-10-07-seedance-asset-model-design.md` | ✏️ 已修改 |
 | X6 | 脚本节点“剧本生成分镜”（Skill shell 执行） | 第一期就做：内置独立 Python 运行时 + 命令白名单（只允许执行 Skill 目录内脚本、只能写任务工作区）；需解决 Windows 没有 bash 的问题 | ✏️ 已修改 |
 | X7 | ChatPanel（参考仓的死代码） | 不迁移 | ✅ 已确认 |
 
@@ -74,7 +74,7 @@
 | ID | 决策项 | 推荐 | 状态 |
 |---|---|---|---|
 | M1 | 模型中心存储方式 | 照搬参考仓：SQLite 里建与 MySQL 同结构的 `model_configs` 表，JSON 列（request_template、polling_template、ui_schema、gen_control 等）存 TEXT，用 SQLite json 函数；JSON 文件只用于导入导出和首次安装的种子数据，格式兼容参考仓后台导出（version 1） | ✏️ 已修改 |
-| M2 | 上游网关配置 | 照搬参考仓：全局一个 `base_domain` 存 settings 表，所有模型共用（对接 newapi）；不加 providers 层 <br>**2026-10-07 补充（用户要求，见实施期裁定）**：全局 `base_domain` + Key 改为“默认上游”，设置入口从“通用”移到“模型中心”顶部；每个模型可单独配置上游（`model_configs.upstream_base_url` / `upstream_api_key`，迁移 0070），地址和 Key 必须同时填写，都留空则走全局。凡解析到某个模型的调用（画布生成、后处理、Agent backbone、剧本生成分镜等）一律经 `models.ResolveUpstream` 取地址和 Key；不绑定模型的调用（Seedance 合规）恒走全局。仍不加 providers 层 <br>**2026-10-07 变更（独立上游补充）**：独立上游只关联模型（按模型行解析，不关联功能或调用方）；提交任务时记录上游指纹（规范化地址 + Key 的 sha256 前 16 位，迁移 0071），重启续轮询时指纹与当前解析结果不一致则立即失败，旧任务无指纹放行；保存全局或模型地址时自动去掉末尾 `/` 与 `/v1`，`ResolveUpstream` 出口同样规范化；Seedance 合规素材短期方案：固定走全局上游，`doubao-seedance` 模型走独立上游且指纹与全局不同时，引用已校验 `asset://` 素材在提交前直接报错、不调上游 | ✏️ 已修改 |
+| M2 | 上游网关配置 | 照搬参考仓：全局一个 `base_domain` 存 settings 表，所有模型共用（对接 newapi）；不加 providers 层 <br>**2026-10-07 补充（用户要求，见实施期裁定）**：全局 `base_domain` + Key 改为“默认上游”，设置入口从“通用”移到“模型中心”顶部；每个模型可单独配置上游（`model_configs.upstream_base_url` / `upstream_api_key`，迁移 0070），地址和 Key 必须同时填写，都留空则走全局。凡解析到某个模型的调用（画布生成、后处理、Agent backbone、剧本生成分镜等）一律经 `models.ResolveUpstream` 取地址和 Key；Seedance 合规校验经隐藏内置模型 `seedance-asset` 同样按 `models.ResolveUpstream` 解析（该模型单独配了上游就用它的，否则回落全局；2026-10-07 seedance-asset 变更）。仍不加 providers 层 <br>**2026-10-07 变更（独立上游补充）**：独立上游只关联模型（按模型行解析，不关联功能或调用方）；提交任务时记录上游指纹（规范化地址 + Key 的 sha256 前 16 位，迁移 0071），重启续轮询时指纹与当前解析结果不一致则立即失败，旧任务无指纹放行；保存全局或模型地址时自动去掉末尾 `/` 与 `/v1`，`ResolveUpstream` 出口同样规范化；Seedance 合规素材短期方案：素材注册在 `seedance-asset` 模型解析出的上游账号下，生成时必须用同一个上游——`doubao-seedance` 模型解析出的上游指纹与 `seedance-asset` 的不同时，引用已校验 `asset://` 素材在提交前直接报错、不调上游（两者都走全局，或配了同一个独立上游，均放行） | ✏️ 已修改 |
 | M3 | API Key 存储 | 照搬参考仓：存 SQLite（settings 表）。风险：Key 明文随 data.db 一起被备份、拷贝 <br>**2026-10-07 补充**：模型独立上游的 Key 同样存本机 data.db（`model_configs.upstream_api_key`），不进种子，内置数据升级不覆盖；接口只返回掩码（规则同全局），不进日志 | ✏️ 已修改 |
 | M4 | 引用模型 ID 的配置（后处理、预设、多角度、打光、脚本、Agent 大模型） | 照搬参考仓：settings 表每项存一个 JSON 值；Agent 大模型存 `agent_backbone_models` 表 | ✏️ 已修改 |
 | M5 | 预设、多角度、打光的提示词正文 | 照搬参考仓在 sidecar 内拼接；正文存本地 SQLite，本地可见，设置页可直接编辑 <br>**2026-10-07 补充（用户要求，见实施期裁定）**：预设、多角度、打光的正文写死为内置值，设置页不再提供编辑 | ✅ 已确认 |
@@ -187,7 +187,7 @@ JSON 结构草案（v2，已作废）：
 | P4 | 设置页：把参考仓后台的模型中心和各配置页搬进客户端并调整 UI；只开放安全字段（M10）；base_domain 和 Key 填写；Agent 模型切换（A2）；数据目录修改与迁移（S2）；版本号显示 | 1–1.5 周 | ✅ 已确认 <br>**实施进度**：T1–T14 ✅（修复轮 f5a176e，已合 p4-int）；T15（适配器接线、移除 /admin/canvas 写接口）✅（已完成并合入 integration）；`app.restart()` 与单实例共存待人工验证 |
 | P5 | Agent：Eino 运行时接入、WebSocket、内置 Skill；隐藏 Skill 创建和 Skill JSON 导入导出；能力清单一致性测试 | 0.5–1 周 | ✅ 已确认 <br>**实施进度**：✅ 后端 T1–T9（修复轮 1434004）与前端 T10 均已并入 integration |
 | P6 | 脚本节点“剧本生成分镜”：内置独立 Python 运行时、命令白名单、任务工作区隔离、Windows 无 bash 的处理（X6） | 1–1.5 周 | ✅ 已确认 <br>**实施进度**：T1–T8 ✅（内置 Python 运行时三目标、命令白名单、工作区隔离；T2–T7 已并入 integration，T1/T8 在 p6-t1 分支）；打包回归待人工 |
-| P7 | Seedance 合规与 AI 角色库走 newapi（X5、F7）：客户端侧先按约定的接口形态实现，newapi 接口补齐后联调 | 0.5 周 + 联调 | ✅ 已确认 <br>**实施进度**：挂起，未开始（同 2026-09-30 决定） |
+| P7 | Seedance 合规与 AI 角色库走 newapi（X5、F7）：客户端侧先按约定的接口形态实现，newapi 接口补齐后联调 | 0.5 周 + 联调 | ✅ 已确认 <br>**实施进度**：挂起，未开始（同 2026-09-30 决定）；合规部分 2026-10-07 完成（AI 角色库仍不做） |
 | P8 | Tauri 壳与打包：sidecar 生命周期、单实例、capabilities 和 CSP、WebView2 检测；macOS dmg（ad-hoc 签名）、Windows zip；首次打开放行说明 | 0.5–1 周 | ✅ 已确认 <br>**实施进度**：T1–T11 ✅（并入 integration）；T10 图标为占位图；T12 实机演练待人工，见 `docs/manual-acceptance-checklist.md` |
 
 合计约 8–11 周（一个人全职）。比最初估计的 5–7 周多出的部分主要来自：X6 第一期就做（+1–1.5 周）、设置页搬迁（+1–1.5 周）、内置数据与升级合并（+0.5 周）、测试迁移。
@@ -350,6 +350,7 @@ JSON 结构草案（v2，已作废）：
 | 2026-10-07 | 独立上游补充：只关联模型；提交时记录上游指纹（规范化地址 + Key 的 sha256 前 16 位，迁移 0071），重启续轮询指纹不一致立即失败退款，旧任务无指纹放行；Seedance 合规素材固定走全局（短期方案）：doubao-seedance 模型走独立上游且指纹与全局不同时，引用已校验 `asset://` 素材在提交前报错；保存全局或模型地址时自动去掉末尾 `/` 与 `/v1`，`ResolveUpstream` 出口同样规范化；查模型行出现非“未找到”错误时不再静默回落全局；`ErrUpstreamUnpaired` 映射为 400 | 独立上游审查修复（I-1、I-2、M-1、M-5、M-7）；Seedance 素材归属于校验时的账号，换上游会跨账号 | commit b1ec2bf |
 | 2026-10-07 | 设置界面改为弹框、菜单一级，仅“通用、模型中心、环境诊断”三项；“设置”按钮挪到顶栏最右侧、Agent 之后；环境诊断页改用 antd 按钮。设置界面在另一分支开发，此处按目标状态记录 | 用户要求（M8 已追加说明） | 设置界面开发分支（未合入） |
 | 2026-10-07 | SQLite 驱动由 `modernc.org/sqlite` 换成 `ncruces/go-sqlite3`；细节待驱动审查结果出来后补充（D5 已追加说明；P1a 两条涉及 modernc 的裁定为当时背景，不改） | 用户改动 | commit bbd224f |
+| 2026-10-07 | X5 | ✏️ 合规改走内置模型 seedance-asset，同步 | 用户决定 |
 | 2026-10-07 | 3D 导演台截图的 CORS 修复：响应加 `Vary: Origin` | 避免缓存按 Origin 串用响应 | 导演台截图修复 |
 
 人工验收项汇总见 `docs/manual-acceptance-checklist.md`。

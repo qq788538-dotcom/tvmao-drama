@@ -208,8 +208,6 @@ func run() error {
 	workers = append(workers, a.gen.Gen.StartBackground(ctx))
 	// 进行中的 Agent Run：ctx 取消后等它们退出（关库后不再写消息）。
 	workers = append(workers, goDone(func() { <-ctx.Done(); <-a.deps.Agent.Done() }))
-	// Seedance 合规对账：未配置时 ReconcileAll 自身 no-op；随根 ctx 退出。
-	workers = append(workers, goDone(func() { a.seedance.RunWorker(ctx) }))
 	workers = append(workers, bgWorkers...)
 
 	go func() {

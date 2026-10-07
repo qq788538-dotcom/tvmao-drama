@@ -116,6 +116,14 @@ export interface ModelPatch {
 export const listModels = () => request<{ data: ModelView[] }>('GET', '/models').then((r) => r.data);
 export const patchModel = (id: number, p: ModelPatch) => request<ModelView>('PATCH', `/models/${id}`, p);
 export const restoreModel = (id: number) => request<ModelView>('POST', `/models/${id}/restore-default`);
+export interface ModelConnectionResult {
+  id: number;
+  modelId: string;
+  ok: boolean;
+  message: string;
+}
+/** 一次测试全部模型的连接。 */
+export const testModelConnections = () => request<{ results: ModelConnectionResult[] }>('POST', '/models/test-connection');
 
 // ---- Tauri 壳 ----
 export interface DataDirStatus {

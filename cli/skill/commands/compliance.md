@@ -19,15 +19,18 @@ miaoju compliance verify n-a n-b n-c                 # 逐个提交
 miaoju compliance status                             # 看全项目状态
 ```
 
-**典型顺序**:图片节点先生成出内容 → `verify` 提交 → `status` 等它们变 `active` →
-再跑视频。顺序反了(先跑 seedance 视频)必然失败。
+**典型顺序**:图片节点先生成出内容 → `verify` 提交 → 再跑视频。顺序反了(先跑 seedance 视频)必然失败。
+
+`verify` 是**同步**的:命令返回时已经出结果——通过即为 `active`;不合规或上游出错时命令以非零退出码失败,
+错误信息是上游原文,同时该节点状态记为 `failed_permanent`。合规校验走喵剧内置模型 `seedance-asset`,
+未启用或上游地址、API Key 未配置时会直接报错,请用户在喵剧 设置 → 模型中心 中配置。
 
 ## `status` 取值
 
 | 值 | 含义 |
 |---|---|
 | `unverified` | 还没提交过校验 |
-| `pending` | 已提交,上游还在处理 |
+| `pending` | 正在校验(只在 `verify` 执行期间短暂出现) |
 | `active` | 通过,可以用于 seedance 生成 |
 | `failed` | 这次失败,可重试 |
 | `failed_permanent` | 判定不合规,重试也没用,换素材 |

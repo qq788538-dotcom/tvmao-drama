@@ -69,8 +69,9 @@ var seedanceKindByNodeType = map[string]string{
 
 // VerifyNodeMedia 提交某个节点的媒体去做合规校验。
 //
-// 幂等由 library.SeedanceService.Submit 保证：已通过且版本没变的直接回原状态，
-// 不重复占用上游配额。所以重复调用是安全的，CLI 侧不需要再包一层幂等键。
+// 幂等由 library.SeedanceService.Submit 保证：已通过的直接回原状态，不重复占用上游配额，
+// 所以重复调用是安全的，CLI 侧不需要再包一层幂等键。Submit 同步调用内置模型 seedance-asset，
+// 返回时已出结果：通过即 active，失败（含判定不合规）返回上游原文错误。
 func (s *Service) VerifyNodeMedia(ctx context.Context, userID, projectID int64, nodeID string) (ComplianceState, error) {
 	if s.seedance == nil || s.mediaKeys == nil {
 		return ComplianceState{}, New(CodeInternal, "合规校验能力未配置")
@@ -86,8 +87,8 @@ func (s *Service) VerifyNodeMedia(ctx context.Context, userID, projectID int64, 
 	rec, err := s.seedance.Submit(ctx, userID, key, assetType)
 	if err != nil {
 		if errors.Is(err, library.ErrSeedanceDisabled) {
-			return ComplianceState{}, New(CodeUpstreamUnavailable,
-				"后台没有配置 Seedance 合规校验，请联系管理员")
+			// 原样透出：文案已说明是内置模型 seedance-asset 未启用或上游未配置
+			return ComplianceState{}, New(CodeUpstreamUnavailable, err.Error()).WithCause(err)
 		}
 		// 上游拒绝（含判定不合规）是调用方可理解的失败，不是服务器故障。
 		return ComplianceState{}, New(CodeInvalidModelParams, err.Error()).WithCause(err)

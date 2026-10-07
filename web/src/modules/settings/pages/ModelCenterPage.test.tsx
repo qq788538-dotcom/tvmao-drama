@@ -5,7 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const mocks = vi.hoisted(() => ({ models: [] as any[], patch: vi.fn() }));
+const mocks = vi.hoisted(() => ({ models: [] as any[], patch: vi.fn(), testConn: vi.fn() }));
 
 vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
@@ -14,6 +14,7 @@ vi.mock('../api', async (orig) => ({
   }),
   listModels: async () => mocks.models,
   patchModel: (id: number, p: unknown) => mocks.patch(id, p),
+  testModelConnections: () => mocks.testConn(),
 }));
 
 import { SettingsApiError } from '../api';
@@ -196,5 +197,42 @@ describe('ModelCenterPage 独立上游', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /保\s*存/ }).at(-1)!);
     const el = await screen.findByText('KEY_FORMAT_BAD', { selector: '.ant-form-item-explain-error' });
     expect(el.closest('.ant-form-item')?.querySelector('input[type=password]')).toBeTruthy();
+  });
+});
+
+describe('ModelCenterPage 测试连接', () => {
+  beforeEach(() => {
+    mocks.testConn.mockReset();
+    mocks.models = [model(), model({ id: 2, type: 'video', name: 'Seedance', modelId: 'doubao-seedance' })];
+  });
+
+  it('点击测试连接只调用一次接口，成功行显示成功、失败行显示失败并可悬停看原因', async () => {
+    mocks.testConn.mockResolvedValue({
+      results: [
+        { id: 1, modelId: 'gpt-image-2', ok: true, message: 'ok' },
+        { id: 2, modelId: 'doubao-seedance', ok: false, message: '401 鉴权失败' },
+      ],
+    });
+    renderPage();
+    await screen.findByText('GPT Image 2');
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: /测试连接/ }));
+    expect(await screen.findByText('成功')).toBeTruthy();
+    expect(mocks.testConn).toHaveBeenCalledTimes(1);
+    // 切到视频页：失败行，悬停出现原因；图片页的结果切回后仍在
+    fireEvent.click(screen.getByText('视频'));
+    const fail = await screen.findByText('失败');
+    fireEvent.mouseEnter(fail);
+    expect(await screen.findByText('401 鉴权失败')).toBeTruthy();
+    fireEvent.click(screen.getByText('图片'));
+    expect(await screen.findByText('成功')).toBeTruthy();
+  });
+
+  it('请求失败时提示错误信息', async () => {
+    mocks.testConn.mockRejectedValue(new SettingsApiError(500, '测试服务挂了'));
+    renderPage();
+    await screen.findByText('GPT Image 2');
+    fireEvent.click(screen.getByRole('button', { name: /测试连接/ }));
+    expect(await screen.findByText('测试服务挂了')).toBeTruthy();
   });
 });

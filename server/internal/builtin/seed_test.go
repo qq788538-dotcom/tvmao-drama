@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,15 +14,15 @@ func TestLoadEmbeddedSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Models) != 26 || len(s.Settings) != 6 {
-		t.Fatalf("models=%d settings=%d, want 26/6", len(s.Models), len(s.Settings))
+	if len(s.Models) != 27 || len(s.Settings) != 6 {
+		t.Fatalf("models=%d settings=%d, want 27/6", len(s.Models), len(s.Settings))
 	}
 	byType := map[string]int{}
 	for _, m := range s.Models {
 		byType[m.Type]++
 	}
-	if byType["text"] != 2 || byType["image"] != 6 || byType["video"] != 16 || byType["audio"] != 2 {
-		t.Fatalf("按类型计数 %v，want text 2 / image 6 / video 16 / audio 2（seed/README.md）", byType)
+	if byType["text"] != 2 || byType["image"] != 7 || byType["video"] != 16 || byType["audio"] != 2 {
+		t.Fatalf("按类型计数 %v，want text 2 / image 7 / video 16 / audio 2（seed/README.md）", byType)
 	}
 	// agent_tools.source_model_id 引用生产 id，必须原样保留。
 	if m, ok := s.Model("gpt-image-2"); !ok || m.ID != 9 || m.Type != "image" {
@@ -112,6 +113,9 @@ func TestSeedImagesAreInline(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, m := range s.Models {
+		if m.ModelID == "seedance-asset" {
+			continue // 不经过 prepareImageInputs
+		}
 		if m.ImageInputFormat != "url" {
 			continue
 		}
@@ -120,4 +124,30 @@ func TestSeedImagesAreInline(t *testing.T) {
 		}
 		t.Errorf("模型 %s 仍是 image_input_format=url，应为 data_uri", m.ModelID)
 	}
+}
+
+// 合规校验走隐藏的内置模型（seedance-asset 设计 §2）。
+func TestSeedHasHiddenSeedanceAssetModel(t *testing.T) {
+	s, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range s.Models {
+		if m.ModelID != "seedance-asset" {
+			continue
+		}
+		if !bool(m.Hidden) || !bool(m.Enabled) || m.BasePath != "/v1/images/generations" {
+			t.Fatalf("seedance-asset 配置不对: %+v", m)
+		}
+		var tpl map[string]any
+		if err := json.Unmarshal(m.RequestTemplate, &tpl); err != nil {
+			t.Fatal(err)
+		}
+		md, _ := tpl["metadata"].(map[string]any)
+		if tpl["model"] != "seedance-asset" || tpl["image"] != "{{image}}" || md["asset_type"] != "{{asset_type}}" {
+			t.Fatalf("模板不对: %s", m.RequestTemplate)
+		}
+		return
+	}
+	t.Fatal("种子里没有 seedance-asset")
 }
