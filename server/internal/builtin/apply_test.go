@@ -35,7 +35,7 @@ func TestApplyFirstLaunchImportsEmbeddedSeed(t *testing.T) {
 	}
 	s, _ := Load()
 	var n int
-	if err := conn.QueryRow(`SELECT COUNT(*) FROM model_configs WHERE user_overrides = '[]'`).Scan(&n); err != nil || n != 26 {
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM model_configs WHERE user_overrides = '[]'`).Scan(&n); err != nil || n != 27 {
 		t.Fatalf("模型数=%d err=%v", n, err)
 	}
 	for _, m := range s.Models {

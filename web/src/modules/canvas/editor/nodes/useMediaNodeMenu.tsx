@@ -2,12 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { App as AntApp } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
-import {
-  saveMediaToLibrary,
-  verifySeedance,
-  type SeedanceAssetState,
-} from '@/shared/api';
+import { saveMediaToLibrary, type SeedanceAssetState } from '@/shared/api';
 import { loadSeedanceStatus } from '../batchQueries';
+import { seedanceStatusKey, verifySeedanceAndRefresh } from './seedanceVerify';
 import { useCanvasStore } from '../store';
 import { NodeContextMenu, type NodeMenuItem } from './NodeContextMenu';
 import { standardNodeMenuItems } from './standardNodeMenuItems';
@@ -129,14 +126,14 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
   const unsavedBadge = useUnsavedLocalBadge(nodeId);
 
   const statusQuery = useQuery({
-    queryKey: ['seedance-status', url],
+    queryKey: seedanceStatusKey(url ?? ''),
     // 走合批器：大画布上每个图片节点各查一次会把 /seedance/status 打成几百条请求；
     // 这里塌成一次批量查询，data 直接是本节点的状态。见 batchQueries.ts。
     // 未校验过的图片合批器给 undefined，但 react-query 不接受 queryFn 返回 undefined
     // （会判为错误并按 retry 重打），所以在这个边界统一转成 null。
     queryFn: () => loadSeedanceStatus(url!).then((s) => s ?? null),
     enabled: !!url,
-    // pending 期间快轮询，到终态就停——不给上游和自己白白加压。同一窗口的多个节点
+    // pending（同步校验进行中）期间快轮询，到终态就停。同一窗口的多个节点
     // 轮询也会被合批器合并成一条请求。
     refetchInterval: (query) => {
       const st = query.state.data?.status;
@@ -154,9 +151,9 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
   const verify = useCallback(async () => {
     if (!url) return;
     try {
-      await verifySeedance(url, kind);
-      message.success('已提交 Seedance 合规校验');
-      queryClient.invalidateQueries({ queryKey: ['seedance-status', url] });
+      // 同步校验，返回即出结果；成败都会刷新角标（见 verifySeedanceAndRefresh）。
+      await verifySeedanceAndRefresh(queryClient, url, kind);
+      message.success('Seedance 合规校验已通过');
     } catch (e: any) {
       message.error(e?.response?.data?.error || e.message || '提交校验失败');
     }
@@ -269,8 +266,8 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
       不合规
     </span>
   ) : (
-    // failed 是瞬时态（还在 1 小时自动重试窗口内），跟 pending 一样显示校验中——
-    // 网络抖一下就给素材扣个「不合规」是冤枉。
+    // pending：同步校验进行中（后端在调用 seedance-asset 期间写的临时行）。
+    // failed 是旧流程遗留的瞬时态，新流程不再写入，沿用校验中显示。
     <span
       className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-[11px] leading-none"
       title="正在进行 Seedance 合规校验"

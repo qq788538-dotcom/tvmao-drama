@@ -34,7 +34,7 @@ type app struct {
 	gen     *genWiring
 	// assets 交给 main 里的 wireAgent（附件查找）。
 	assets *assets.SQLiteRepository
-	// seedance 是 Seedance 合规校验服务，main 用根 ctx 起它的对账 worker（未配置时自身 no-op）。
+	// seedance 是 Seedance 合规校验服务（同步调用内置模型 seedance-asset，无后台 worker）。
 	seedance *library.SeedanceService
 	// publisher 是对象存储发布器（用户自配 TOS/OSS），main 把它交给 wireAgent 的媒体解析。
 	publisher *objectstore.Publisher
@@ -97,15 +97,11 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	aiCharactersRepo := aicharacters.NewSQLiteRepository(conn)
 	charImages := aicharacters.NewImageCache(aiCharactersRepo, settingsRepo.Get, charImageStore{storage})
 
-	// Seedance 合规走 newapi（spec X5）：地址、路径每次请求现读 settings。
-	seedanceClient := seedance.NewClient(
-		// 合规校验不绑定模型：ResolveUpstream(nil, …) = 全局 base_domain。
-		func() string { v, _, _ := models.ResolveUpstream(nil, settingsRepo); return v },
-		func() seedance.Paths { c, _ := seedance.LoadComplianceConfig(settingsRepo.Get); return c.Paths },
-	)
+	// Seedance 合规走隐藏内置模型 seedance-asset（seedance-asset 设计）：同步注册，拿到 asset_id 即通过。
 	librarySeedanceSvc := library.NewSeedanceService(
-		library.NewSQLiteSeedanceAssetsRepository(conn), library.NewSQLiteSeedanceGroupStore(conn),
-		seedanceClient, settingsRepo, signer)
+		library.NewSQLiteSeedanceAssetsRepository(conn),
+		seedance.NewRegistrar(modelsRepo, settingsRepo, nil),
+		signer)
 	// AI 角色图是平台预置、已过校验的公共资产：状态角标兜底。
 	librarySeedanceSvc.SetPublicAssets(aiCharactersRepo)
 	librarySeedanceSvc.SetMediaPublisher(publisher)

@@ -8,20 +8,21 @@
 // - 不选段 = 整段重拍,仅源视频 ≤30s 时可用(seedance edit 单次输入上限);
 // - 点「提交」:逐段浏览器内切片(复用 trim 的 mediabunny 管道)→ 上传 →
 //   铺「切片 preview 节点 + gen-video 节点」对并连线,提示词写进各 gen-video;
-//   切片自动异步提交 Seedance 合规校验,结果走节点角标显示;
+//   切片随即提交 Seedance 合规校验(不等待;同步调用期间节点角标显示校验中,
+//   结束后刷新角标显示结果);
 // - 提交只铺节点——生成由用户在每个 gen-video 节点上手动点
 //   (批量入口绝不自动发起生成的铁律)。
 import { redactSecrets } from '@/shared/redact';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as AntApp } from 'antd';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Loader2, X } from 'lucide-react';
 import {
   listRuntimeModels,
   uploadAsset,
   currentProjectId,
-  verifySeedance,
 } from '@/shared/api';
+import { verifySeedanceAndRefresh } from '../seedanceVerify';
 import { useCanvasStore } from '../../store';
 import { persistNodeById } from '../../persistence/canvasMutations';
 import { modelSettingDefaults } from '../../utils/generationInputs';
@@ -57,6 +58,7 @@ type DragKind = 'left' | 'right' | 'move';
 
 export function SegmentReshootBar({ nodeId, url }: { nodeId: string; url: string }) {
   const { message } = AntApp.useApp();
+  const queryClient = useQueryClient();
   const show = useCanvasStore((s) => s.reshootNodeId === nodeId);
   const [duration, setDuration] = useState(0);
   const [frames, setFrames] = useState<string[]>([]);
@@ -179,8 +181,8 @@ export function SegmentReshootBar({ nodeId, url }: { nodeId: string; url: string
           });
           persistNodeById(genId);
         }
-        verifySeedance(url, 'video').catch(() => {
-          // 已通过校验的幂等返回不会走到这;真正的提交失败靠角标缺失暴露,
+        verifySeedanceAndRefresh(queryClient, url, 'video').catch(() => {
+          // 失败结果由节点「不合规」角标展示(结束后会刷新状态),
           // 用户可在节点右键手动重新提交。
         });
         message.success('已铺重拍节点,确认参数后点生成');
@@ -226,7 +228,7 @@ export function SegmentReshootBar({ nodeId, url }: { nodeId: string; url: string
           });
           persistNodeById(genId);
         }
-        verifySeedance(asset.url, 'video').catch(() => {});
+        verifySeedanceAndRefresh(queryClient, asset.url, 'video').catch(() => {});
       }
       message.success(`已铺 ${sorted.length} 组重拍节点,校验通过后逐个点生成`);
       store.setReshootNode(null);
@@ -236,7 +238,7 @@ export function SegmentReshootBar({ nodeId, url }: { nodeId: string; url: string
     } finally {
       setProgressText('');
     }
-  }, [phase, wholeTooLong, nodeId, modelsQuery.data, ranges, wholeIntent, url, message]);
+  }, [phase, wholeTooLong, nodeId, modelsQuery.data, ranges, wholeIntent, url, message, queryClient]);
 
   if (!show) return null;
 

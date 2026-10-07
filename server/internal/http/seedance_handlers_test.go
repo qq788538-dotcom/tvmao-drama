@@ -24,22 +24,16 @@ func (seedanceFakeExtractor) ExtractKey(u string) (string, bool) {
 	return "", false
 }
 
-type seedanceFakeClient struct{ createAssetCalls int }
-
-func (c *seedanceFakeClient) CreateAssetGroup(context.Context, string, string, string) (string, error) {
-	return "g-1", nil
+type seedanceFakeClient struct {
+	configured bool
+	calls      int
 }
-func (c *seedanceFakeClient) CreateAsset(context.Context, string, string, string, string, string) (string, error) {
-	c.createAssetCalls++
+
+func (c *seedanceFakeClient) Configured() bool { return c.configured }
+func (c *seedanceFakeClient) Register(context.Context, string, string) (string, error) {
+	c.calls++
 	return "asset-new", nil
 }
-func (c *seedanceFakeClient) GetAsset(context.Context, string, string) (string, error) {
-	return "Active", nil
-}
-
-type seedanceFakeSettings map[string]string
-
-func (s seedanceFakeSettings) Get(k string) (string, error) { return s[k], nil }
 
 type seedanceFakeSigner func(string) string
 
@@ -57,19 +51,11 @@ func (p seedanceFakePublic) PublicAssetIDs(keys []string) (map[string]string, er
 	return out, nil
 }
 
-func seedanceConfigured() seedanceFakeSettings {
-	return seedanceFakeSettings{
-		"upstream_api_key":               "sk-x",
-		"base_domain":                    "https://gw.example",
-		seedance.SettingComplianceConfig: `{"createAssetGroupPath":"/g","createAssetPath":"/a","getAssetPath":"/s"}`,
-	}
-}
-
 func seedancePublicSigner(s string) string {
 	return "https://pub.example/" + strings.TrimPrefix(s, "media://")
 }
 
-func newSeedanceTestHandler(t *testing.T, st seedanceFakeSettings, signer seedanceFakeSigner) (*SeedanceHandler, *library.SeedanceService, *sql.DB, *seedanceFakeClient) {
+func newSeedanceTestHandler(t *testing.T, configured bool, signer seedanceFakeSigner) (*SeedanceHandler, *library.SeedanceService, *sql.DB, *seedanceFakeClient) {
 	t.Helper()
 	conn := dbtest.Open(t)
 	// library_items 由 P1b 的迁移 0002 建；本任务的工作区里可能还没有，归属查询需要这张表存在。
@@ -77,9 +63,8 @@ func newSeedanceTestHandler(t *testing.T, st seedanceFakeSettings, signer seedan
 		id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, object_key TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)
 	}
-	client := &seedanceFakeClient{}
-	svc := library.NewSeedanceService(library.NewSQLiteSeedanceAssetsRepository(conn),
-		library.NewSQLiteSeedanceGroupStore(conn), client, st, signer)
+	client := &seedanceFakeClient{configured: configured}
+	svc := library.NewSeedanceService(library.NewSQLiteSeedanceAssetsRepository(conn), client, signer)
 	return NewSeedanceHandler(svc, seedanceFakeExtractor{}, conn), svc, conn, client
 }
 
@@ -100,19 +85,19 @@ func seedanceDo(h http.HandlerFunc, method, body string) *httptest.ResponseRecor
 }
 
 func TestSeedanceVerifyUnconfigured503(t *testing.T) {
-	h, _, conn, client := newSeedanceTestHandler(t, seedanceFakeSettings{}, seedancePublicSigner)
+	h, _, conn, client := newSeedanceTestHandler(t, false, seedancePublicSigner)
 	seedanceInsertAsset(t, conn, 1, "u1/a.png")
 	rec := seedanceDo(h.Verify, http.MethodPost, `{"url":"media://u1/a.png","kind":"image"}`)
-	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "合规接口未配置") {
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "合规校验未启用") {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body)
 	}
-	if client.createAssetCalls != 0 {
+	if client.calls != 0 {
 		t.Fatal("未配置不应调上游")
 	}
 }
 
 func TestSeedanceVerifyNotOwned403(t *testing.T) {
-	h, _, _, _ := newSeedanceTestHandler(t, seedanceConfigured(), seedancePublicSigner)
+	h, _, _, _ := newSeedanceTestHandler(t, true, seedancePublicSigner)
 	rec := seedanceDo(h.Verify, http.MethodPost, `{"url":"media://u9/other.png","kind":"image"}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body)
@@ -120,7 +105,7 @@ func TestSeedanceVerifyNotOwned403(t *testing.T) {
 }
 
 func TestSeedanceVerifyUnresolvable400(t *testing.T) {
-	h, _, _, _ := newSeedanceTestHandler(t, seedanceConfigured(), seedancePublicSigner)
+	h, _, _, _ := newSeedanceTestHandler(t, true, seedancePublicSigner)
 	for _, body := range []string{`{"url":"https://elsewhere/x.png"}`, `{"url":"media://u1/a.png","kind":"pdf"}`, `{bad`} {
 		if rec := seedanceDo(h.Verify, http.MethodPost, body); rec.Code != http.StatusBadRequest {
 			t.Fatalf("body %s: code=%d", body, rec.Code)
@@ -129,7 +114,7 @@ func TestSeedanceVerifyUnresolvable400(t *testing.T) {
 }
 
 func TestSeedanceVerifyOwnedSubmits202(t *testing.T) {
-	h, _, conn, client := newSeedanceTestHandler(t, seedanceConfigured(), seedancePublicSigner)
+	h, _, conn, client := newSeedanceTestHandler(t, true, seedancePublicSigner)
 	seedanceInsertAsset(t, conn, 1, "u1/a.png")
 	rec := seedanceDo(h.Verify, http.MethodPost, `{"url":"media://u1/a.png","kind":"video"}`)
 	if rec.Code != http.StatusAccepted {
@@ -139,13 +124,13 @@ func TestSeedanceVerifyOwnedSubmits202(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "pending" || got.AssetType != seedance.AssetTypeVideo || client.createAssetCalls != 1 {
-		t.Fatalf("got %+v calls=%d", got, client.createAssetCalls)
+	if got.Status != "active" || got.AssetType != seedance.AssetTypeVideo || client.calls != 1 {
+		t.Fatalf("got %+v calls=%d", got, client.calls)
 	}
 }
 
 func TestSeedanceVerifyLocalMediaRejected(t *testing.T) {
-	h, _, conn, client := newSeedanceTestHandler(t, seedanceConfigured(), func(s string) string {
+	h, _, conn, client := newSeedanceTestHandler(t, true, func(s string) string {
 		return "http://127.0.0.1:5555/media/" + strings.TrimPrefix(s, "media://") + "?token=t"
 	})
 	seedanceInsertAsset(t, conn, 1, "u1/a.png")
@@ -153,7 +138,7 @@ func TestSeedanceVerifyLocalMediaRejected(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "对象存储") {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body)
 	}
-	if client.createAssetCalls != 0 {
+	if client.calls != 0 {
 		t.Fatal("本机地址不应发往上游")
 	}
 	var n int
@@ -163,7 +148,7 @@ func TestSeedanceVerifyLocalMediaRejected(t *testing.T) {
 }
 
 func TestSeedanceStatusKeyedByURL(t *testing.T) {
-	h, _, conn, _ := newSeedanceTestHandler(t, seedanceConfigured(), seedancePublicSigner)
+	h, _, conn, _ := newSeedanceTestHandler(t, true, seedancePublicSigner)
 	if _, err := conn.Exec(`INSERT INTO seedance_assets (object_key, user_id, asset_id, version, status, asset_type)
 		VALUES ('u1/a.png', 1, 'asset-9', 1, 'active', 'Image')`); err != nil {
 		t.Fatal(err)
@@ -180,7 +165,7 @@ func TestSeedanceStatusKeyedByURL(t *testing.T) {
 
 // AI 角色图是平台预置、已过校验的公共资产：没有用户记录也应显示“已通过”。
 func TestSeedanceStatusPublicFallback(t *testing.T) {
-	h, svc, _, _ := newSeedanceTestHandler(t, seedanceConfigured(), seedancePublicSigner)
+	h, svc, _, _ := newSeedanceTestHandler(t, true, seedancePublicSigner)
 	svc.SetPublicAssets(seedanceFakePublic{"tapnow/sd-assets/asset-1.jpg": "asset-1"})
 	rec := seedanceDo(h.Status, http.MethodPost, `{"urls":["media://tapnow/sd-assets/asset-1.jpg"]}`)
 	var got map[string]library.SeedanceAsset
@@ -195,10 +180,10 @@ func TestSeedanceStatusPublicFallback(t *testing.T) {
 
 func TestSeedanceConfigReportsConfigured(t *testing.T) {
 	for _, c := range []struct {
-		st   seedanceFakeSettings
+		on   bool
 		want bool
-	}{{seedanceFakeSettings{}, false}, {seedanceConfigured(), true}} {
-		h, _, _, _ := newSeedanceTestHandler(t, c.st, seedancePublicSigner)
+	}{{false, false}, {true, true}} {
+		h, _, _, _ := newSeedanceTestHandler(t, c.on, seedancePublicSigner)
 		rec := seedanceDo(h.Config, http.MethodGet, "")
 		var body struct {
 			Configured bool `json:"configured"`
