@@ -55,6 +55,8 @@ vi.mock('antd', async () => {
   };
 });
 
+vi.mock('@/modules/canvas/editor/hooks/useExternalChanges', () => ({ useExternalChanges: () => {} }));
+
 vi.mock('@/modules/canvas/editor/CanvasEditor', () => ({
   CanvasEditor: ({ projectId }: { projectId: number }) => <div data-testid="canvas-editor">editor-{projectId}</div>,
 }));

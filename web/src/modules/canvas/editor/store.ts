@@ -246,14 +246,14 @@ interface CanvasState {
   /**
    * 整快照落地。默认语义是「换一张画布」：选中、undo/redo 栈全清。
    *
-   * `preserveUiState` 用于**同一张画布**的整拉兜底（目前已没有调用方传 true，
-   * 保留作为同画布重拉的预留语义）——那不是换画布，是把本地对齐到服务端最新状态。清掉选中会把用户正开着
+   * `preserveUiState` 用于**同一张画布**的整拉：外部变更整拉（`useExternalChanges`）使用；
+   * `resetHistory` 一并清空撤销栈，避免撤销时删掉外部新增的节点。——那不是换画布，是把本地对齐到服务端最新状态。清掉选中会把用户正开着
    * 的参数面板收起来、清掉 undo 栈会让他刚做的几步撤不回去，而这两样跟「服务端
    * 有新数据」毫无关系。选中集会按新节点列表剪枝（服务端已不存在的节点不能还留在选中里）。
    *
    * undo 栈跨整拉保留是有意的：撤销撤的一直是「我自己做过的那几步」。
    */
-  load: (snapshot: Partial<CanvasSnapshot>, options?: { preserveUiState?: boolean }) => void;
+  load: (snapshot: Partial<CanvasSnapshot>, options?: { preserveUiState?: boolean; resetHistory?: boolean }) => void;
   addNode: (type: NodeType, worldPosition: { x: number; y: number }) => string;
   updateNode: (id: string, patch: Partial<CanvasNode>) => void;
   updateNodeSettings: (id: string, patch: Record<string, unknown>) => void;
@@ -391,10 +391,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     // 保留模式：选中集按新节点剪枝——服务端已不存在的节点若还留在 selectedIds 里，
     // 后续任何「对选中批量操作」都会带上一个已经不存在的 id。
     const alive = new Set(nodes.map((n) => n.id));
-    const selectedIds = new Set(
-      [...useCanvasStore.getState().selectedIds].filter((id) => alive.has(id)),
-    );
-    set({ ...base, selectedIds });
+    const st = useCanvasStore.getState();
+    const selectedIds = new Set([...st.selectedIds].filter((id) => alive.has(id)));
+    // 指向已被删除节点的编辑会话一律关闭，否则浮层会挂在一个不存在的节点上。
+    const keep = (id: string | null) => (id && alive.has(id) ? id : null);
+    set({
+      ...base,
+      selectedIds,
+      croppingNodeId: keep(st.croppingNodeId),
+      trimmingNodeId: keep(st.trimmingNodeId),
+      gridSplittingNodeId: keep(st.gridSplittingNodeId),
+      annotatingNodeId: keep(st.annotatingNodeId),
+      reshootNodeId: keep(st.reshootNodeId),
+      continuationNodeId: keep(st.continuationNodeId),
+      dockPanelNodeId: keep(st.dockPanelNodeId),
+      audioEdit: st.audioEdit && alive.has(st.audioEdit.nodeId) ? st.audioEdit : null,
+      ...(options.resetHistory ? { undoStack: [], redoStack: [] } : {}),
+    });
   },
 
   addNode: (type, worldPosition) => {

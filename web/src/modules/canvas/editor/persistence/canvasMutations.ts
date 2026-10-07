@@ -55,6 +55,20 @@ interface PendingNodePatch extends MutationContext {
 
 let ownerToken = '';
 let queue: Promise<void> = Promise.resolve();
+
+// 外部变更整拉（externalChanges.ts）要知道本地是否还有没落定的写入：
+// inflight 是已入队未完成的 mutation 数；mutationSeq 每次本地发起写入（入队或排 debounce patch）都 +1，
+// 用来判断"拉快照期间本地有没有新写入"——有就丢弃这次拉到的结果，等空闲后重拉。
+let inflight = 0;
+let mutationSeq = 0;
+
+export function isCanvasPersistenceIdle(): boolean {
+  return inflight === 0 && pendingNodePatches.size === 0;
+}
+
+export function canvasMutationSeq(): number {
+  return mutationSeq;
+}
 let config: CanvasPersistenceConfig = { projectID: null };
 let ownerLostListeners = new Set<(err: unknown) => void>();
 let pendingNodePatches = new Map<string, PendingNodePatch>();
@@ -357,30 +371,38 @@ function enqueueCanvasMutationInContext(
     // 等到新端口/新 token 再发。迟到响应只是不再推进基线、不再回调（下面各处仍按
     // isMutationContextCurrent 隔离），不会污染新会话。
     // 还没入队的（debounce 中的 patch）由 flushNodePatch 自己按上下文判定。
-    if (!context.ownerToken) return;
-
+    // try/finally 放在 run 内部而不是外面再包一层 promise：多一层会多出微任务 tick，
+    // 现有测试对 flush 的微任务顺序是敏感的。
     try {
-      const result = await work();
-      if (typeof result?.version === 'number' && isMutationContextCurrent(context)) {
-        context.onVersion?.(result.version);
-      }
-    } catch (err) {
-      if (isCanvasOwnerLostError(err)) {
-        if (isMutationContextCurrent(context)) {
-          emitOwnerLost(err);
+      if (!context.ownerToken) return;
+      try {
+        const result = await work();
+        if (typeof result?.version === 'number' && isMutationContextCurrent(context)) {
+          context.onVersion?.(result.version);
         }
-        return;
+      } catch (err) {
+        if (isCanvasOwnerLostError(err)) {
+          if (isMutationContextCurrent(context)) {
+            emitOwnerLost(err);
+          }
+          return;
+        }
+        throw err;
       }
-      throw err;
+    } finally {
+      inflight -= 1;
     }
   };
 
+  inflight += 1;
+  mutationSeq += 1;
   const current = queue.then(run, run);
   queue = current.catch(() => undefined);
   return current;
 }
 
 export function scheduleNodePatch(nodeID: string, patch: Record<string, unknown>): void {
+  mutationSeq += 1;
   const context = captureMutationContext();
   const existing = pendingNodePatches.get(nodeID);
   pendingNodePatches.set(nodeID, {
@@ -512,6 +534,8 @@ export function resetCanvasPersistenceForTest(): void {
   resetCanvasPersistence();
   // 测试之间彻底隔离：上一个用例故意挂起的任务不能拖住下一个用例的队列。
   queue = Promise.resolve();
+  inflight = 0;
+  mutationSeq = 0;
 }
 
 export function emitOwnerLostForTest(err: unknown): void {

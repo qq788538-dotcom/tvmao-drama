@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { setCanvasOpSink, useCanvasStore, type CanvasOp } from './store';
+import { setCanvasOpSink, useCanvasStore, type AudioEditState, type CanvasOp } from './store';
+import type { CanvasNode, CanvasSnapshot } from './types';
 
 // 结构性 op 的持久化收口测试：验证 store 在增删节点/连线、duplicate、undo/redo
 // 后广播正确的语义 op，且 readOnly / 无 sink 时不广播、不抛错。这是「用户动作
@@ -401,5 +402,41 @@ describe('load 的 preserveUiState（整拉兜底用）', () => {
       { preserveUiState: true },
     );
     expect([...useCanvasStore.getState().selectedIds]).toEqual(['a']);
+  });
+});
+
+describe('load 的 resetHistory（外部变更整拉用）', () => {
+  it('clears undo history and dangling ui ids on external reload', () => {
+    const a = { id: 'a', type: 'text', x: 0, y: 0 } as unknown as CanvasNode;
+    const b = { id: 'b', type: 'text', x: 0, y: 0 } as unknown as CanvasNode;
+    useCanvasStore.setState({
+      nodes: [a, b],
+      selectedIds: new Set(['a', 'b']),
+      undoStack: [{ nodes: [a], connections: [] } as unknown as CanvasSnapshot],
+      redoStack: [{ nodes: [], connections: [] } as unknown as CanvasSnapshot],
+      croppingNodeId: 'a',
+      dockPanelNodeId: 'b',
+      audioEdit: { nodeId: 'a', mode: 'trim', start: 0, end: 1 } as unknown as AudioEditState,
+      view: { x: 10, y: 20, zoom: 1.5 },
+    });
+    useCanvasStore.getState().load(
+      { nodes: [b], connections: [], view: { x: 10, y: 20, zoom: 1.5 } },
+      { preserveUiState: true, resetHistory: true },
+    );
+    const s = useCanvasStore.getState();
+    expect([...s.selectedIds]).toEqual(['b']);
+    expect(s.undoStack).toEqual([]);
+    expect(s.redoStack).toEqual([]);
+    expect(s.croppingNodeId).toBeNull();
+    expect(s.dockPanelNodeId).toBe('b');
+    expect(s.audioEdit).toBeNull();
+    expect(s.view).toEqual({ x: 10, y: 20, zoom: 1.5 });
+  });
+
+  it('preserveUiState without resetHistory keeps undo stack (existing behavior)', () => {
+    const a = { id: 'a', type: 'text', x: 0, y: 0 } as unknown as CanvasNode;
+    useCanvasStore.setState({ nodes: [a], undoStack: [{ nodes: [], connections: [] } as unknown as CanvasSnapshot] });
+    useCanvasStore.getState().load({ nodes: [a], connections: [] }, { preserveUiState: true });
+    expect(useCanvasStore.getState().undoStack).toHaveLength(1);
   });
 });
