@@ -67,9 +67,9 @@ export function scriptPayload(orig: ScriptConfig, draft: ScriptConfig): ScriptCo
   return { ...out, ...pick(draft, ['concurrency', 'maxRetries']) };
 }
 
-/** 后处理配置的提交值：去字幕条目只带 label / subtitle / isTimeLimited，另外只有旧格式的 upscaleModel；其余取原值。 */
+/** 后处理配置的提交值：去字幕条目只带 label / subtitle / isTimeLimited，另外只有旧格式的 upscaleModel 和 whiteModelModel；其余取原值。 */
 export function postprocessPayload(orig: PostprocessConfig, draft: PostprocessConfig): PostprocessConfig {
-  const out: PostprocessConfig = { ...orig, ...pick(draft, ['upscaleModel']) };
+  const out: PostprocessConfig = { ...orig, ...pick(draft, ['upscaleModel', 'whiteModelModel']) };
   if (orig.subtitleRemovalModels) {
     out.subtitleRemovalModels = orig.subtitleRemovalModels.map((b, i) => ({ ...b, ...pick(draft.subtitleRemovalModels?.[i] ?? {}, ['label', 'subtitle', 'isTimeLimited']) }));
   }

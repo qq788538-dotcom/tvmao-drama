@@ -98,14 +98,14 @@ func TestServiceRestoreModelDefault(t *testing.T) {
 func TestServiceUpdateSetting(t *testing.T) {
 	svc, _ := svcFixture(t, svcSeedV1(t))
 	ctx := context.Background()
-	st, err := svc.UpdateSetting(ctx, SettingCanvasLightControl, edits("presets[p1].prompt", `"我的提示词"`, "models", `["img-b","img-a"]`))
+	st, err := svc.UpdateSetting(ctx, SettingCanvasLightControl, edits("models", `["img-b","img-a"]`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(st.Value, `"prompt":"我的提示词"`) || !strings.Contains(st.Value, `"models":["img-b","img-a"]`) {
+	if !strings.Contains(st.Value, `"prompt":"内置"`) || !strings.Contains(st.Value, `"models":["img-b","img-a"]`) {
 		t.Fatalf("value=%s", st.Value)
 	}
-	if !reflect.DeepEqual(st.Overrides, []string{"models", "presets[p1].prompt"}) {
+	if !reflect.DeepEqual(st.Overrides, []string{"models"}) {
 		t.Fatalf("overrides=%v", st.Overrides)
 	}
 	for name, e := range map[string]map[string]string{
@@ -113,6 +113,8 @@ func TestServiceUpdateSetting(t *testing.T) {
 		"文本模型":   {"models": `["txt-a"]`},
 		"结构字段":   {"presets[p1].direction": `"top"`},
 		"新增预设":   {"presets[p9].prompt": `"x"`},
+		"预设提示词":  {"presets[p1].prompt": `"我的提示词"`},
+		"模板":     {"template": `"我的 {light}"`},
 	} {
 		raw := []string{}
 		for k, v := range e {

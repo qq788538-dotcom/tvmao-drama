@@ -37,8 +37,6 @@ const (
 	migratedFromName = ".miaoju-migrated-from"
 )
 
-// sqliteHeader 是 SQLite 数据库文件的前 16 字节。
-const sqliteHeader = "SQLite format 3\x00"
 
 // ignorable 是判断“目录为空”时忽略的文件。
 // 指针文件的临时文件（壳写指针时崩溃会留下）同样忽略。
@@ -102,16 +100,7 @@ func IsDataDir(dir string) bool {
 }
 
 func isSQLiteFile(p string) bool {
-	f, err := os.Open(p)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	buf := make([]byte, len(sqliteHeader))
-	if _, err := io.ReadFull(f, buf); err != nil {
-		return false
-	}
-	return string(buf) == sqliteHeader
+	return db.IsDatabaseFile(p)
 }
 
 // ValidateTarget 校验迁移目标，返回规范化后的路径。已有喵剧数据的目录不能作为迁移目标。错误文案直接展示给用户。
@@ -350,7 +339,13 @@ func copyDatabase(from, to string) error {
 	}
 	tmp := filepath.Join(to, dbTmpName)
 	_ = os.Remove(tmp)
-	if _, err := conn.Exec(`VACUUM INTO ?`, tmp); err != nil {
+	// 目标必须带加密参数，否则副本是明文。
+	tmpURI, err := db.EncryptedURI(tmp)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	if _, err := conn.Exec(`VACUUM INTO ?`, tmpURI); err != nil {
 		conn.Close()
 		return fmt.Errorf("复制数据库：%w", err)
 	}

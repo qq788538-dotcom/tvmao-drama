@@ -30,12 +30,12 @@ describe('scriptPayload / postprocessPayload', () => {
       maxRetries: 2,
     });
   });
-  it('后处理：去字幕条目只采纳 label、subtitle、isTimeLimited', () => {
+  it('后处理：去字幕条目只采纳 label、subtitle、isTimeLimited；whiteModelModel 采纳草稿值', () => {
     const orig = { subtitleRemovalModels: [{ modelId: 'v1', label: 'L', subtitle: 's' }], whiteModelModel: 'w' };
-    const draft = { subtitleRemovalModels: [{ modelId: 'zzz', label: 'L2', subtitle: 's2', isTimeLimited: true }, { modelId: 'n', label: 'n' }], whiteModelModel: 'hack' };
+    const draft = { subtitleRemovalModels: [{ modelId: 'zzz', label: 'L2', subtitle: 's2', isTimeLimited: true }, { modelId: 'n', label: 'n' }], whiteModelModel: 'w2' };
     expect(postprocessPayload(orig, draft)).toEqual({
       subtitleRemovalModels: [{ modelId: 'v1', label: 'L2', subtitle: 's2', isTimeLimited: true }],
-      whiteModelModel: 'w',
+      whiteModelModel: 'w2',
     });
   });
 });

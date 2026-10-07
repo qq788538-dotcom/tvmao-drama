@@ -175,19 +175,39 @@ func lightSetting(t *testing.T, models string, template string, presets string) 
 
 func TestApplySettingOverrideKeptAndStructureUpdated(t *testing.T) {
 	conn := dbtest.Open(t)
-	img := []string{seedModelLine(t, 1, "img-a", "image", nil)}
+	img := []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil)}
 	mustApply(t, conn, mustSeed(t, img, []string{
 		lightSetting(t, `["img-a"]`, "旧 {light}", `[{"key":"p1","name":"P1","prompt":"内置 p1"}]`),
 	}))
-	simulateUserEdit(t, conn, `UPDATE settings SET value = ?, user_overrides = '["presets[p1].prompt"]' WHERE "key" = ?`,
-		`{"models":["img-a"],"presets":[{"key":"p1","name":"P1","prompt":"我的 p1"}],"template":"旧 {light}"}`, SettingCanvasLightControl)
+	simulateUserEdit(t, conn, `UPDATE settings SET value = ?, user_overrides = '["models"]' WHERE "key" = ?`,
+		`{"models":["img-b","img-a"],"presets":[{"key":"p1","name":"P1","prompt":"内置 p1"}],"template":"旧 {light}"}`, SettingCanvasLightControl)
 	mustApply(t, conn, mustSeed(t, img, []string{
 		lightSetting(t, `["img-a"]`, "新 {light}", `[{"key":"p1","name":"P1 新名","prompt":"内置 p1 v2"},{"key":"p2","name":"P2","prompt":"p2"}]`),
 	}))
 	got := settingByKey(t, conn, SettingCanvasLightControl)
-	// 键序跟新版种子原文（P2a M8）。
-	want := `{"models":["img-a"],"template":"新 {light}","presets":[{"key":"p1","name":"P1 新名","prompt":"我的 p1"},{"key":"p2","name":"P2","prompt":"p2"}]}`
-	if got.Value != want || !reflect.DeepEqual(got.Overrides, []string{"presets[p1].prompt"}) {
+	// 用户改过的 models 保留；模板、预设（含提示词）跟随新版；键序跟新版种子原文（P2a M8）。
+	want := `{"models":["img-b","img-a"],"template":"新 {light}","presets":[{"key":"p1","name":"P1 新名","prompt":"内置 p1 v2"},{"key":"p2","name":"P2","prompt":"p2"}]}`
+	if got.Value != want || !reflect.DeepEqual(got.Overrides, []string{"models"}) {
+		t.Fatalf("got  %s %v\nwant %s", got.Value, got.Overrides, want)
+	}
+}
+
+// 旧版本记下的提示词覆盖在新规则下已不可编辑 → 升级时丢弃，提示词回到新版内置值。
+func TestApplyDropsSettingPromptOverrideNoLongerEditable(t *testing.T) {
+	conn := dbtest.Open(t)
+	img := []string{seedModelLine(t, 1, "img-a", "image", nil)}
+	mustApply(t, conn, mustSeed(t, img, []string{
+		lightSetting(t, `["img-a"]`, "旧 {light}", `[{"key":"p1","name":"P1","prompt":"内置 p1"}]`),
+	}))
+	simulateUserEdit(t, conn, `UPDATE settings SET value = ?, user_overrides = '["presets[p1].prompt","template"]' WHERE "key" = ?`,
+		`{"models":["img-a"],"presets":[{"key":"p1","name":"P1","prompt":"我的 p1"}],"template":"我的 {light}"}`, SettingCanvasLightControl)
+	s2 := mustSeed(t, img, []string{
+		lightSetting(t, `["img-a"]`, "新 {light}", `[{"key":"p1","name":"P1","prompt":"内置 p1 v2"}]`),
+	})
+	mustApply(t, conn, s2)
+	got := settingByKey(t, conn, SettingCanvasLightControl)
+	want := `{"models":["img-a"],"template":"新 {light}","presets":[{"key":"p1","name":"P1","prompt":"内置 p1 v2"}]}`
+	if got.Value != want || got.Overrides != nil {
 		t.Fatalf("got  %s %v\nwant %s", got.Value, got.Overrides, want)
 	}
 }

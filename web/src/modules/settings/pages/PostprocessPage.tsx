@@ -56,10 +56,7 @@ export function PostprocessPage() {
           {mode === 'none' && <Typography.Text type="secondary">未内置转高清模型</Typography.Text>}
         </Form.Item>
         <Form.Item label="转白模">
-          <Typography.Text type={draft.whiteModelModel ? undefined : 'secondary'}>
-            {draft.whiteModelModel || '未配置'}
-          </Typography.Text>
-          <Tag style={{ marginLeft: 8 }}>只读</Tag>
+          <ModelSelect type="video" value={draft.whiteModelModel} onChange={(v) => set(['whiteModelModel'], v)} />
         </Form.Item>
       </Form>
     </Card>

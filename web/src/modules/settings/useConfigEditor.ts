@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { invalidateAfterSettingsChange } from './invalidate';
 import { errorText, getConfig, putConfig, restoreConfig, type ConfigKey, type ConfigView } from './api';
 
-/** 五个画布配置页共用：读取、整份保存（草稿含全部原字段）、恢复默认。 */
+/** 画布配置页共用：读取、整份保存（草稿含全部原字段）、恢复默认。 */
 export function useConfigEditor<T>(key: ConfigKey) {
   const qc = useQueryClient();
   const { message } = AntApp.useApp();

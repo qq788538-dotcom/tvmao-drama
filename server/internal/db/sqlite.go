@@ -5,13 +5,20 @@
 //     后台 worker 与 HTTP 写请求争锁时排队等待（busy_timeout），而不是在锁升级处报 SQLITE_BUSY。
 //   - WAL：读不阻塞写。
 //   - 外键默认关闭，必须显式打开；workflow_snapshots 的级联删除依赖它。
+//   - 整库加密（adiantum VFS）：库文件、WAL、回滚日志都是密文，拷走 data.db 用 sqlite 打不开。
+//     密钥在二进制里，只防「直接打开 sqlite 看配置」，挡不住逆向——这是有意的取舍。
 package db
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"embed"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/url"
 	"os"
@@ -20,7 +27,8 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/ncruces/go-sqlite3/driver"
+	_ "github.com/ncruces/go-sqlite3/vfs/adiantum"
 )
 
 //go:embed migrations/*.sql
@@ -32,10 +40,21 @@ const TimeLayout = "2006-01-02 15:04:05"
 // Time 把 Go 时间转成库里的统一格式。SQL 参数里传时间一律经它，才能与列值直接比较。
 func Time(t time.Time) string { return t.UTC().Format(TimeLayout) }
 
-// Open 打开（不存在则创建）path 处的数据库。path 是普通文件路径，可以含空格。
+// encryptionKeyHex 是库的 256 位密钥（hex）。运行时由种子串派生，二进制里不出现密钥本身；
+// 改种子串等于换密钥，老库会打不开——不要改。
+var encryptionKeyHex = func() string {
+	sum := sha256.Sum256([]byte("miaoju-desktop\x00data.db\x00adiantum\x00v1\x00b6f1c0e2"))
+	return hex.EncodeToString(sum[:])
+}()
+
+// plainHeader 是未加密 SQLite 文件的文件头；加密库的头是密文，不会以它开头。
+var plainHeader = []byte("SQLite format 3\x00")
+
+// Open 打开（不存在则创建）path 处的加密数据库。path 是普通文件路径，可以含空格。
+// path 处若是旧版的明文库，先原地转成加密库（encryptLegacy）。
 //
-// 路径不能含 "?"，也不能以 "file:" 开头：驱动按 DSN 解析，会在第一个 "?" 处切开，
-// 把后半截当参数，库被静默建到别处且所有 pragma 失效；"file:" 前缀同理。这里提前明确报错。
+// 路径不能含 "?"，也不能以 "file:" 开头：历史上驱动按 DSN 解析会在第一个 "?" 处切开；
+// 现在虽然经 fileURI 转义，限制保留，免得数据目录迁移等调用方各自放宽出分叉。
 func Open(path string) (*sql.DB, error) {
 	if strings.Contains(path, "?") || strings.HasPrefix(path, "file:") {
 		return nil, fmt.Errorf("数据库路径不能包含 \"?\"，也不能以 \"file:\" 开头：%s", path)
@@ -43,12 +62,27 @@ func Open(path string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("创建数据库目录: %w", err)
 	}
+	plain, err := isPlainDatabase(path)
+	if err != nil {
+		return nil, fmt.Errorf("打开数据库: %w", err)
+	}
+	if plain {
+		if err := encryptLegacy(path); err != nil {
+			return nil, fmt.Errorf("加密旧数据库: %w", err)
+		}
+	}
+	dsn, err := EncryptedURI(path)
+	if err != nil {
+		return nil, err
+	}
 	q := url.Values{}
-	for _, p := range []string{"foreign_keys(1)", "journal_mode(WAL)", "busy_timeout(10000)", "synchronous(NORMAL)"} {
+	for _, p := range []string{"foreign_keys(1)", "journal_mode(WAL)", "busy_timeout(10000)", "synchronous(NORMAL)", "temp_store(memory)"} {
 		q.Add("_pragma", p)
 	}
 	q.Set("_txlock", "immediate")
-	conn, err := sql.Open("sqlite", path+"?"+q.Encode())
+	// sqlite：time.Time 参数按 CURRENT_TIMESTAMP 同款格式写入（业务代码本就统一经 db.Time 传字符串）。
+	q.Set("_timefmt", "sqlite")
+	conn, err := driver.Open(dsn + "&" + q.Encode())
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +93,117 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("打开数据库: %w", err)
 	}
 	return conn, nil
+}
+
+// EncryptedURI 返回 path 处加密库的 SQLite URI（带 vfs 与密钥参数，可再追加 &参数）。
+// VACUUM INTO 的目标也必须用它，否则导出的副本是明文。
+func EncryptedURI(path string) (string, error) {
+	u, err := fileURI(path)
+	if err != nil {
+		return "", err
+	}
+	return u + "?vfs=adiantum&hexkey=" + encryptionKeyHex, nil
+}
+
+// fileURI 把普通路径转成 file: URI：空格等字符转义；Windows 盘符路径变成 file:///C:/...。
+func fileURI(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	p := filepath.ToSlash(abs)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return (&url.URL{Scheme: "file", Path: p}).String(), nil
+}
+
+// IsDatabaseFile 判断 path 是否为本应用能打开的库：旧版明文库，或用本应用密钥加密的库。只读探测，不改文件。
+func IsDatabaseFile(path string) bool {
+	if plain, err := isPlainDatabase(path); err != nil {
+		return false
+	} else if plain {
+		return true
+	}
+	if st, err := os.Stat(path); err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
+		return false
+	}
+	dsn, err := EncryptedURI(path)
+	if err != nil {
+		return false
+	}
+	conn, err := driver.Open(dsn + "&mode=ro")
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+	var n int
+	return conn.QueryRow(`SELECT count(*) FROM sqlite_master`).Scan(&n) == nil
+}
+
+// isPlainDatabase 判断 path 是否为未加密的 SQLite 库。文件不存在或为空返回 false。
+func isPlainDatabase(path string) (bool, error) {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	head := make([]byte, len(plainHeader))
+	if _, err := io.ReadFull(f, head); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return false, nil
+		}
+		return false, err
+	}
+	return bytes.Equal(head, plainHeader), nil
+}
+
+// encryptLegacy 把 path 处的明文库原地换成加密库：明文库做一次 TRUNCATE 检查点把 WAL 并回主库，
+// VACUUM INTO 写出加密副本，关闭后改名覆盖。改名前任何一步失败，明文库原样保留、下次启动重试；
+// 改名是原子的，不会出现半明半密的库。
+func encryptLegacy(path string) error {
+	tmp := path + ".encrypting"
+	_ = os.Remove(tmp)
+	src, err := fileURI(path)
+	if err != nil {
+		return err
+	}
+	dst, err := EncryptedURI(tmp)
+	if err != nil {
+		return err
+	}
+	plain, err := driver.Open(src + "?_pragma=busy_timeout(10000)")
+	if err != nil {
+		return err
+	}
+	_, err = plain.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+	if err == nil {
+		_, err = plain.Exec(`VACUUM INTO ?`, dst)
+	}
+	if cerr := plain.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if f, err := os.Open(tmp); err == nil {
+		err = f.Sync()
+		f.Close()
+		if err != nil {
+			return err
+		}
+	}
+	// 明文库的 WAL/SHM 已在检查点和关闭时并回主库；残留的也只会是明文，删掉。
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return os.Rename(tmp, path)
 }
 
 // Migrate 按文件名顺序执行尚未执行过的嵌入迁移；每个文件一个事务，失败整体回滚。

@@ -176,10 +176,10 @@ func TestPolicyPatternsSnapshot(t *testing.T) {
 		"<model>": {"name", "enabled", "hidden", "sort_order", "ui_schema.*.default", "gen_control.concurrency",
 			"gen_control.modules.canvas.maxRetries", "gen_control.modules.canvas.retryIntervalSec"},
 		SettingBaseDomain:         {"$"},
-		SettingCanvasLightControl: {"models", "template", "presets[*].prompt"},
-		SettingCanvasMultiAngle:   {"models", "template", "presets[*].prompt"},
-		SettingGenImagePresets:    {"models", "presets[*].value.prompt", "presets[*].value.params[*].options[*].prompt"},
-		SettingCanvasPostprocess:  {"subtitleRemovalModels", "upscaleModel"},
+		SettingCanvasLightControl: {"models"},
+		SettingCanvasMultiAngle:   {"models"},
+		SettingGenImagePresets:    {"models"},
+		SettingCanvasPostprocess:  {"subtitleRemovalModels", "upscaleModel", "whiteModelModel"},
 		SettingCanvasScript:       {"modelCandidates", "concurrency", "maxRetries"},
 	}
 	if !reflect.DeepEqual(got, want) {

@@ -117,6 +117,13 @@ func TestSettingsWhitelistRejectsNonEditableChanges(t *testing.T) {
 			p["rotation"] = 123.0
 			p["prompt"] = "顺带改一下提示词" // 混在合法改动里也不行
 		}},
+		{"多角度：只改提示词", "canvas_multi_angle", func(d map[string]any) { presetsOf(d)[0].(map[string]any)["prompt"] = "新的提示词" }},
+		{"多角度：只改模板", "canvas_multi_angle", func(d map[string]any) { d["template"] = "角度：{angle}" }},
+		{"打光：只改提示词", "canvas_light_control", func(d map[string]any) { presetsOf(d)[0].(map[string]any)["prompt"] = "新的提示词" }},
+		{"打光：只改模板", "canvas_light_control", func(d map[string]any) { d["template"] = "打光：{light}" }},
+		{"绘图预设：只改正文", "gen_image_prompt_presets", func(d map[string]any) {
+			presetsOf(d)[0].(map[string]any)["value"].(map[string]any)["prompt"] = "新的提示词"
+		}},
 		{"多角度：改 presets[i].key", "canvas_multi_angle", func(d map[string]any) { presetsOf(d)[0].(map[string]any)["key"] = "renamed" }},
 		{"打光：改 direction", "canvas_light_control", func(d map[string]any) { presetsOf(d)[0].(map[string]any)["direction"] = "上帝视角" }},
 		{"打光：新增预设", "canvas_light_control", func(d map[string]any) {
@@ -124,7 +131,8 @@ func TestSettingsWhitelistRejectsNonEditableChanges(t *testing.T) {
 		}},
 		{"脚本：改 styles", "canvas_script_config", func(d map[string]any) { d["styles"] = []any{map[string]any{"key": "evil", "name": "注入"}} }},
 		{"后处理：加 upscaleModels", "canvas_postprocess_config", func(d map[string]any) { d["upscaleModels"] = []any{"task-doubao-video-enhance"} }},
-		{"后处理：加 whiteModelModel", "canvas_postprocess_config", func(d map[string]any) { d["whiteModelModel"] = "x" }},
+		{"后处理：whiteModelModel 选不存在的模型", "canvas_postprocess_config", func(d map[string]any) { d["whiteModelModel"] = "x" }},
+		{"后处理：whiteModelModel 选图片模型", "canvas_postprocess_config", func(d map[string]any) { d["whiteModelModel"] = "gpt-image-2" }},
 		{"绘图预设：新增预设", "gen_image_prompt_presets", func(d map[string]any) {
 			d["presets"] = append(presetsOf(d), map[string]any{"key": "evil", "value": map[string]any{"name": "新", "prompt": "x"}})
 		}},
@@ -153,21 +161,30 @@ func TestSettingsWhitelistRejectsNonEditableChanges(t *testing.T) {
 
 func TestSettingsWhitelistAcceptsEditableChanges(t *testing.T) {
 	e := newWhitelistEnv(t)
-	// 多角度：改模板和一条提示词（预设顺序打乱也不算结构改动之外的东西——这里不打乱，只改值）。
-	body := e.mutate("canvas_multi_angle", func(d map[string]any) {
-		d["template"] = "角度：{angle}"
-		presetsOf(d)[0].(map[string]any)["prompt"] = "新的提示词"
-	})
+	// 多角度：只开放适用模型（提示词、模板是内置资产，不可改）。
+	models := []any{"gemini-3-pro-image-preview", "gpt-image-2"}
+	body := e.mutate("canvas_multi_angle", func(d map[string]any) { d["models"] = models })
 	if code, out := e.do("PUT", "/configs/canvas_multi_angle", body); code != 200 {
 		t.Fatalf("%d %s", code, out)
 	}
 	var doc map[string]any
 	json.Unmarshal([]byte(e.raw("canvas_multi_angle")), &doc)
-	if doc["template"] != "角度：{angle}" || presetsOf(doc)[0].(map[string]any)["prompt"] != "新的提示词" {
+	if got, _ := json.Marshal(doc["models"]); string(got) != `["gemini-3-pro-image-preview","gpt-image-2"]` {
 		t.Fatalf("合法改动没有写入：%s", e.raw("canvas_multi_angle"))
 	}
 	if !e.modified("canvas_multi_angle") {
 		t.Fatal("应记为已修改")
+	}
+	// 后处理：转白模可换成另一个视频模型，也可清空（= 未配置）。
+	for _, w := range []string{"task-doubao-video-enhance", ""} {
+		body := e.mutate("canvas_postprocess_config", func(d map[string]any) { d["whiteModelModel"] = w })
+		if code, out := e.do("PUT", "/configs/canvas_postprocess_config", body); code != 200 {
+			t.Fatalf("whiteModelModel=%q：%d %s", w, code, out)
+		}
+		json.Unmarshal([]byte(e.raw("canvas_postprocess_config")), &doc)
+		if doc["whiteModelModel"] != w {
+			t.Fatalf("whiteModelModel 没有写入 %q：%s", w, e.raw("canvas_postprocess_config"))
+		}
 	}
 	// 原样提交（没有任何变化）→ 200，不产生新记录。
 	before := e.raw("canvas_script_config")
