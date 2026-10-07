@@ -39,11 +39,13 @@ func (h *modelSettingsHandler) testConnection(w nethttp.ResponseWriter, r *netht
 		return
 	}
 	results := make([]modelConnResult, len(list))
+	names := make([]string, len(list)) // 实际发给上游的模型名，用于比对
 	groups := map[connGroupKey][]int{}
 	var order []connGroupKey
 	for i := range list {
 		m := &list[i]
 		results[i] = modelConnResult{ID: m.ID, ModelID: m.ModelID}
+		names[i] = upstreamModelName(m)
 		base, key, err := models.ResolveUpstream(m, h.d.Settings)
 		if err != nil {
 			results[i].Message = "读取上游配置失败：" + redactKey(err.Error(), key)
@@ -74,16 +76,30 @@ func (h *modelSettingsHandler) testConnection(w nethttp.ResponseWriter, r *netht
 				switch {
 				case errMsg != "":
 					results[i].Message = errMsg
-				case ids[results[i].ModelID]:
+				case ids[names[i]]:
 					results[i].OK, results[i].Message = true, "成功"
 				default:
-					results[i].Message = fmt.Sprintf("网关上没有这个模型（%s）", results[i].ModelID)
+					results[i].Message = fmt.Sprintf("网关上没有这个模型（%s）", names[i])
 				}
 			}
 		}(k, groups[k])
 	}
 	wg.Wait()
 	writeJSON(w, nethttp.StatusOK, map[string]any{"results": results})
+}
+
+// upstreamModelName 返回实际发给上游的模型名：请求模板顶层 model 是固定字符串时用它
+// （如 seedance 2.5 编辑/延长的 model_id 不同，但模板里发的是同一个模型），否则用 model_id。
+func upstreamModelName(m *models.ModelConfig) string {
+	var tpl struct {
+		Model any `json:"model"`
+	}
+	if json.Unmarshal(m.RequestTemplate, &tpl) == nil {
+		if s, ok := tpl.Model.(string); ok && s != "" && !strings.Contains(s, "{{") {
+			return s
+		}
+	}
+	return m.ModelID
 }
 
 // fetchUpstreamModelIDs 请求 {base}/v1/models，成功返回模型 ID 集合；失败返回已脱敏的中文原因。

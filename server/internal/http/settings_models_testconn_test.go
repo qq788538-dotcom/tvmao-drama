@@ -1,12 +1,15 @@
 package http
 
 import (
+	"encoding/json"
 	"fmt"
 	nethttp "net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/james/huabu_studio/apps/api/internal/models"
 )
 
 type connResult struct {
@@ -158,5 +161,25 @@ func TestTestConnection_RedactsKey(t *testing.T) {
 	code, body := e.do("POST", "/models/test-connection", nil)
 	if code != 200 || strings.Contains(body, "sk-secret-123") || !strings.Contains(body, "***") {
 		t.Fatalf("code=%d body=%s", code, body)
+	}
+}
+
+// 同一上游模型的不同用法（如 seedance 2.5 编辑/延长）model_id 不同，但请求模板里发的是同一个 model：
+// 连接测试要按模板里实际发送的名字比对。
+func TestUpstreamModelName(t *testing.T) {
+	cases := []struct {
+		name, modelID, tpl, want string
+	}{
+		{"模板固定 model", "doubao-seedance-2-5-260628-edit", `{"model":"doubao-seedance-2-5-260628","content":[]}`, "doubao-seedance-2-5-260628"},
+		{"模板无 model", "gemini-3-pro-image-preview", `{"contents":[]}`, "gemini-3-pro-image-preview"},
+		{"model 是占位符", "m1", `{"model":"{{model}}"}`, "m1"},
+		{"model 非字符串", "m2", `{"model":{"$if":"x"}}`, "m2"},
+		{"模板为空", "m3", ``, "m3"},
+	}
+	for _, c := range cases {
+		m := &models.ModelConfig{ModelID: c.modelID, RequestTemplate: json.RawMessage(c.tpl)}
+		if got := upstreamModelName(m); got != c.want {
+			t.Errorf("%s: got %q want %q", c.name, got, c.want)
+		}
 	}
 }
