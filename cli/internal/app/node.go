@@ -107,7 +107,7 @@ func newNodeCreateCommand(st *runtimeState) *cobra.Command {
 		Use:   "create",
 		Short: "创建节点，并可同时建立上游连线",
 		Long: strings.TrimSpace(`
-创建一个语义节点。可写类型只有四种：
+创建一个语义节点。可写类型只有五种：
   image-input / audio-input / video-input / image-generator / video-generator
 
 生成节点**必须**用 --model 显式指定模型：服务端不会替你挑一个。
