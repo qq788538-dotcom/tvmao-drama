@@ -36,7 +36,9 @@ type Task struct {
 	// 只能保守退款，绝不重复扣费。
 	UpstreamCalledAt *time.Time `json:"-"`
 	Attempt          int        `json:"-"` // 已尝试次数（含重排）；不影响计费
-	NextRetryAt      *time.Time `json:"-"`
+	// UpstreamFingerprint 提交时所用上游的指纹（0071，只有 ListProcessing 读）；空串=旧任务。
+	UpstreamFingerprint string     `json:"-"`
+	NextRetryAt         *time.Time `json:"-"`
 }
 
 var ErrNotFound = errors.New("task not found")
@@ -114,7 +116,9 @@ type Repository interface {
 	// ClaimStaleRunning 接管心跳超时的在跑任务并返回新代次。
 	ClaimStaleRunning(taskID int64, instance string, staleSec int) (int64, bool, error)
 	// MarkUpstreamCalled 在向上游发请求之前调用，落下"已调过上游"的事实。
-	MarkUpstreamCalled(taskID, lease int64) (bool, error)
+	// fingerprint 是本次调用所用上游的指纹（models.UpstreamFingerprint），同一条 UPDATE 落库，
+	// 重启续轮询时比对（I-1）。
+	MarkUpstreamCalled(taskID, lease int64, fingerprint string) (bool, error)
 	// RequeueStale 把被中断且从未调过上游的任务放回队列（attempt+1，清租约）。
 	// 不碰 frozen_cents——重排复用原来那一笔冻结，绝不重新冻结。
 	RequeueStale(taskID, lease int64) (bool, error)
@@ -372,7 +376,7 @@ func (r *SQLiteRepository) ListProcessing(maxAgeSec, staleSec int) ([]Task, erro
 	// running 也要纳入：队列任务被领取后是 running，若它已经拿到 upstream_task_id
 	// 却因实例被杀而中断，只有这里能把它续 poll 回来。条件里的 upstream_task_id
 	// 非空保证了不会误选"还没调上游"的任务(那类由 RecoverStaleQueueTasks 重排)。
-	q := `SELECT id, user_id, project_id, model_id, status, IFNULL(upstream_task_id, ''), input, output, frozen_cents, cost_cents, IFNULL(audit_flag, ''), IFNULL(error, ''), created_at, updated_at FROM generation_tasks WHERE status IN ('running','processing','settling') AND upstream_task_id IS NOT NULL AND upstream_task_id <> ''`
+	q := `SELECT id, user_id, project_id, model_id, status, IFNULL(upstream_task_id, ''), input, output, frozen_cents, cost_cents, IFNULL(audit_flag, ''), IFNULL(error, ''), created_at, updated_at, upstream_fingerprint FROM generation_tasks WHERE status IN ('running','processing','settling') AND upstream_task_id IS NOT NULL AND upstream_task_id <> ''`
 	args := []any{}
 	if maxAgeSec > 0 {
 		q += ` AND created_at >= datetime('now', ?)`
@@ -396,7 +400,7 @@ func (r *SQLiteRepository) ListProcessing(maxAgeSec, staleSec int) ([]Task, erro
 		var output []byte
 		var input []byte
 		var cost sql.NullInt64
-		if err := rows.Scan(&t.ID, &t.UserID, &projectID, &t.ModelID, &t.Status, &t.UpstreamTaskID, &input, &output, &t.FrozenCents, &cost, &t.AuditFlag, &t.Error, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.UserID, &projectID, &t.ModelID, &t.Status, &t.UpstreamTaskID, &input, &output, &t.FrozenCents, &cost, &t.AuditFlag, &t.Error, &t.CreatedAt, &t.UpdatedAt, &t.UpstreamFingerprint); err != nil {
 			return nil, err
 		}
 		t.Input = json.RawMessage(input)
@@ -571,10 +575,10 @@ func (r *SQLiteRepository) ClaimStaleRunning(taskID int64, instance string, stal
 // MarkUpstreamCalled 必须在真正发出上游请求之前调用。之后即使进程被杀，接管方也能
 // 从这个时间戳判断出「这次调用可能已经产生了外部副作用」，从而不敢重排、只敢退款。
 // 带代次：影响 0 行 = 失租或状态异常，调用方必须中止，绝不能在标记不可靠时调上游。
-func (r *SQLiteRepository) MarkUpstreamCalled(taskID, lease int64) (bool, error) {
+func (r *SQLiteRepository) MarkUpstreamCalled(taskID, lease int64, fingerprint string) (bool, error) {
 	res, err := r.db.Exec(
-		`UPDATE generation_tasks SET upstream_called_at=CURRENT_TIMESTAMP WHERE id=? AND lease_version=? AND upstream_called_at IS NULL`,
-		taskID, lease)
+		`UPDATE generation_tasks SET upstream_called_at=CURRENT_TIMESTAMP, upstream_fingerprint=? WHERE id=? AND lease_version=? AND upstream_called_at IS NULL`,
+		fingerprint, taskID, lease)
 	if err != nil {
 		return false, err
 	}

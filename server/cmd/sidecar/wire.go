@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/james/huabu_studio/apps/api/internal/agent"
-	"github.com/james/huabu_studio/apps/api/internal/agent/agentseed"
 	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
 	"github.com/james/huabu_studio/apps/api/internal/assets"
 	"github.com/james/huabu_studio/apps/api/internal/builtin"
@@ -93,7 +92,8 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 
 	// Seedance 合规走 newapi（spec X5）：地址、路径每次请求现读 settings。
 	seedanceClient := seedance.NewClient(
-		func() string { v, _ := settingsRepo.Get("base_domain"); return v },
+		// 合规校验不绑定模型：ResolveUpstream(nil, …) = 全局 base_domain。
+		func() string { v, _, _ := models.ResolveUpstream(nil, settingsRepo); return v },
 		func() seedance.Paths { c, _ := seedance.LoadComplianceConfig(settingsRepo.Get); return c.Paths },
 	)
 	librarySeedanceSvc := library.NewSeedanceService(
@@ -118,19 +118,21 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		storage, orphans, usersRepo, signer, conn)
 	deps.DirectorLibrary = apphttp.NewDirectorLibraryHandler(directorlibrary.NewSQLiteRepository(conn), signer)
 
-	// ── P4 设置页 ── 内置模型 / 画布配置的修改只经 builtin.Service（白名单 + 改动记录，spec M10/M11），
-	// Agent 模型只换 model_name（spec A2）。/admin/canvas/* 的整份覆盖写接口不注册（见 router.go）。
+	// ── P4 设置页 ── 内置模型的修改只经 builtin.Service（白名单 + 改动记录，spec M10/M11）。
+	// 五项画布配置与 Agent 模型 2026-10-07 起写死为内置值，设置页不再提供修改接口。/admin/canvas/* 的整份覆盖写接口不注册（见 router.go）。
 	policy, err := builtin.NewService(conn)
 	if err != nil {
 		return nil, fmt.Errorf("初始化内置数据编辑服务: %w", err)
 	}
 	deps.SettingsCenter = apphttp.SettingsCenterDeps{
-		Settings:    settingsRepo,
-		Models:      modelsRepo,
-		ModelEdit:   apphttp.NewPolicyModelEdit(policy, modelsRepo),
-		SettingEdit: apphttp.NewPolicySettingEdit(policy, settingsRepo),
-		Agent: apphttp.NewBackboneAgentModels(agent.NewBackboneRepo(conn), agent.NewBackboneSwitcher(conn),
-			agentseed.DefaultBackboneModelName),
+		Settings: settingsRepo,
+		Models:   modelsRepo,
+		// 每模型独立上游：本机字段，直接写 model_configs，不经内置编辑策略（2026-10-07）。
+		ModelUpstream: modelsRepo,
+		ModelEdit:     apphttp.NewPolicyModelEdit(policy, modelsRepo),
+		SettingEdit:   apphttp.NewPolicySettingEdit(policy, settingsRepo),
+		// Agent 模型只读（2026-10-07 写死），仅供模型中心标注引用。
+		Agent: apphttp.NewBackboneAgentModels(agent.NewBackboneRepo(conn)),
 	}
 
 	cleaner := apphttp.NewProjectCleaner(projectsRepo, assetsRepo, usersRepo, genTasks, orphans, conn)

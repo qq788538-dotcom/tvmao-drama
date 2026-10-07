@@ -51,7 +51,7 @@ func TestSeedValuesPassTheirOwnRules(t *testing.T) {
 				}
 			}
 		}
-		if matched == 0 {
+		if matched == 0 && !pl.locked() {
 			t.Errorf("配置 %s 的白名单一个字段都没命中，模式写错了？", st.Key)
 		}
 	}
@@ -165,43 +165,16 @@ func TestApplyEditsIsAllOrNothing(t *testing.T) {
 }
 
 func TestSettingRules(t *testing.T) {
-	cat := Catalog{"img": "image", "img2": "image", "txt": "text", "vid": "video"}
-	light := mustDecode(t, `{"models":["img"],"template":"打光：{light}","presets":[{"key":"p1","name":"P1","direction":"","prompt":"a"}]}`)
-	angle := mustDecode(t, `{"models":["img"],"template":"角度：{angle}","presets":[{"key":"p1","name":"P1","prompt":"a"}]}`)
-	presets := mustDecode(t, `{"models":["img"],"presets":[{"key":"k","value":{"name":"N","prompt":"x","params":[{"key":"skin","name":"皮肤","options":[{"key":"n","name":"自然","prompt":""}]}]}}]}`)
-	post := mustDecode(t, `{"subtitleRemovalModels":[{"modelId":"vid","label":"标准","subtitle":"","isTimeLimited":false}],"upscaleModel":"vid"}`)
-	script := mustDecode(t, `{"modelCandidates":[{"modelId":"txt","displayName":"T"}],"styles":[],"concurrency":5,"maxRetries":3}`)
+	light := mustDecode(t, `{"models":["img"],"template":"打光：{light}","presets":[{"key":"p1","name":"P1","prompt":"a"}]}`)
 	cases := []struct {
 		name, key string
 		doc       any
 		edits     map[string]json.RawMessage
 		bad       string
 	}{
-		{"打光预设提示词不可改", SettingCanvasLightControl, light, edits("presets[p1].prompt", `"新的"`), "presets[p1].prompt"},
-		{"打光模板不可改", SettingCanvasLightControl, light, edits("template", `"新模板 {light}"`), "template"},
-		{"多角度预设提示词不可改", SettingCanvasMultiAngle, angle, edits("presets[p1].prompt", `"新的"`), "presets[p1].prompt"},
-		{"多角度模板不可改", SettingCanvasMultiAngle, angle, edits("template", `"新模板 {angle}"`), "template"},
-		{"多角度候选模型", SettingCanvasMultiAngle, angle, edits("models", `[]`), ""},
-		{"预设结构字段只读", SettingCanvasLightControl, light, edits("presets[p1].direction", `"top"`), "presets[p1].direction"},
-		{"不能新增预设", SettingCanvasLightControl, light, edits("presets[p9].prompt", `"x"`), "presets[p9].prompt"},
-		{"空模板也不可改", SettingCanvasLightControl, light, edits("template", `""`), "template"},
-		{"候选模型", SettingCanvasLightControl, light, edits("models", `["img","img2"]`), ""},
-		{"候选模型必须存在", SettingCanvasLightControl, light, edits("models", `["nope"]`), "models"},
-		{"候选模型类型必须对", SettingCanvasLightControl, light, edits("models", `["txt"]`), "models"},
-		{"候选模型不能重复", SettingCanvasLightControl, light, edits("models", `["img","img"]`), "models"},
-		{"候选模型可清空", SettingCanvasLightControl, light, edits("models", `[]`), ""},
-		{"绘图预设正文不可改", SettingGenImagePresets, presets, edits("presets[k].value.prompt", `"新的"`), "presets[k].value.prompt"},
-		{"档位片段不可改", SettingGenImagePresets, presets, edits("presets[k].value.params[skin].options[n].prompt", `""`), "presets[k].value.params[skin].options[n].prompt"},
-		{"绘图预设候选模型", SettingGenImagePresets, presets, edits("models", `["img2"]`), ""},
-		{"绘图预设名只读", SettingGenImagePresets, presets, edits("presets[k].value.name", `"x"`), "presets[k].value.name"},
-		{"去字幕列表", SettingCanvasPostprocess, post, edits("subtitleRemovalModels", `[{"modelId":"vid","label":"L"}]`), ""},
-		{"去字幕列表不认识的字段", SettingCanvasPostprocess, post, edits("subtitleRemovalModels", `[{"modelId":"vid","label":"L","x":1}]`), "subtitleRemovalModels"},
-		{"转高清模型类型", SettingCanvasPostprocess, post, edits("upscaleModel", `"img"`), "upscaleModel"},
-		{"转白模模型", SettingCanvasPostprocess, post, edits("whiteModelModel", `"vid"`), ""},
-		{"转白模模型类型", SettingCanvasPostprocess, post, edits("whiteModelModel", `"img"`), "whiteModelModel"},
-		{"脚本候选", SettingCanvasScript, script, edits("modelCandidates", `[{"modelId":"txt","displayName":"GPT"}]`), ""},
-		{"脚本风格只读", SettingCanvasScript, script, edits("styles", `[]`), "styles"},
-		{"脚本并发下限", SettingCanvasScript, script, edits("concurrency", `0`), "concurrency"},
+		{"写死的配置：提示词", SettingCanvasLightControl, light, edits("presets[p1].prompt", `"新的"`), "presets[p1].prompt"},
+		{"写死的配置：模型列表", SettingCanvasLightControl, light, edits("models", `[]`), "models"},
+		{"写死的配置：整体替换", SettingCanvasLightControl, light, edits("$", `{}`), "$"},
 		{"上游地址", SettingBaseDomain, "http://a.example:3000", edits("$", `"https://gw.example.com"`), ""},
 		{"上游地址不能带结尾 /", SettingBaseDomain, "http://a.example:3000", edits("$", `"https://gw.example.com/"`), "$"},
 		{"上游地址协议", SettingBaseDomain, "http://a.example:3000", edits("$", `"ftp://gw.example.com"`), "$"},
@@ -209,7 +182,7 @@ func TestSettingRules(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			pl := settingPolicies[c.key]
-			_, _, err := applyEdits(pl, c.doc, c.doc, nil, c.edits, cat)
+			_, _, err := applyEdits(pl, c.doc, c.doc, nil, c.edits, Catalog{})
 			var ve *ValidationError
 			if c.bad == "" {
 				if err != nil {
@@ -224,33 +197,29 @@ func TestSettingRules(t *testing.T) {
 	}
 }
 
+// overlay 的通用行为（用模型白名单验证）：合法的覆盖保留，不在白名单内或不再通过校验的丢弃。
 func TestOverlayKeepsValidAndDropsInvalid(t *testing.T) {
-	cat := Catalog{"img": "image", "img2": "image"}
-	// 后处理：合法覆盖保留，引用已删除模型的覆盖丢弃并回到新版值。
-	pbase := mustDecode(t, `{"subtitleRemovalModels":[],"upscaleModel":"vid","whiteModelModel":"vid"}`)
-	puser := mustDecode(t, `{"subtitleRemovalModels":[],"upscaleModel":"vid2","whiteModelModel":"gone"}`)
-	pcat := Catalog{"vid": "video", "vid2": "video"}
-	doc, kept, dropped := overlay(settingPolicies[SettingCanvasPostprocess], pbase, puser, []string{"upscaleModel", "whiteModelModel"}, pcat)
-	if !reflect.DeepEqual(kept, []string{"upscaleModel"}) || !reflect.DeepEqual(dropped, []string{"whiteModelModel"}) {
+	ui := func(def string) *string {
+		s := `{"ratio":{"default":"` + def + `","options":[{"value":"1:1"},{"value":"16:9"}]}}`
+		return &s
+	}
+	base, err := modelDoc(modelParts{Name: "新名", Enabled: true, UISchema: ui("1:1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := modelDoc(modelParts{Name: "我的", Enabled: true, UISchema: ui("4:3")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, kept, dropped := overlay(modelPolicy, base, user, []string{"name", "ui_schema.ratio.default", "base_path"}, Catalog{})
+	if !reflect.DeepEqual(kept, []string{"name"}) || !reflect.DeepEqual(dropped, []string{"ui_schema.ratio.default", "base_path"}) {
 		t.Fatalf("kept=%v dropped=%v", kept, dropped)
 	}
-	got, _ := encodeJSON(doc)
-	want := `{"subtitleRemovalModels":[],"upscaleModel":"vid2","whiteModelModel":"vid"}`
-	if got != want {
-		t.Fatalf("got  %s\nwant %s", got, want)
+	if n, _ := getPath(doc, mustParsePath("name")); n != "我的" {
+		t.Fatalf("name=%v", n)
 	}
-
-	// 打光：models 合法则保留；已不可编辑的提示词/模板覆盖一律丢弃，回到新版内置值。
-	lbase := mustDecode(t, `{"models":["img"],"template":"新模板 {light}","presets":[{"key":"p1","prompt":"新 p1"},{"key":"p3","prompt":"p3"}]}`)
-	luser := mustDecode(t, `{"models":["img2"],"template":"旧 {light}","presets":[{"key":"p1","prompt":"我的 p1"},{"key":"p2","prompt":"我的 p2"}]}`)
-	doc, kept, dropped = overlay(settingPolicies[SettingCanvasLightControl], lbase, luser, []string{"models", "presets[p1].prompt", "presets[p2].prompt", "template"}, cat)
-	if !reflect.DeepEqual(kept, []string{"models"}) || !reflect.DeepEqual(dropped, []string{"presets[p1].prompt", "presets[p2].prompt", "template"}) {
-		t.Fatalf("kept=%v dropped=%v", kept, dropped)
-	}
-	got, _ = encodeJSON(doc)
-	want = `{"models":["img2"],"presets":[{"key":"p1","prompt":"新 p1"},{"key":"p3","prompt":"p3"}],"template":"新模板 {light}"}`
-	if got != want {
-		t.Fatalf("got  %s\nwant %s", got, want)
+	if d, _ := getPath(doc, mustParsePath("ui_schema.ratio.default")); d != "1:1" {
+		t.Fatalf("default=%v", d)
 	}
 }
 

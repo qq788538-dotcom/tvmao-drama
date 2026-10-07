@@ -26,7 +26,7 @@ func applySeed(ctx context.Context, conn *sql.DB, s *Seed) error {
 		return err
 	}
 	if ok && h == s.Hash {
-		return nil
+		return resetLockedSettings(ctx, conn, s)
 	}
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
@@ -61,6 +61,12 @@ func applyModels(ctx context.Context, q querier, s *Seed) error {
 	// 1. 新版种子里没有的模型删除。M8 规定模型全部内置、用户不能新增，所以库里不存在需要保留的“用户模型”。
 	for id := range cur {
 		if _, ok := s.Model(id); !ok {
+			// 独立上游是本机用户数据，随行删除（契约）；打一条日志，升级后"独立上游"标签消失、
+			// 请求改走全局时有据可查（审查 M-6）。只记地址，不记 Key。
+			var upBase string
+			if err := q.QueryRowContext(ctx, `SELECT upstream_base_url FROM model_configs WHERE model_id = ?`, id).Scan(&upBase); err == nil && upBase != "" {
+				log.Printf("builtin: 新版种子移除了模型 %s，它单独配置的独立上游（%s）随之删除，之后改走全局上游", id, upBase)
+			}
 			if err := deleteModelRow(ctx, q, id); err != nil {
 				return err
 			}
@@ -177,4 +183,28 @@ func applyMergeSetting(pl policy, st SeedSetting, cur settingRow, cat Catalog) (
 		return settingRow{}, err
 	}
 	return settingRow{Key: st.Key, Value: v, Overrides: kept}, nil
+}
+
+// resetLockedSettings 把写死的配置（白名单为空，见 policy.go）里残留的用户修改清掉、恢复为种子值。
+// 种子没变的启动也要跑：库可能是写死之前的版本留下的。只碰这几项配置，不碰模型和 base_domain。
+// 正常情况下只有几次只读查询；需要改时才写库。
+func resetLockedSettings(ctx context.Context, conn *sql.DB, s *Seed) error {
+	for _, st := range s.Settings {
+		pl, ok := settingPolicies[st.Key]
+		if !ok || !pl.locked() {
+			continue
+		}
+		cur, found, err := loadSettingRow(ctx, conn, st.Key)
+		if err != nil {
+			return err
+		}
+		if !found || (len(cur.Overrides) == 0 && cur.Value == st.Value) {
+			continue
+		}
+		log.Printf("内置数据：配置 %s 已写死为内置值，丢弃用户修改 %v", st.Key, cur.Overrides)
+		if err := upsertSettingRow(ctx, conn, settingRow{Key: st.Key, Value: st.Value}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

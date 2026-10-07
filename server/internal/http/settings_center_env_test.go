@@ -104,34 +104,11 @@ func (f *fakeModelEdit) ModifiedModelFields(context.Context) (map[int64][]string
 }
 
 type fakeAgent struct {
-	items    []AgentModelItem
-	defaults map[int64]string
+	items []AgentModelItem
 }
 
 func (f *fakeAgent) ListAgentModels(context.Context) ([]AgentModelItem, error) {
 	return append([]AgentModelItem(nil), f.items...), nil
-}
-
-func (f *fakeAgent) SwitchAgentModel(_ context.Context, id int64, name string) error {
-	for i := range f.items {
-		if f.items[i].ID == id {
-			f.items[i].ModelName = name
-			f.items[i].Modified = name != f.defaults[id]
-			return nil
-		}
-	}
-	return ErrSettingsNotFound
-}
-
-func (f *fakeAgent) RestoreAgentModelDefault(_ context.Context, id int64) error {
-	for i := range f.items {
-		if f.items[i].ID == id {
-			f.items[i].ModelName = f.defaults[id]
-			f.items[i].Modified = false
-			return nil
-		}
-	}
-	return ErrSettingsNotFound
 }
 
 type scEnv struct {
@@ -193,8 +170,7 @@ func newSCEnv(t *testing.T) *scEnv {
 		e.settingEdit.defaults[k] = v
 	}
 	e.agent = &fakeAgent{
-		items:    []AgentModelItem{{ID: 1, Role: "planner", Alias: "主Agent", ModelName: "canvas-gpt-5.5"}},
-		defaults: map[int64]string{1: "canvas-gpt-5.5"},
+		items: []AgentModelItem{{ID: 1, Role: "planner", Alias: "主Agent", ModelName: "canvas-gpt-5.5"}},
 	}
 	r := chi.NewRouter()
 	mountSettingsCenter(r, e.deps())
@@ -204,7 +180,7 @@ func newSCEnv(t *testing.T) *scEnv {
 
 func (e *scEnv) deps() SettingsCenterDeps {
 	return SettingsCenterDeps{
-		Settings: e.settings, Models: e.models,
+		Settings: e.settings, Models: e.models, ModelUpstream: e.models,
 		ModelEdit: e.modelEdit, SettingEdit: e.settingEdit, Agent: e.agent,
 		DataDir: e.dataDir, Version: "9.9.9",
 	}

@@ -45,11 +45,11 @@ func (f *fakeRecoverRepo) ClaimQueued(int64, string) (int64, bool, error)  { ret
 func (f *fakeRecoverRepo) ClaimStaleRunning(int64, string, int) (int64, bool, error) {
 	return 0, false, nil
 }
-func (f *fakeRecoverRepo) MarkUpstreamCalled(int64, int64) (bool, error) { return true, nil }
-func (f *fakeRecoverRepo) RequeueStale(int64, int64) (bool, error)       { return false, nil }
-func (f *fakeRecoverRepo) ListStaleRunning(int) ([]Task, error)          { return nil, nil }
-func (f *fakeRecoverRepo) ListQueuedOlderThan(int, int) ([]Task, error)  { return nil, nil }
-func (f *fakeRecoverRepo) QueuedModels() ([]string, error)               { return nil, nil }
+func (f *fakeRecoverRepo) MarkUpstreamCalled(int64, int64, string) (bool, error) { return true, nil }
+func (f *fakeRecoverRepo) RequeueStale(int64, int64) (bool, error)               { return false, nil }
+func (f *fakeRecoverRepo) ListStaleRunning(int) ([]Task, error)                  { return nil, nil }
+func (f *fakeRecoverRepo) ListQueuedOlderThan(int, int) ([]Task, error)          { return nil, nil }
+func (f *fakeRecoverRepo) QueuedModels() ([]string, error)                       { return nil, nil }
 
 func (f *fakeRecoverRepo) ListQueuedSinkless(int, int) ([]Task, error) { return nil, nil }
 func (f *fakeRecoverRepo) SinkForTask(int64) (json.RawMessage, error)  { return nil, nil }

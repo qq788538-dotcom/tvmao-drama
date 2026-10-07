@@ -15,17 +15,7 @@ vi.mock('../api', async (orig) => ({
 }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 
-import { buildUpstreamUpdate, dataDirChangeDialog, GeneralPage, pickDataDir } from './GeneralPage';
-
-const initial = { version: '1', dataDir: '/d', baseDomain: 'http://a', baseDomainModified: false, apiKeySet: true, apiKeyMasked: 'sk-••••••••abcd' };
-
-describe('buildUpstreamUpdate', () => {
-  it('只提交变化的字段；Key 输入框留空表示不修改', () => {
-    expect(buildUpstreamUpdate({ baseDomain: 'http://a', apiKey: '' }, initial)).toBeNull();
-    expect(buildUpstreamUpdate({ baseDomain: ' http://b ', apiKey: '' }, initial)).toEqual({ baseDomain: 'http://b' });
-    expect(buildUpstreamUpdate({ baseDomain: 'http://a', apiKey: ' sk-new ' }, initial)).toEqual({ apiKey: 'sk-new' });
-  });
-});
+import { dataDirChangeDialog, GeneralPage, pickDataDir } from './GeneralPage';
 
 describe('pickDataDir', () => {
   it('取消选择返回 null，选中后交给 sidecar 校验', async () => {
@@ -44,7 +34,7 @@ describe('pickDataDir', () => {
 });
 
 describe('GeneralPage', () => {
-  it('只显示 Key 掩码，显示版本、数据目录和上次迁移错误', async () => {
+  it('不再显示上游服务卡片；显示版本、数据目录和上次迁移错误', async () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <AntApp>
@@ -52,11 +42,12 @@ describe('GeneralPage', () => {
         </AntApp>
       </QueryClientProvider>,
     );
-    await waitFor(() => expect(screen.getByText(/sk-••••••••WXYZ/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/磁盘已满/)).toBeTruthy());
+    expect(screen.queryByText(/上游服务/)).toBeNull();
+    expect(screen.queryByText(/sk-••••••••WXYZ/)).toBeNull();
     expect(screen.getAllByText('0.1.0').length).toBeGreaterThan(0);
     expect(screen.getByText('/data')).toBeTruthy();
     expect(screen.getByText(/磁盘已满/)).toBeTruthy();
-    expect(screen.getByText('已修改')).toBeTruthy();
   });
 });
 

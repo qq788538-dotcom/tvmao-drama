@@ -148,13 +148,14 @@ func promptPresetResolver(get func(string) (string, error)) func(string, map[str
 	}
 }
 
-// settingsUpstreamKey：桌面端没有「用户独立 key」，直接读全局 settings.upstream_api_key（spec M3）。
+// settingsUpstreamKey：桌面端没有「用户独立 key」，全局 Key = settings.upstream_api_key（spec M3）。
+// 只作为 models.ResolveUpstream 的回落值（generation / canvasscript 经 GlobalWithKey 接入）。
 type settingsUpstreamKey struct {
 	settings interface{ Get(string) (string, error) }
 }
 
 func (k settingsUpstreamKey) Resolve(int64) (string, error) {
-	return k.settings.Get("upstream_api_key")
+	return k.settings.Get(models.SettingUpstreamAPIKey)
 }
 
 // sqliteUserStorage 实现 generation.UserStorage：直接读写 users 表（P1a 0001 已建，本地用户配额 1 PiB）。

@@ -30,12 +30,25 @@ type ModelPatch struct {
 	Concurrency            *int                       `json:"concurrency,omitempty"`
 	CanvasMaxRetries       *int                       `json:"canvasMaxRetries,omitempty"`
 	CanvasRetryIntervalSec *int                       `json:"canvasRetryIntervalSec,omitempty"`
+	// Upstream 是每模型独立上游（本机字段，不属于内置字段白名单 / user_overrides）：
+	// 缺省 = 不改；null = 清空回落全局；{baseUrl, apiKey?} = 设置。原文保留，由 handler 严格解析。
+	Upstream json.RawMessage `json:"upstream,omitempty"`
 }
 
 // Empty 报告补丁里是否一个字段都没有。
 func (p ModelPatch) Empty() bool {
+	return p.BuiltinEmpty() && len(p.Upstream) == 0
+}
+
+// BuiltinEmpty 报告补丁里是否没有任何经内置编辑服务修改的字段（不看 Upstream）。
+func (p ModelPatch) BuiltinEmpty() bool {
 	return p.Enabled == nil && p.Hidden == nil && p.Name == nil && p.SortOrder == nil &&
 		len(p.UISchemaDefaults) == 0 && p.Concurrency == nil && p.CanvasMaxRetries == nil && p.CanvasRetryIntervalSec == nil
+}
+
+// ModelUpstreamStore 写模型的独立上游（models.SQLiteRepository 直接满足）。两项都为空 = 清空。
+type ModelUpstreamStore interface {
+	SetUpstream(id int64, baseURL, apiKey string) error
 }
 
 // ModelEditService 由 P2a 的编辑策略服务实现（经 settings_center_adapter.go 适配）。
@@ -53,20 +66,18 @@ type SettingEditService interface {
 	ModifiedSettings(ctx context.Context) ([]string, error)
 }
 
-// AgentModelItem 是 Agent 模型页的一行（spec A2：只能换 model_name）。
+// AgentModelItem 是一个 Agent 大模型（只读）。
 type AgentModelItem struct {
 	ID        int64  `json:"id"`
 	Role      string `json:"role"`
 	Alias     string `json:"alias"`
 	ModelName string `json:"modelName"`
-	Modified  bool   `json:"modified"`
 }
 
-// AgentModelService 由合并适配器基于 P5 的 agent.BackboneRepo 与 P2a 的种子默认值实现。
+// AgentModelService 列出 Agent 大模型，供模型中心标注“被 Agent 引用”。
+// Agent 模型写死为内置值（2026-10-07 用户要求），不再提供切换 / 恢复默认，设置页也没有 Agent 模型页。
 type AgentModelService interface {
 	ListAgentModels(ctx context.Context) ([]AgentModelItem, error)
-	SwitchAgentModel(ctx context.Context, id int64, modelName string) error
-	RestoreAgentModelDefault(ctx context.Context, id int64) error
 }
 
 // SettingsValidationError 是面向用户的校验错误，映射为 400。
@@ -82,13 +93,15 @@ var ErrSettingsNotFound = errors.New("settings: not found")
 
 // SettingsCenterDeps 是设置接口的依赖。DataDir、Version 为空时由 NewRouter 用 Deps 的同名字段补齐。
 type SettingsCenterDeps struct {
-	Settings    settings.Repository
-	Models      models.Repository
-	ModelEdit   ModelEditService
-	SettingEdit SettingEditService
-	Agent       AgentModelService
-	DataDir     string
-	Version     string
+	Settings settings.Repository
+	Models   models.Repository
+	// ModelUpstream 为 nil 时 PATCH 里的 upstream 字段一律 400。
+	ModelUpstream ModelUpstreamStore
+	ModelEdit     ModelEditService
+	SettingEdit   SettingEditService
+	Agent         AgentModelService
+	DataDir       string
+	Version       string
 }
 
 // settingsRouteRegistrars 由各 handler 文件在 init() 里追加；路径相对 /api/v1/settings。
@@ -124,6 +137,9 @@ func scWriteError(w nethttp.ResponseWriter, err error) {
 			body["field"] = ve.Field
 		}
 		writeJSON(w, nethttp.StatusBadRequest, body)
+	case errors.Is(err, models.ErrUpstreamUnpaired):
+		// M-7：handler 已先校验，正常走不到；别的调用方漏校验时也应是 400 而非 500。
+		writeJSON(w, nethttp.StatusBadRequest, map[string]any{"error": models.ErrUpstreamUnpaired.Error(), "field": "upstream"})
 	case errors.Is(err, ErrSettingsNotFound), errors.Is(err, models.ErrNotFound):
 		writeJSON(w, nethttp.StatusNotFound, map[string]any{"error": "要修改的项目不存在"})
 	default:

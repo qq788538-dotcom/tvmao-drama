@@ -16,6 +16,12 @@ describe('SettingsRoot', () => {
     fireEvent.click(screen.getByText('环境诊断'));
     expect(screen.getByText('诊断页内容')).toBeTruthy();
   });
+  it('导航只有通用、模型中心、环境诊断三项', () => {
+    expect(SECTIONS.map((s) => s.label)).toEqual(['通用', '模型中心', '环境诊断']);
+    const { container } = render(<SettingsRoot />);
+    const items = [...container.querySelectorAll('.ant-menu-item')].map((e) => e.textContent);
+    expect(items).toEqual(['通用', '模型中心', '环境诊断']);
+  });
   it('不出现任何导入导出或新建入口（spec M7、M8、A4）', () => {
     render(<SettingsRoot />);
     for (const banned of ['导入', '导出', '新建', '新增', 'Skill']) expect(screen.queryByText(new RegExp(banned))).toBeNull();

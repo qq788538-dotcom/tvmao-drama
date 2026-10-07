@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -250,6 +251,52 @@ func cloneInputs(inputs map[string]any) map[string]any {
 // 返回空串、原样透传，所以没被用户主动校验过的素材（例如项目管理里的角色配音
 // 音频）走的还是签名 URL。
 var seedanceAssetRefFields = []string{"images", "image", "videos", "video", "audios", "audio"}
+
+// ErrVerifiedAssetUpstreamMismatch：合规素材注册在全局上游账号下（library 的合规校验恒走
+// ResolveUpstream(nil, …)），目标模型走另一个账号的独立上游时上游里没有这个素材（审查 I-2）。
+var ErrVerifiedAssetUpstreamMismatch = errors.New("已校验素材注册在全局上游账号下，当前模型使用独立上游，无法引用。请改用全局上游，或在该账号下重新校验素材。")
+
+// applyRealPersonRefs 是 Submit / SubmitTx / prepareExecution 共用的 doubao-seedance* 素材处理：
+// 先把已校验的图换成 asset:// 引用，再确认目标模型的上游就是素材注册时的全局账号。
+// 模型走独立上游且指纹与全局不同、请求里又有 asset:// 引用时直接拒绝，不调上游——
+// 否则用户只会看到上游一条晦涩的 asset not found。
+// 长期方案（素材按上游指纹分账号注册）见审查报告待办。
+func (s *Service) applyRealPersonRefs(userID int64, model *models.ModelConfig, inputs map[string]any) (map[string]any, error) {
+	if s.realPerson == nil || model == nil || !strings.HasPrefix(model.ModelID, "doubao-seedance") {
+		return inputs, nil
+	}
+	out, err := s.replaceRealPersonImageRefs(userID, inputs)
+	if err != nil {
+		return nil, err
+	}
+	if !model.HasOwnUpstream() || !hasAssetRefs(out) {
+		return out, nil
+	}
+	ownBase, ownKey, _ := models.ResolveUpstream(model, nil)
+	globalKey, globalBase, gerr := s.upstreamCredentials(userID, nil)
+	if gerr != nil || models.UpstreamFingerprint(ownBase, ownKey) != models.UpstreamFingerprint(globalBase, globalKey) {
+		return nil, ErrVerifiedAssetUpstreamMismatch
+	}
+	return out, nil
+}
+
+// hasAssetRefs 报告 seedanceAssetRefFields 里是否有 asset:// 引用（刚替换的，或排队任务快照里已有的）。
+func hasAssetRefs(inputs map[string]any) bool {
+	found := false
+	for _, field := range seedanceAssetRefFields {
+		v, ok := inputs[field]
+		if !ok {
+			continue
+		}
+		_, _ = walkInputStrings(v, func(ref string) (string, error) {
+			if strings.HasPrefix(ref, "asset://") {
+				found = true
+			}
+			return ref, nil
+		})
+	}
+	return found
+}
 
 // replaceRealPersonImageRefs 把 seedanceAssetRefFields 里已通过校验的素材换成
 // asset:// 引用。替换必须发生在 signInputMediaReferences 之前——签名后再替换

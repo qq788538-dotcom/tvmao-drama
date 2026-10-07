@@ -116,7 +116,7 @@ func wireAgent(ctx context.Context, d agentWiringDeps) (*agentWiring, error) {
 
 // agentRunnerImpl 把 agent.Agent 循环适配到 apihttp.AgentRunner 接口。
 // planner ChatModel 每次 Run 都重新构建，目的是热更 backbone 配置（管理端改完即时
-// 生效）；apiKey 现在统一取 settings.upstream_api_key（全局 key，和 chat 一致）。
+// 生效）；上游地址与 apiKey 经 models.ResolveUpstream 解析（模型独立上游优先，否则全局）。
 // 当 skillID 非空时，runner 会加载对应的 skill（并自增其 use_count），
 // 让 agent 循环限定工具集 / 在 prompt 前拼上 addon。
 type agentRunnerImpl struct {
@@ -247,10 +247,13 @@ func (m agentModelResolver) ResolvePollMaxWait(id int64) (time.Duration, error) 
 	return maxWait, nil
 }
 
-// agentKeyResolver：上游 Key 统一取 settings.upstream_api_key（spec A2）。
+// agentKeyResolver：全局上游 Key = settings.upstream_api_key（spec A2）。只作为 models.ResolveUpstream
+// 的回落值使用（agent.buildModelForUser 经 GlobalWithKey 接入），模型单独配了上游时不会读它。
 type agentKeyResolver struct{ settings *settings.SQLiteRepository }
 
-func (k agentKeyResolver) Resolve(int64) (string, error) { return k.settings.Get("upstream_api_key") }
+func (k agentKeyResolver) Resolve(int64) (string, error) {
+	return k.settings.Get(models.SettingUpstreamAPIKey)
+}
 
 // agentIdentitySigner：P1b 的 MediaSigner 未接入时，URL 原样进出。
 type agentIdentitySigner struct{}

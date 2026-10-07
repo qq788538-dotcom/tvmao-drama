@@ -59,15 +59,12 @@ func (s *Service) prepareExecution(ctx context.Context, userID int64, modelID st
 
 	// doubao-seedance* 要求已通过合规校验的图以 asset://<id> 引用。这一步放在重建里
 	// 而不是只在提交时做，是因为校验状态可能在排队期间才刚变成 active。
-	if s.realPerson != nil && strings.HasPrefix(modelID, "doubao-seedance") {
-		replaced, err := s.replaceRealPersonImageRefs(userID, inputs)
-		if err != nil {
-			return nil, err
-		}
-		inputs = replaced
+	inputs, err = s.applyRealPersonRefs(userID, model, inputs)
+	if err != nil {
+		return nil, err
 	}
 
-	apiKey, baseDomain, err := s.upstreamCredentials(userID)
+	apiKey, baseDomain, err := s.upstreamCredentials(userID, model)
 	if err != nil {
 		return nil, err
 	}

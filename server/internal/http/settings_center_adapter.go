@@ -25,7 +25,7 @@ func mapPolicyErr(err error) error {
 		return nil
 	case errors.As(err, &ve):
 		return &SettingsValidationError{Field: ve.Path, Message: ve.Msg}
-	case errors.Is(err, builtin.ErrNotFound), errors.Is(err, agent.ErrBackboneNotFound):
+	case errors.Is(err, builtin.ErrNotFound):
 		return ErrSettingsNotFound
 	}
 	return err
@@ -359,15 +359,14 @@ func valueAt(doc any, segs []string) (any, bool) {
 	return cur, true
 }
 
-// backboneAgentModels 实现 Agent 模型页：只改 model_name（spec A2）。
+// backboneAgentModels 列出 Agent 大模型，只供模型中心的“被引用”标注使用。
+// Agent 模型写死为内置值（2026-10-07 用户要求）：没有切换和恢复默认。
 type backboneAgentModels struct {
-	list     func() ([]agent.BackboneModel, error)
-	sw       agent.BackboneModelSwitcher
-	defaults func(int64) (string, bool)
+	list func() ([]agent.BackboneModel, error)
 }
 
-func NewBackboneAgentModels(repo agent.BackboneRepo, sw agent.BackboneModelSwitcher, defaults func(int64) (string, bool)) AgentModelService {
-	return &backboneAgentModels{list: repo.List, sw: sw, defaults: defaults}
+func NewBackboneAgentModels(repo agent.BackboneRepo) AgentModelService {
+	return &backboneAgentModels{list: repo.List}
 }
 
 func (a *backboneAgentModels) ListAgentModels(context.Context) ([]AgentModelItem, error) {
@@ -377,21 +376,8 @@ func (a *backboneAgentModels) ListAgentModels(context.Context) ([]AgentModelItem
 	}
 	out := make([]AgentModelItem, 0, len(rows))
 	for _, r := range rows {
-		d, has := a.defaults(r.ID)
-		out = append(out, AgentModelItem{ID: r.ID, Role: r.Role, Alias: r.Alias, ModelName: r.ModelName, Modified: has && d != r.ModelName})
+		out = append(out, AgentModelItem{ID: r.ID, Role: r.Role, Alias: r.Alias, ModelName: r.ModelName})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
-}
-
-func (a *backboneAgentModels) SwitchAgentModel(_ context.Context, id int64, name string) error {
-	return mapPolicyErr(a.sw.SetModelName(id, name))
-}
-
-func (a *backboneAgentModels) RestoreAgentModelDefault(_ context.Context, id int64) error {
-	d, ok := a.defaults(id)
-	if !ok {
-		return ErrSettingsNotFound
-	}
-	return mapPolicyErr(a.sw.ResetModelName(id, d))
 }

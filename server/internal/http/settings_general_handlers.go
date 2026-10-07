@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/james/huabu_studio/apps/api/internal/datadir"
+	"github.com/james/huabu_studio/apps/api/internal/models"
 )
 
 const (
@@ -181,7 +182,8 @@ func maskAPIKey(k string) string {
 	return prefix + dots + string(r[len(r)-4:])
 }
 
-// normalizeBaseDomain 只接受 http/https 绝对地址，去掉末尾 "/"；允许路径前缀（反向代理场景）。
+// normalizeBaseDomain 只接受 http/https 绝对地址，去掉末尾 "/" 和 "/v1"（M-1：各调用路径
+// 自己会补 /v1，保存带 /v1 的地址会拼出 /v1/v1）；允许路径前缀（反向代理场景）。
 func normalizeBaseDomain(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -194,7 +196,7 @@ func normalizeBaseDomain(s string) (string, error) {
 	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return "", scValidation("baseDomain", "上游地址不能包含账号、查询参数或 #")
 	}
-	return u.Scheme + "://" + u.Host + strings.TrimRight(u.Path, "/"), nil
+	return models.NormalizeUpstreamBaseURL(u.Scheme + "://" + u.Host + u.Path), nil
 }
 
 // normalizeAPIKey 去首尾空白；只允许可见 ASCII，最长 512。

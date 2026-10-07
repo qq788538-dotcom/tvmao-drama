@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	nethttp "net/http"
 	"reflect"
@@ -30,22 +31,37 @@ type modelSettingsHandler struct{ d SettingsCenterDeps }
 
 // settingsModelView 是设置页看到的模型：可改字段 + 只读技术字段；计费相关字段不下发（spec X3）。
 type settingsModelView struct {
-	ID               int64           `json:"id"`
-	Type             string          `json:"type"`
-	Name             string          `json:"name"`
-	ModelID          string          `json:"modelId"`
-	Enabled          bool            `json:"enabled"`
-	Hidden           bool            `json:"hidden"`
-	SortOrder        int             `json:"sortOrder"`
-	BasePath         string          `json:"basePath"`
-	ImageInputFormat string          `json:"imageInputFormat"`
-	ImageRequestMode string          `json:"imageRequestMode"`
-	RequestTemplate  json.RawMessage `json:"requestTemplate"`
-	PollingTemplate  json.RawMessage `json:"pollingTemplate"`
-	UISchema         json.RawMessage `json:"uiSchema"`
-	GenControl       json.RawMessage `json:"genControl"`
-	ModifiedFields   []string        `json:"modifiedFields"`
-	References       []string        `json:"references"`
+	ID               int64             `json:"id"`
+	Type             string            `json:"type"`
+	Name             string            `json:"name"`
+	ModelID          string            `json:"modelId"`
+	Enabled          bool              `json:"enabled"`
+	Hidden           bool              `json:"hidden"`
+	SortOrder        int               `json:"sortOrder"`
+	BasePath         string            `json:"basePath"`
+	ImageInputFormat string            `json:"imageInputFormat"`
+	ImageRequestMode string            `json:"imageRequestMode"`
+	RequestTemplate  json.RawMessage   `json:"requestTemplate"`
+	PollingTemplate  json.RawMessage   `json:"pollingTemplate"`
+	UISchema         json.RawMessage   `json:"uiSchema"`
+	GenControl       json.RawMessage   `json:"genControl"`
+	ModifiedFields   []string          `json:"modifiedFields"`
+	References       []string          `json:"references"`
+	Upstream         modelUpstreamView `json:"upstream"`
+}
+
+// modelUpstreamView 是每模型独立上游的展示形态：Key 只给掩码（规则同全局），明文永不出 sidecar。
+type modelUpstreamView struct {
+	Configured   bool   `json:"configured"`
+	BaseURL      string `json:"baseUrl"`
+	APIKeyMasked string `json:"apiKeyMasked"`
+}
+
+func toUpstreamView(m models.ModelConfig) modelUpstreamView {
+	if !m.HasOwnUpstream() {
+		return modelUpstreamView{}
+	}
+	return modelUpstreamView{Configured: true, BaseURL: m.UpstreamBaseURL, APIKeyMasked: maskAPIKey(m.UpstreamAPIKey)}
 }
 
 func toModelView(m models.ModelConfig, modified []string, refs []string) settingsModelView {
@@ -61,6 +77,7 @@ func toModelView(m models.ModelConfig, modified []string, refs []string) setting
 		RequestTemplate: nonEmptyRaw(m.RequestTemplate), PollingTemplate: nonEmptyRaw(m.PollingTemplate),
 		UISchema: nonEmptyRaw(m.UISchema), GenControl: nonEmptyRaw(m.GenControlRaw),
 		ModifiedFields: modified, References: refs,
+		Upstream: toUpstreamView(m),
 	}
 }
 
@@ -171,6 +188,15 @@ func (h *modelSettingsHandler) patch(w nethttp.ResponseWriter, r *nethttp.Reques
 		scWriteError(w, err)
 		return
 	}
+	upstream, err := resolveUpstreamPatch(m, p.Upstream)
+	if err != nil {
+		scWriteError(w, err)
+		return
+	}
+	if upstream != nil && h.d.ModelUpstream == nil {
+		scWriteError(w, scValidation("upstream", "当前版本不支持单独配置上游"))
+		return
+	}
 	if p.Enabled != nil && !*p.Enabled && m.Enabled {
 		refs, err := modelReferences(r.Context(), h.d)
 		if err != nil {
@@ -182,9 +208,17 @@ func (h *modelSettingsHandler) patch(w nethttp.ResponseWriter, r *nethttp.Reques
 			return
 		}
 	}
-	if err := h.d.ModelEdit.UpdateModel(r.Context(), id, p); err != nil {
-		scWriteError(w, err)
-		return
+	if !p.BuiltinEmpty() {
+		if err := h.d.ModelEdit.UpdateModel(r.Context(), id, p); err != nil {
+			scWriteError(w, err)
+			return
+		}
+	}
+	if upstream != nil {
+		if err := h.d.ModelUpstream.SetUpstream(id, upstream.baseURL, upstream.apiKey); err != nil {
+			scWriteError(w, err)
+			return
+		}
 	}
 	v, err := h.one(r, id)
 	if err != nil {
@@ -285,4 +319,72 @@ func validateUISchemaDefaults(uiSchema json.RawMessage, defaults map[string]json
 		}
 	}
 	return nil
+}
+
+// errUpstreamUnpaired 是“单独配置上游时两项必填”的用户可见错误（文案见契约）。
+const errUpstreamUnpairedMsg = "单独配置上游时，地址和 API Key 都必须填写"
+
+// upstreamWrite 是解析后要落库的独立上游；两项都为空表示清空。
+type upstreamWrite struct{ baseURL, apiKey string }
+
+// resolveUpstreamPatch 解析 PATCH 里的 upstream 字段（契约见 docs/specs 实施期裁定 2026-10-07）：
+//   - 缺省：返回 nil，不改动；
+//   - null：清空，恢复走全局；
+//   - {baseUrl, apiKey?}：baseUrl 按全局地址规则校验；apiKey 缺省或空串时沿用原 Key；
+//     最终两项都必须非空，否则 400。
+//
+// 严格解码（未知字段 400）。错误信息里绝不带 Key 内容。
+func resolveUpstreamPatch(m *models.ModelConfig, raw json.RawMessage) (*upstreamWrite, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	if strings.TrimSpace(string(raw)) == "null" {
+		return &upstreamWrite{}, nil
+	}
+	var body struct {
+		BaseURL *string `json:"baseUrl"`
+		APIKey  *string `json:"apiKey"`
+	}
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		const unknown = "json: unknown field "
+		if msg := err.Error(); strings.HasPrefix(msg, unknown) {
+			f := strings.Trim(strings.TrimPrefix(msg, unknown), `"`)
+			return nil, scValidation("upstream."+f, "字段「upstream."+f+"」不允许修改")
+		}
+		return nil, scValidation("upstream", "upstream 格式不正确")
+	}
+	base := ""
+	if body.BaseURL != nil {
+		base = strings.TrimSpace(*body.BaseURL)
+	}
+	key := ""
+	if body.APIKey != nil {
+		key = strings.TrimSpace(*body.APIKey)
+	}
+	if key == "" {
+		key = m.UpstreamAPIKey // 只改地址：保留原 Key
+	}
+	if base == "" || key == "" {
+		return nil, scValidation("upstream", errUpstreamUnpairedMsg)
+	}
+	nb, err := normalizeBaseDomain(base)
+	if err != nil {
+		return nil, remapField(err, "upstream.baseUrl")
+	}
+	nk, err := normalizeAPIKey(key)
+	if err != nil {
+		return nil, remapField(err, "upstream.apiKey")
+	}
+	return &upstreamWrite{baseURL: nb, apiKey: nk}, nil
+}
+
+// remapField 把复用的全局校验错误改挂到独立上游的字段名上。
+func remapField(err error, field string) error {
+	var ve *SettingsValidationError
+	if errors.As(err, &ve) {
+		return scValidation(field, ve.Message)
+	}
+	return err
 }

@@ -132,7 +132,7 @@ type modelCatalog interface {
 	GetByModelID(modelID string) (*models.ModelConfig, error)
 }
 
-// keyResolver 解析上游 Key；桌面端由装配处读 settings.upstream_api_key。
+// keyResolver 解析全局上游 Key（模型未单独配置上游时用）；桌面端由装配处读 settings.upstream_api_key。
 type keyResolver interface {
 	Resolve(userID int64) (string, error)
 }
@@ -397,13 +397,28 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 		fail("风格对应的 skill 不可用", err.Error())
 		return
 	}
-	baseDomain, err := s.settings.Get("base_domain")
-	if err != nil || strings.TrimSpace(baseDomain) == "" {
+	// 上游地址与 Key 经 models.ResolveUpstream 解析：任务记录的模型单独配了上游就用模型的，
+	// 否则回落全局（Key 走 keyResolver）。模型行查不到时同样回落全局。
+	// 只有 ErrNotFound 才回落全局；数据库瞬时错误直接失败重试，不把剧本发到可能是另一个
+	// 计费账号的全局上游（审查 M-5）。
+	var mcfg *models.ModelConfig
+	if m, merr := s.models.GetByModelID(t.Model); merr == nil {
+		mcfg = m
+	} else if !errors.Is(merr, models.ErrNotFound) {
+		fail("读取模型配置失败，请稍后重试", merr.Error())
+		return
+	}
+	global := models.GlobalWithKey(s.settings, func() (string, error) { return s.keys.Resolve(t.UserID) })
+	baseDomain, sk, err := models.ResolveUpstream(mcfg, global)
+	if err != nil {
+		fail("读取上游配置失败，请稍后重试", err.Error())
+		return
+	}
+	if strings.TrimSpace(baseDomain) == "" {
 		fail("服务未配置上游地址，请在设置中配置", "base_domain 未配置")
 		return
 	}
-	sk, err := s.keys.Resolve(t.UserID)
-	if err != nil || strings.TrimSpace(sk) == "" {
+	if strings.TrimSpace(sk) == "" {
 		fail("上游 API Key 未配置，请在设置中配置", "上游 API Key 未配置")
 		return
 	}
@@ -411,7 +426,7 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	input := fmt.Sprintf("使用skill %s\n\nDURATION_SEC=%d\n\n内容：\n%s", t.SkillName, t.DurationSec, t.Script)
 	result, err := s.skills.Run(ctx, skillruntime.RunRequest{
 		Skill:      snapshot,
-		Model:      s.skillModelConfig(baseDomain, sk, t.Model),
+		Model:      skillModelConfig(baseDomain, sk, t.Model, mcfg),
 		Input:      input,
 		SourceText: t.Script,
 	})
@@ -429,10 +444,10 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	}
 }
 
-// skillModelConfig 把模型中心那行的请求模板整份透传给上游（与参考仓一致）。
-func (s *Service) skillModelConfig(baseDomain, sk, modelName string) skillruntime.ModelConfig {
+// skillModelConfig 把模型中心那行的请求模板整份透传给上游（与参考仓一致）。m 为 nil（模型行查不到）时不透传。
+func skillModelConfig(baseDomain, sk, modelName string, m *models.ModelConfig) skillruntime.ModelConfig {
 	var template json.RawMessage
-	if m, err := s.models.GetByModelID(modelName); err == nil && m != nil {
+	if m != nil {
 		template = m.RequestTemplate
 	}
 	return skillruntime.ModelConfig{

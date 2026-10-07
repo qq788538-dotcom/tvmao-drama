@@ -1,8 +1,11 @@
 package builtin
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"log"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -173,61 +176,6 @@ func lightSetting(t *testing.T, models string, template string, presets string) 
 	return seedSettingLine(t, SettingCanvasLightControl, `{"models":`+models+`,"template":"`+template+`","presets":`+presets+`}`)
 }
 
-func TestApplySettingOverrideKeptAndStructureUpdated(t *testing.T) {
-	conn := dbtest.Open(t)
-	img := []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil)}
-	mustApply(t, conn, mustSeed(t, img, []string{
-		lightSetting(t, `["img-a"]`, "旧 {light}", `[{"key":"p1","name":"P1","prompt":"内置 p1"}]`),
-	}))
-	simulateUserEdit(t, conn, `UPDATE settings SET value = ?, user_overrides = '["models"]' WHERE "key" = ?`,
-		`{"models":["img-b","img-a"],"presets":[{"key":"p1","name":"P1","prompt":"内置 p1"}],"template":"旧 {light}"}`, SettingCanvasLightControl)
-	mustApply(t, conn, mustSeed(t, img, []string{
-		lightSetting(t, `["img-a"]`, "新 {light}", `[{"key":"p1","name":"P1 新名","prompt":"内置 p1 v2"},{"key":"p2","name":"P2","prompt":"p2"}]`),
-	}))
-	got := settingByKey(t, conn, SettingCanvasLightControl)
-	// 用户改过的 models 保留；模板、预设（含提示词）跟随新版；键序跟新版种子原文（P2a M8）。
-	want := `{"models":["img-b","img-a"],"template":"新 {light}","presets":[{"key":"p1","name":"P1 新名","prompt":"内置 p1 v2"},{"key":"p2","name":"P2","prompt":"p2"}]}`
-	if got.Value != want || !reflect.DeepEqual(got.Overrides, []string{"models"}) {
-		t.Fatalf("got  %s %v\nwant %s", got.Value, got.Overrides, want)
-	}
-}
-
-// 旧版本记下的提示词覆盖在新规则下已不可编辑 → 升级时丢弃，提示词回到新版内置值。
-func TestApplyDropsSettingPromptOverrideNoLongerEditable(t *testing.T) {
-	conn := dbtest.Open(t)
-	img := []string{seedModelLine(t, 1, "img-a", "image", nil)}
-	mustApply(t, conn, mustSeed(t, img, []string{
-		lightSetting(t, `["img-a"]`, "旧 {light}", `[{"key":"p1","name":"P1","prompt":"内置 p1"}]`),
-	}))
-	simulateUserEdit(t, conn, `UPDATE settings SET value = ?, user_overrides = '["presets[p1].prompt","template"]' WHERE "key" = ?`,
-		`{"models":["img-a"],"presets":[{"key":"p1","name":"P1","prompt":"我的 p1"}],"template":"我的 {light}"}`, SettingCanvasLightControl)
-	s2 := mustSeed(t, img, []string{
-		lightSetting(t, `["img-a"]`, "新 {light}", `[{"key":"p1","name":"P1","prompt":"内置 p1 v2"}]`),
-	})
-	mustApply(t, conn, s2)
-	got := settingByKey(t, conn, SettingCanvasLightControl)
-	want := `{"models":["img-a"],"template":"新 {light}","presets":[{"key":"p1","name":"P1","prompt":"内置 p1 v2"}]}`
-	if got.Value != want || got.Overrides != nil {
-		t.Fatalf("got  %s %v\nwant %s", got.Value, got.Overrides, want)
-	}
-}
-
-// Review Focus 2：用户选的候选模型在新版里被删了 → 丢弃该覆盖，用新版候选列表。
-func TestApplyDropsSettingOverrideReferencingRemovedModel(t *testing.T) {
-	conn := dbtest.Open(t)
-	v1 := mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil)},
-		[]string{lightSetting(t, `["img-a"]`, "{light}", `[]`)})
-	mustApply(t, conn, v1)
-	simulateUserEdit(t, conn, `UPDATE settings SET value = '{"models":["img-b"],"presets":[],"template":"{light}"}', user_overrides = '["models"]' WHERE "key" = ?`, SettingCanvasLightControl)
-	v2 := mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil)},
-		[]string{lightSetting(t, `["img-a"]`, "{light}", `[]`)})
-	mustApply(t, conn, v2)
-	got := settingByKey(t, conn, SettingCanvasLightControl)
-	if seedV, _ := v2.Setting(SettingCanvasLightControl); got.Value != seedV.Value || got.Overrides != nil {
-		t.Fatalf("got %s %v", got.Value, got.Overrides)
-	}
-}
-
 // Review Focus 4：合并中途失败 → 整体回滚，哈希不写入，下次启动重试。
 func TestApplyRollsBackOnFailure(t *testing.T) {
 	conn := dbtest.Open(t)
@@ -264,5 +212,86 @@ func TestApplyLeavesNonSeedSettingsAndKeepsBaseDomainOverride(t *testing.T) {
 	}
 	if got := settingByKey(t, conn, SettingBaseDomain); got.Value != "https://mine.example" {
 		t.Fatalf("base_domain=%q，应保留用户值", got.Value)
+	}
+}
+
+// 每模型独立上游（upstream_base_url / upstream_api_key）是本机用户数据：升级内置数据时原样保留，
+// 无论该模型有没有 user_overrides、主键是否被种子改号。
+func modelUpstream(t *testing.T, conn *sql.DB, modelID string) (string, string) {
+	t.Helper()
+	var base, key string
+	if err := conn.QueryRow(`SELECT upstream_base_url, upstream_api_key FROM model_configs WHERE model_id = ?`, modelID).Scan(&base, &key); err != nil {
+		t.Fatalf("%s: %v", modelID, err)
+	}
+	return base, key
+}
+
+func TestApplyUpgradeKeepsModelUpstream(t *testing.T) {
+	conn := dbtest.Open(t)
+	mustApply(t, conn, mustSeed(t, []string{
+		seedModelLine(t, 1, "img-a", "image", map[string]any{"name": "A1"}),
+		seedModelLine(t, 2, "img-b", "image", nil),
+		seedModelLine(t, 3, "img-c", "image", nil),
+	}, nil))
+	// img-a：只配独立上游，没有其他用户修改；img-b：独立上游 + 字段覆盖。
+	simulateUserEdit(t, conn, `UPDATE model_configs SET upstream_base_url = 'https://a.example', upstream_api_key = 'sk-aaaaaaaaaaaa' WHERE model_id = 'img-a'`)
+	simulateUserEdit(t, conn, `UPDATE model_configs SET name = '我的 B', user_overrides = '["name"]',
+		upstream_base_url = 'https://b.example/v', upstream_api_key = 'sk-bbbbbbbbbbbb' WHERE model_id = 'img-b'`)
+	// 升级：img-a 改名（跟随种子）；img-b 与 img-c 互换主键（走改主键路径）。
+	mustApply(t, conn, mustSeed(t, []string{
+		seedModelLine(t, 1, "img-a", "image", map[string]any{"name": "A2", "base_path": "/v2/images"}),
+		seedModelLine(t, 3, "img-b", "image", nil),
+		seedModelLine(t, 2, "img-c", "image", nil),
+	}, nil))
+	if b, k := modelUpstream(t, conn, "img-a"); b != "https://a.example" || k != "sk-aaaaaaaaaaaa" {
+		t.Fatalf("img-a 独立上游被改动: %q %q", b, k)
+	}
+	if r := modelByID(t, conn, "img-a"); r.Parts.Name != "A2" || r.BasePath != "/v2/images" {
+		t.Fatalf("img-a 其余字段应跟随新版: %+v", r)
+	}
+	if b, k := modelUpstream(t, conn, "img-b"); b != "https://b.example/v" || k != "sk-bbbbbbbbbbbb" {
+		t.Fatalf("img-b 改主键后独立上游丢失: %q %q", b, k)
+	}
+	if r := modelByID(t, conn, "img-b"); r.ID != 3 || r.Parts.Name != "我的 B" {
+		t.Fatalf("img-b: %+v", r)
+	}
+	if b, k := modelUpstream(t, conn, "img-c"); b != "" || k != "" {
+		t.Fatalf("img-c 不应串到别的模型的上游: %q %q", b, k)
+	}
+}
+
+// 种子删掉的模型，独立上游随行删除；之后同 model_id 重新加回来也是干净的。
+func TestApplyRemovedModelDropsUpstream(t *testing.T) {
+	conn := dbtest.Open(t)
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil)}, nil))
+	simulateUserEdit(t, conn, `UPDATE model_configs SET upstream_base_url = 'https://b.example', upstream_api_key = 'sk-bbbbbbbbbbbb' WHERE model_id = 'img-b'`)
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil)}, nil))
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", map[string]any{"name": "回来"})}, nil))
+	if b, k := modelUpstream(t, conn, "img-b"); b != "" || k != "" {
+		t.Fatalf("重新加入的模型不应带旧上游: %q %q", b, k)
+	}
+}
+
+// 不变量：两列要么同时为空，要么同时非空（库层 CHECK 兜底）。
+func TestModelUpstreamColumnsMustBePaired(t *testing.T) {
+	conn := dbtest.Open(t)
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil)}, nil))
+	if _, err := conn.Exec(`UPDATE model_configs SET upstream_base_url = 'https://a.example' WHERE model_id = 'img-a'`); err == nil {
+		t.Fatal("只写地址不写 Key 应被 CHECK 拒绝")
+	}
+}
+
+// M-6：种子删掉带独立上游的模型时打一条日志，方便排查"升级后独立上游标签消失"。Key 不进日志。
+func TestApplyRemovedModelWithUpstreamLogs(t *testing.T) {
+	conn := dbtest.Open(t)
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil)}, nil))
+	simulateUserEdit(t, conn, `UPDATE model_configs SET upstream_base_url = 'https://b.example', upstream_api_key = 'sk-bbbbbbbbbbbb' WHERE model_id = 'img-b'`)
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil)}, nil))
+	out := buf.String()
+	if !strings.Contains(out, "img-b") || !strings.Contains(out, "独立上游") || strings.Contains(out, "sk-bbbb") {
+		t.Fatalf("日志不对: %s", out)
 	}
 }

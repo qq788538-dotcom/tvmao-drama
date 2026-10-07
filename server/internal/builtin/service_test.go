@@ -95,35 +95,23 @@ func TestServiceRestoreModelDefault(t *testing.T) {
 	}
 }
 
+// 写死的配置：任何字段都写不进去，库不变。
 func TestServiceUpdateSetting(t *testing.T) {
-	svc, _ := svcFixture(t, svcSeedV1(t))
+	svc, conn := svcFixture(t, svcSeedV1(t))
 	ctx := context.Background()
-	st, err := svc.UpdateSetting(ctx, SettingCanvasLightControl, edits("models", `["img-b","img-a"]`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(st.Value, `"prompt":"内置"`) || !strings.Contains(st.Value, `"models":["img-b","img-a"]`) {
-		t.Fatalf("value=%s", st.Value)
-	}
-	if !reflect.DeepEqual(st.Overrides, []string{"models"}) {
-		t.Fatalf("overrides=%v", st.Overrides)
-	}
-	for name, e := range map[string]map[string]string{
-		"不存在的模型": {"models": `["nope"]`},
-		"文本模型":   {"models": `["txt-a"]`},
-		"结构字段":   {"presets[p1].direction": `"top"`},
-		"新增预设":   {"presets[p9].prompt": `"x"`},
-		"预设提示词":  {"presets[p1].prompt": `"我的提示词"`},
-		"模板":     {"template": `"我的 {light}"`},
+	before := settingByKey(t, conn, SettingCanvasLightControl)
+	for name, kv := range map[string][]string{
+		"提示词":  {"presets[p1].prompt", `"我的提示词"`},
+		"模型列表": {"models", `["img-b","img-a"]`},
+		"结构字段": {"presets[p1].direction", `"top"`},
 	} {
-		raw := []string{}
-		for k, v := range e {
-			raw = append(raw, k, v)
-		}
 		var ve *ValidationError
-		if _, err := svc.UpdateSetting(ctx, SettingCanvasLightControl, edits(raw...)); !errors.As(err, &ve) {
+		if _, err := svc.UpdateSetting(ctx, SettingCanvasLightControl, edits(kv...)); !errors.As(err, &ve) {
 			t.Errorf("%s：err=%v，want ValidationError", name, err)
 		}
+	}
+	if after := settingByKey(t, conn, SettingCanvasLightControl); after.Value != before.Value || after.Overrides != nil {
+		t.Fatalf("库被改动：%+v", after)
 	}
 }
 

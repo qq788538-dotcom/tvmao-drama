@@ -7,31 +7,19 @@ import { applySettingsQueryDefaults } from './invalidate';
 import { settingsTheme } from './theme';
 import { GeneralPage } from './pages/GeneralPage';
 import { ModelCenterPage } from './pages/ModelCenterPage';
-import { AgentModelsPage } from './pages/AgentModelsPage';
-import { PostprocessPage } from './pages/PostprocessPage';
-import { DrawingModelsPage } from './pages/DrawingModelsPage';
-import { ScriptConfigPage } from './pages/ScriptConfigPage';
 import { DiagPage } from '@/diag/DiagPage';
 
-export type SectionKey = 'general' | 'models' | 'agent' | 'postprocess' | 'drawing' | 'script' | 'diag';
+export type SectionKey = 'general' | 'models' | 'diag';
 
 export const SECTIONS: { key: SectionKey; label: string; group: string }[] = [
   { key: 'general', label: '通用', group: '基础' },
   { key: 'models', label: '模型中心', group: '模型' },
-  { key: 'agent', label: 'Agent 模型', group: '模型' },
-  { key: 'postprocess', label: '视频后处理', group: '画布功能' },
-  { key: 'drawing', label: '绘图模型', group: '画布功能' },
-  { key: 'script', label: '剧本生成分镜', group: '画布功能' },
   { key: 'diag', label: '环境诊断', group: '其他' },
 ];
 
 const PAGES: Record<SectionKey, () => ReactNode> = {
   general: () => <GeneralPage />,
   models: () => <ModelCenterPage />,
-  agent: () => <AgentModelsPage />,
-  postprocess: () => <PostprocessPage />,
-  drawing: () => <DrawingModelsPage />,
-  script: () => <ScriptConfigPage />,
   diag: () => <DiagPage embedded />,
 };
 

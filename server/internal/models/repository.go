@@ -29,6 +29,10 @@ type ModelConfig struct {
 	GenControlRaw    json.RawMessage `json:"genControl,omitempty"` // {concurrency,modules{<模块>{maxRetries,retryIntervalSec}}}，生成并发+重试统一配置；解析见 GenConcurrency()/GenRetry()
 	CreatedAt        time.Time       `json:"createdAt"`
 	UpdatedAt        time.Time       `json:"updatedAt"`
+	// UpstreamBaseURL / UpstreamAPIKey 是每模型独立上游（0070）：两项同时非空才生效，否则走全局。
+	// 只经 ResolveUpstream 使用；json:"-" 保证任何直接序列化 ModelConfig 的接口都不会带出 Key 明文。
+	UpstreamBaseURL string `json:"-"`
+	UpstreamAPIKey  string `json:"-"`
 }
 
 // DefaultGenConcurrency 是 gen_control.concurrency 缺失/为 0 时的兜底并发额度。
@@ -216,7 +220,7 @@ func (r *SQLiteRepository) Delete(id int64) error {
 }
 
 func (r *SQLiteRepository) List(onlyVisible bool) ([]ModelConfig, error) {
-	q := `SELECT id, type, name, model_id, base_path, admin_note, price_note, image_input_format, image_request_mode, enabled, hidden, sort_order, request_template, polling_template, ui_schema, billing_config, gen_control, created_at, updated_at FROM model_configs`
+	q := `SELECT id, type, name, model_id, base_path, admin_note, price_note, image_input_format, image_request_mode, enabled, hidden, sort_order, request_template, polling_template, ui_schema, billing_config, gen_control, created_at, updated_at, upstream_base_url, upstream_api_key FROM model_configs`
 	if onlyVisible {
 		q += ` WHERE enabled = 1 AND hidden = 0`
 	}
@@ -251,7 +255,7 @@ func (r *SQLiteRepository) FreezeEstimateForModel(slug string) (int64, error) {
 }
 
 func (r *SQLiteRepository) GetByModelID(modelID string) (*ModelConfig, error) {
-	row := r.db.QueryRow(`SELECT id, type, name, model_id, base_path, admin_note, price_note, image_input_format, image_request_mode, enabled, hidden, sort_order, request_template, polling_template, ui_schema, billing_config, gen_control, created_at, updated_at FROM model_configs WHERE model_id = ?`, modelID)
+	row := r.db.QueryRow(`SELECT id, type, name, model_id, base_path, admin_note, price_note, image_input_format, image_request_mode, enabled, hidden, sort_order, request_template, polling_template, ui_schema, billing_config, gen_control, created_at, updated_at, upstream_base_url, upstream_api_key FROM model_configs WHERE model_id = ?`, modelID)
 	m, err := scanModelConfig(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -266,7 +270,7 @@ func (r *SQLiteRepository) GetByModelID(modelID string) (*ModelConfig, error) {
 // agent_tools.source_model_id（指向 model_configs.id 的外键）映射回
 // generation.Service 路由所用的 model_id slug。
 func (r *SQLiteRepository) GetByID(id int64) (*ModelConfig, error) {
-	row := r.db.QueryRow(`SELECT id, type, name, model_id, base_path, admin_note, price_note, image_input_format, image_request_mode, enabled, hidden, sort_order, request_template, polling_template, ui_schema, billing_config, gen_control, created_at, updated_at FROM model_configs WHERE id = ?`, id)
+	row := r.db.QueryRow(`SELECT id, type, name, model_id, base_path, admin_note, price_note, image_input_format, image_request_mode, enabled, hidden, sort_order, request_template, polling_template, ui_schema, billing_config, gen_control, created_at, updated_at, upstream_base_url, upstream_api_key FROM model_configs WHERE id = ?`, id)
 	m, err := scanModelConfig(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -285,7 +289,7 @@ func scanModelConfig(scanner modelConfigScanner) (*ModelConfig, error) {
 	var m ModelConfig
 	var req []byte
 	var poll, uiSchema, billingCfg, genCtrl sql.NullString
-	if err := scanner.Scan(&m.ID, &m.Type, &m.Name, &m.ModelID, &m.BasePath, &m.AdminNote, &m.PriceNote, &m.ImageInputFormat, &m.ImageRequestMode, &m.Enabled, &m.Hidden, &m.SortOrder, &req, &poll, &uiSchema, &billingCfg, &genCtrl, &m.CreatedAt, &m.UpdatedAt); err != nil {
+	if err := scanner.Scan(&m.ID, &m.Type, &m.Name, &m.ModelID, &m.BasePath, &m.AdminNote, &m.PriceNote, &m.ImageInputFormat, &m.ImageRequestMode, &m.Enabled, &m.Hidden, &m.SortOrder, &req, &poll, &uiSchema, &billingCfg, &genCtrl, &m.CreatedAt, &m.UpdatedAt, &m.UpstreamBaseURL, &m.UpstreamAPIKey); err != nil {
 		return nil, err
 	}
 	m.RequestTemplate = json.RawMessage(req)

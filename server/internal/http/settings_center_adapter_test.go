@@ -3,7 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -95,35 +95,18 @@ func (m *memBackbone) List() ([]agent.BackboneModel, error) {
 	}
 	return out, nil
 }
-func (m *memBackbone) SetModelName(id int64, name string) error {
-	r, ok := m.rows[id]
-	if !ok {
-		return agent.ErrBackboneNotFound
-	}
-	r.ModelName = name
-	m.rows[id] = r
-	return nil
-}
-func (m *memBackbone) ResetModelName(id int64, def string) error { return m.SetModelName(id, def) }
-
 func TestBackboneAgentModelsAdapter(t *testing.T) {
-	mem := &memBackbone{rows: map[int64]agent.BackboneModel{1: {ID: 1, Role: "planner", Alias: "主Agent", ModelName: "canvas-agent-gpt-5.5", Temperature: 0.3}}}
-	a := &backboneAgentModels{list: mem.List, sw: mem, defaults: func(id int64) (string, bool) { return "canvas-agent-gpt-5.5", id == 1 }}
-	ctx := context.Background()
-	if err := a.SwitchAgentModel(ctx, 1, "gpt-5.5"); err != nil {
+	mem := &memBackbone{rows: map[int64]agent.BackboneModel{
+		2: {ID: 2, Role: "executor", Alias: "子Agent", ModelName: "b"},
+		1: {ID: 1, Role: "planner", Alias: "主Agent", ModelName: "a"},
+	}}
+	a := &backboneAgentModels{list: mem.List}
+	items, err := a.ListAgentModels(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
-	items, _ := a.ListAgentModels(ctx)
-	if items[0].ModelName != "gpt-5.5" || !items[0].Modified || mem.rows[1].Temperature != 0.3 {
-		t.Fatalf("%+v %+v", items, mem.rows[1])
-	}
-	if err := a.RestoreAgentModelDefault(ctx, 1); err != nil || mem.rows[1].ModelName != "canvas-agent-gpt-5.5" {
-		t.Fatalf("恢复默认失败: %v", err)
-	}
-	if err := a.SwitchAgentModel(ctx, 9, "x"); !errors.Is(err, ErrSettingsNotFound) {
-		t.Fatalf("应映射为 ErrSettingsNotFound: %v", err)
-	}
-	if err := a.RestoreAgentModelDefault(ctx, 9); !errors.Is(err, ErrSettingsNotFound) {
-		t.Fatalf("无默认值应 ErrSettingsNotFound: %v", err)
+	want := []AgentModelItem{{ID: 1, Role: "planner", Alias: "主Agent", ModelName: "a"}, {ID: 2, Role: "executor", Alias: "子Agent", ModelName: "b"}}
+	if !reflect.DeepEqual(items, want) {
+		t.Fatalf("%+v", items)
 	}
 }

@@ -23,6 +23,10 @@ type querier interface {
 }
 
 // modelRow 是 model_configs 的一行（不含时间戳）。
+//
+// 刻意不含 upstream_base_url / upstream_api_key（每模型独立上游，0070）：那两列是本机用户数据，
+// 不进种子。本文件的 insert/update/move 都不列出它们，所以合并、改主键、恢复默认时原值保留；
+// 种子删掉模型时随行删除。新增写列的 SQL 时不得把它们加进来。
 type modelRow struct {
 	ID               int64
 	ModelID          string

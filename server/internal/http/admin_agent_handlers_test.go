@@ -20,7 +20,7 @@ func (f *fakeBackbones) Delete(int64) error                        { return erro
 func (f *fakeBackbones) Get(id int64) (*agent.BackboneModel, error) {
 	m, ok := f.rows[id]
 	if !ok {
-		return nil, agent.ErrBackboneNotFound
+		return nil, errors.New("not found")
 	}
 	return &m, nil
 }
