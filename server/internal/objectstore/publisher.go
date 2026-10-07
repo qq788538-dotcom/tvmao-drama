@@ -76,24 +76,41 @@ func (p *Publisher) Publish(ctx context.Context, mediaKey string) (string, error
 		return "", ErrNotConfigured
 	}
 	p.mu.Lock()
-	if cl, ok := p.inflight[mediaKey]; ok {
-		p.mu.Unlock()
-		<-cl.done
-		return cl.url, cl.err
+	cl, ok := p.inflight[mediaKey]
+	if !ok {
+		cl = &call{done: make(chan struct{})}
+		p.inflight[mediaKey] = cl
+		// 共享上传脱离任何单个调用方的 ctx：某个调用方放弃不会取消其他等待者。
+		go p.run(context.WithoutCancel(ctx), cl, c, mediaKey)
 	}
-	cl := &call{done: make(chan struct{})}
-	p.inflight[mediaKey] = cl
 	p.mu.Unlock()
 
+	// 所有调用方（含发起者）都只等结果或自己的 ctx。
+	select {
+	case <-cl.done:
+		return cl.url, cl.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// run 执行共享上传。defer 顺序：先写结果（含 panic 转错误）、再摘除 inflight、最后 close(done)，
+// 保证等待者看到的结果已就绪且该 key 不会被永久卡死。
+func (p *Publisher) run(ctx context.Context, cl *call, c Config, mediaKey string) {
+	defer func() {
+		if r := recover(); r != nil {
+			// panic 内容不透出细节，避免泄露密钥
+			cl.url, cl.err = "", fmt.Errorf("上传到对象存储失败：内部错误 %v", r)
+		}
+		p.mu.Lock()
+		delete(p.inflight, mediaKey)
+		p.mu.Unlock()
+		close(cl.done)
+	}()
 	cl.url, cl.err = p.publish(ctx, c, mediaKey)
 	if cl.err != nil {
 		cl.err = fmt.Errorf("上传到对象存储失败：%s", redact(cl.err.Error(), c))
 	}
-	close(cl.done)
-	p.mu.Lock()
-	delete(p.inflight, mediaKey)
-	p.mu.Unlock()
-	return cl.url, cl.err
 }
 
 func (p *Publisher) publish(ctx context.Context, c Config, mediaKey string) (string, error) {
