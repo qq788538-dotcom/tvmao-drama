@@ -12,6 +12,7 @@ import {
   getGeneral,
   type DataDirCheck,
 } from '../api';
+import { CliToolCard } from '../components/CliToolCard';
 import { ObjectStorageCard } from '../components/ObjectStorageCard';
 
 type OpenDialog = (o: { directory: true; multiple: false; defaultPath?: string; title?: string }) => Promise<string | string[] | null>;
@@ -114,6 +115,8 @@ export function GeneralPage() {
           备份数据：退出应用后复制整个数据目录即可。
         </Typography.Paragraph>
       </Card>
+
+      <CliToolCard />
 
       <Card title="关于">
         <Descriptions column={1} size="small">

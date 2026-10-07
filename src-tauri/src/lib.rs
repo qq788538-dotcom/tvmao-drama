@@ -4,6 +4,7 @@
 pub mod data_dir;
 pub mod datadir;
 pub mod cli_endpoint;
+mod cli_install;
 mod lifecycle;
 pub mod media_save;
 pub mod native_dialog;
@@ -360,7 +361,10 @@ pub fn run() {
             datadir::dismiss_data_dir_error,
             media_save::save_media,
             media_save::save_media_batch,
-            media_save::save_bytes
+            media_save::save_bytes,
+            cli_install::cli_tool_status,
+            cli_install::install_cli_tool,
+            cli_install::uninstall_cli_tool
         ])
         .build(tauri::generate_context!());
 
