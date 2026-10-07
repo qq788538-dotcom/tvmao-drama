@@ -56,6 +56,29 @@ type Deps struct {
 	CanvasScript *CanvasScriptHandler
 	// SettingsCenter 是设置页接口（P4，/api/v1/settings/*）的依赖；为 nil 的那部分接口不注册。
 	SettingsCenter SettingsCenterDeps
+
+	// CLI 契约（CLI spec 第 4 节）。鉴权在最外层 localauth 按 /api/v1/cli/ 前缀分流，
+	// 这里不另挂鉴权；userID 由 LocalIdentity 固定为 1。
+	CLI      *CLIHandler
+	CLIModel *CLIModelHandler
+	CLIAsset *CLIAssetHandler
+}
+
+// MustWireCLI 在启动期校验 CLI 契约的依赖都接上了，缺一个就 panic（照搬参考仓）。
+func MustWireCLI(d Deps) {
+	var missing []string
+	if d.CLI == nil {
+		missing = append(missing, "CLI")
+	}
+	if d.CLIModel == nil {
+		missing = append(missing, "CLIModel")
+	}
+	if d.CLIAsset == nil {
+		missing = append(missing, "CLIAsset")
+	}
+	if len(missing) > 0 {
+		panic("CLI 依赖未接线（检查 cmd/sidecar/wire.go 的 Deps）: " + strings.Join(missing, ", "))
+	}
 }
 
 // MustWire 在启动期校验业务 handler 都已装配，缺一个就 panic。路由按字段注册，漏装配不会编译失败，
@@ -137,6 +160,49 @@ func NewRouter(d Deps) nethttp.Handler {
 		diag := &diagHandler{dir: d.DataDir}
 		r.Post("/diag/upload", diag.upload)
 		r.Get("/diag/media/{name}", diag.media)
+
+		// 自由画布 CLI 契约：自己的稳定 DTO 与错误模型，与网页 handler 互不复用。
+		// 鉴权在最外层 localauth 按 /api/v1/cli/ 前缀分流（只认 CLI token），这里只补身份。
+		r.Route("/cli", func(r chi.Router) {
+			r.Use(CLIRequestID, LocalIdentity)
+			r.Get("/ping", cliPing(d.Version))
+			// 以下照抄参考仓：handler 为 nil 也照常注册（方法值不解引用），
+			// 漏装配由 MustWireCLI 在启动期兜住；单测只装自己关心的 handler。
+			r.Get("/projects", d.CLI.ListProjects)
+			r.Route("/projects/{projectID}", func(r chi.Router) {
+				r.Get("/", d.CLI.GetProject)
+				r.Get("/canvas", d.CLI.GetCanvas)
+				r.Get("/nodes", d.CLI.ListNodes)
+				// /nodes/resolve 必须在 /nodes/{nodeID} 之前——chi 虽然静态段
+				// 优先，但显式排前免得后来者插队时踩坑。
+				r.Get("/nodes/resolve", d.CLI.ResolveNode)
+				r.Get("/nodes/{nodeID}", d.CLI.GetNode)
+				r.Get("/edges", d.CLI.ListEdges)
+
+				r.Patch("/", d.CLI.UpdateProject)
+				r.Delete("/", d.CLI.DeleteProject)
+				r.Post("/nodes", d.CLI.CreateNode)
+				// 批量几何在单节点 PATCH 之前注册，理由同上面的 /nodes/resolve。
+				r.Patch("/nodes/positions", d.CLI.PatchNodePositions)
+				r.Patch("/nodes/{nodeID}", d.CLI.PatchNode)
+				r.Delete("/nodes/{nodeID}", d.CLI.DeleteNode)
+				r.Post("/edges", d.CLI.CreateEdge)
+				r.Delete("/edges/{edgeID}", d.CLI.DeleteEdge)
+				r.Post("/nodes/{nodeID}/runs", d.CLI.RunNode)
+				r.Post("/assets", d.CLIAsset.Upload)
+				// Seedance 2.0 合规校验。doubao-seedance* 的生成强制要求输入图
+				// 先过校验，网页那两个端点 CLI token 进不去，不给 CLI 一条路就等于 CLI 跑不了 seedance。
+				r.Post("/nodes/{nodeID}/compliance", d.CLI.VerifyNodeMedia)
+				r.Get("/compliance", d.CLI.ListCompliance)
+			})
+			r.Get("/runs/{taskID}", d.CLI.GetRun)
+			r.Get("/assets/{assetID}", d.CLIAsset.Get)
+			r.Get("/assets/{assetID}/download", d.CLIAsset.Download)
+			r.Post("/projects", d.CLI.CreateProject)
+
+			r.Get("/models", d.CLIModel.List)
+			r.Get("/models/{modelID}", d.CLIModel.Get)
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(LocalIdentity)

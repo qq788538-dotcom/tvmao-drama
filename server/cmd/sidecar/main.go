@@ -147,6 +147,7 @@ func run() error {
 
 	a, err := wire(conn, storage, localauth.Config{
 		Token:          token,
+		CLIToken:       cliToken,
 		MediaToken:     mediaToken,
 		AllowedOrigins: splitOrigins(*origins),
 	}, *dataDir, version)
@@ -191,6 +192,7 @@ func run() error {
 	attachCanvasNotifier(a, agentW.Hub)
 
 	apphttp.MustWire(a.deps)
+	apphttp.MustWireCLI(a.deps)
 	srv := &nethttp.Server{
 		Handler: apphttp.NewRouter(a.deps),
 		// P0 遗留：防慢速请求头占满连接。
