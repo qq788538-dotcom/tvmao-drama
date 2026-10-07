@@ -6,3 +6,6 @@ func SetTrace(f func(op, path string)) (restore func()) {
 	trace = f
 	return func() { trace = old }
 }
+
+// Ignorable 暴露 ignorable 表给外部测试。
+func Ignorable(name string) bool { return ignorable[name] }

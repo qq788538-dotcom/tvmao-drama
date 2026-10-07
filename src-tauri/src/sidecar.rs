@@ -187,7 +187,7 @@ async fn wait_exit(
 }
 
 /// 拉起 sidecar 并等到 READY。任何一步失败都返回可读的中文原因（带 stderr 最后几行）。
-pub async fn launch(spec: &LaunchSpec, token: &str, ready_timeout: Duration) -> Result<Launched, String> {
+pub async fn launch(spec: &LaunchSpec, token: &str, cli_token: &str, ready_timeout: Duration) -> Result<Launched, String> {
     let mut cmd = Command::new(&spec.program);
     cmd.args(&spec.args)
         .stdin(Stdio::piped())
@@ -213,7 +213,7 @@ pub async fn launch(spec: &LaunchSpec, token: &str, ready_timeout: Duration) -> 
 
     // token 只走 stdin（SEC3）：参数和环境变量同机其他进程读得到。
     let wrote = async {
-        stdin.write_all(format!("{token}\n").as_bytes()).await?;
+        stdin.write_all(format!("{token}\n{cli_token}\n").as_bytes()).await?;
         stdin.flush().await?;
         Ok::<(), std::io::Error>(())
     }
@@ -303,9 +303,16 @@ mod process_tests {
     }
 
     #[tokio::test]
+    async fn launch_writes_cli_token_as_second_line() {
+        let spec = sh(r#"read t; read c; [ "$t" = "web-tok" ] || exit 3; [ "$c" = "cli-tok" ] || exit 4; echo "READY 4100"; cat >/dev/null"#);
+        let l = launch(&spec, "web-tok", "cli-tok", Duration::from_secs(5)).await.unwrap();
+        assert_eq!(l.port, 4100);
+    }
+
+    #[tokio::test]
     async fn launch_returns_port_and_token_reaches_stdin() {
         let spec = sh(r#"read t; [ "$t" = "0123456789abcdef0123456789abcdef" ] || exit 3; echo "READY 5555"; cat >/dev/null"#);
-        let l = launch(&spec, TOKEN, Duration::from_secs(5)).await.unwrap();
+        let l = launch(&spec, TOKEN, "cli-tok", Duration::from_secs(5)).await.unwrap();
         assert_eq!(l.port, 5555);
         let start = Instant::now();
         let info = l.handle.shutdown(Duration::from_secs(3)).await;
@@ -317,7 +324,7 @@ mod process_tests {
     async fn shutdown_sends_shutdown_line_before_closing_stdin() {
         // 只有读到 SHUTDOWN 行才以 0 退出；读到 EOF 而没有 SHUTDOWN 则以 5 退出。
         let spec = sh(r#"read t; echo "READY 7"; while read l; do [ "$l" = "SHUTDOWN" ] && exit 0; done; exit 5"#);
-        let l = launch(&spec, TOKEN, Duration::from_secs(5)).await.unwrap();
+        let l = launch(&spec, TOKEN, "cli-tok", Duration::from_secs(5)).await.unwrap();
         let info = l.handle.shutdown(Duration::from_secs(3)).await;
         assert_eq!(info.code, Some(0), "壳退出时应先写 SHUTDOWN 行");
     }
@@ -333,7 +340,7 @@ mod process_tests {
                 "/Users/张 三/数据 目录".into(),
             ],
         };
-        let l = launch(&spec, TOKEN, Duration::from_secs(5)).await.unwrap();
+        let l = launch(&spec, TOKEN, "cli-tok", Duration::from_secs(5)).await.unwrap();
         assert_eq!(l.port, 1);
         l.handle.shutdown(Duration::from_secs(2)).await;
     }
@@ -342,14 +349,14 @@ mod process_tests {
     #[tokio::test]
     async fn data_dir_busy_exit_code_reports_retry_hint() {
         let spec = sh(r#"read t; echo "2026/01/01 sidecar 启动失败: busy" >&2; exit 75"#);
-        let err = launch(&spec, TOKEN, Duration::from_secs(5)).await.err().unwrap();
+        let err = launch(&spec, TOKEN, "cli-tok", Duration::from_secs(5)).await.err().unwrap();
         assert!(err.contains("上一个窗口仍在关闭") && err.contains("重试"), "{err}");
     }
 
     #[tokio::test]
     async fn exit_before_ready_reports_multiline_stderr() {
         let spec = sh(r#"read t; echo first >&2; echo second >&2; exit 1"#);
-        let err = launch(&spec, TOKEN, Duration::from_secs(5)).await.err().unwrap();
+        let err = launch(&spec, TOKEN, "cli-tok", Duration::from_secs(5)).await.err().unwrap();
         assert!(err.contains("未就绪即退出"), "{err}");
         assert!(err.contains("first") && err.contains("second"), "{err}");
     }
@@ -357,7 +364,7 @@ mod process_tests {
     #[tokio::test]
     async fn exit_before_ready_without_stderr_has_plain_message() {
         let spec = sh("read t; exit 1");
-        let err = launch(&spec, TOKEN, Duration::from_secs(5)).await.err().unwrap();
+        let err = launch(&spec, TOKEN, "cli-tok", Duration::from_secs(5)).await.err().unwrap();
         assert_eq!(err, "sidecar 未就绪即退出");
     }
 
@@ -365,7 +372,7 @@ mod process_tests {
     async fn silent_sidecar_times_out_and_is_killed() {
         let spec = sh("read t; exec sleep 30");
         let start = Instant::now();
-        let err = launch(&spec, TOKEN, Duration::from_millis(200)).await.err().unwrap();
+        let err = launch(&spec, TOKEN, "cli-tok", Duration::from_millis(200)).await.err().unwrap();
         assert!(err.contains("启动超时"), "{err}");
         assert!(start.elapsed() < Duration::from_secs(3));
     }
@@ -373,7 +380,7 @@ mod process_tests {
     #[tokio::test]
     async fn shutdown_escalates_to_kill() {
         let spec = sh(r#"read t; echo "READY 1"; trap '' TERM; exec sleep 30"#);
-        let l = launch(&spec, TOKEN, Duration::from_secs(5)).await.unwrap();
+        let l = launch(&spec, TOKEN, "cli-tok", Duration::from_secs(5)).await.unwrap();
         let start = Instant::now();
         let info = l.handle.shutdown(Duration::from_millis(300)).await;
         assert_eq!(info.code, None, "被强杀，没有退出码");
@@ -383,7 +390,7 @@ mod process_tests {
     #[tokio::test]
     async fn crash_after_ready_is_reported_with_tail() {
         let spec = sh(r#"read t; echo "READY 7"; echo fatal-1 >&2; echo fatal-2 >&2; exit 7"#);
-        let l = launch(&spec, TOKEN, Duration::from_secs(5)).await.unwrap();
+        let l = launch(&spec, TOKEN, "cli-tok", Duration::from_secs(5)).await.unwrap();
         let mut rx = l.handle.exited();
         let info = tokio::time::timeout(Duration::from_secs(3), rx.wait_for(|v| v.is_some()))
             .await
@@ -398,7 +405,7 @@ mod process_tests {
     #[tokio::test]
     async fn dropping_handle_kills_process() {
         let spec = sh(r#"read t; echo "READY 1"; exec sleep 30"#);
-        let l = launch(&spec, TOKEN, Duration::from_secs(5)).await.unwrap();
+        let l = launch(&spec, TOKEN, "cli-tok", Duration::from_secs(5)).await.unwrap();
         let mut rx = l.handle.exited();
         drop(l);
         tokio::time::timeout(Duration::from_secs(3), rx.wait_for(|v| v.is_some()))
@@ -411,7 +418,7 @@ mod process_tests {
     async fn non_utf8_stderr_does_not_block() {
         // 非 UTF-8 字节 + 大量日志：读取不能中断，否则 sidecar 写满管道会卡住
         let spec = sh(r#"read t; printf '\377\376\n' >&2; i=0; while [ $i -lt 2000 ]; do echo "log line $i" >&2; i=$((i+1)); done; echo "READY 9"; echo last >&2; exit 2"#);
-        let l = launch(&spec, TOKEN, Duration::from_secs(10)).await.unwrap();
+        let l = launch(&spec, TOKEN, "cli-tok", Duration::from_secs(10)).await.unwrap();
         assert_eq!(l.port, 9);
         let mut rx = l.handle.exited();
         let info = tokio::time::timeout(Duration::from_secs(5), rx.wait_for(|v| v.is_some()))

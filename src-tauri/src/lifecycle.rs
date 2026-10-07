@@ -18,7 +18,13 @@ use crate::sidecar::{launch, ExitInfo, LaunchSpec, ProcessHandle};
 pub struct ServerInfo {
     pub port: u16,
     pub token: String,
+    /// 只写进 cli-endpoint.json，绝不经 server_info 命令交给前端（网页拿到它就能冒用 CLI 路由）。
+    #[serde(skip)]
+    pub cli_token: String,
 }
+
+/// sidecar 每次就绪（首次启动、restart、崩溃自动重启）后调用，用来重写 CLI 地址文件。
+pub type ReadyHook = Arc<dyn Fn(&ServerInfo) + Send + Sync>;
 
 /// 发给前端的状态（事件载荷和 sidecar_status 命令返回值）。故意不含 token。
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -133,6 +139,7 @@ pub struct SidecarManager {
     make_spec: SpecFactory,
     emit: Emitter,
     timeouts: Timeouts,
+    ready_hook: std::sync::Mutex<Option<ReadyHook>>,
 }
 
 impl SidecarManager {
@@ -148,7 +155,12 @@ impl SidecarManager {
             make_spec,
             emit,
             timeouts,
+            ready_hook: std::sync::Mutex::new(None),
         })
+    }
+
+    pub fn set_ready_hook(&self, hook: ReadyHook) {
+        *self.ready_hook.lock().unwrap() = Some(hook);
     }
 
     pub fn status(&self) -> SidecarStatus {
@@ -218,8 +230,9 @@ impl SidecarManager {
         let launching = async {
             let spec = (self.make_spec)()?;
             let token = new_token();
-            let l = launch(&spec, &token, self.timeouts.ready).await?;
-            Ok::<_, String>((ServerInfo { port: l.port, token }, l.handle))
+            let cli_token = new_token();
+            let l = launch(&spec, &token, &cli_token, self.timeouts.ready).await?;
+            Ok::<_, String>((ServerInfo { port: l.port, token, cli_token }, l.handle))
         };
         // 退出时取消启动：丢弃 launch 的 future 会一并丢弃子进程句柄，进程被强杀（还没就绪，没有可收尾的数据）。
         let mut closing = self.closing.subscribe();
@@ -238,6 +251,9 @@ impl SidecarManager {
                 self.watch_crash(generation, handle.exited());
                 inner.handle = Some(handle);
                 self.set_phase(Phase::Ready(info.clone()));
+                if let Some(h) = self.ready_hook.lock().unwrap().clone() {
+                    h(&info);
+                }
                 Ok(info)
             }
             Err(reason) => {
@@ -329,6 +345,7 @@ mod manager_tests {
 
     const SERVE_4001: &str = r#"read t; echo "READY 4001"; cat >/dev/null"#;
     const SERVE_4002: &str = r#"read t; echo "READY 4002"; cat >/dev/null"#;
+    const SERVE_4003: &str = r#"read t; echo "READY 4003"; cat >/dev/null"#;
     const CRASH_4003: &str = r#"read t; echo "READY 4003"; sleep 0.3; echo boom >&2; exit 9"#;
 
     fn sh(script: &str) -> LaunchSpec {
@@ -542,5 +559,43 @@ mod manager_tests {
         tokio::time::timeout(Duration::from_secs(3), m.shutdown()).await.expect("shutdown 不应卡死");
         let _ = starting.await;
         assert!(m.inner.lock().await.handle.is_none(), "退出后不应留有运行中的进程");
+    }
+
+    #[tokio::test]
+    async fn ready_hook_fires_on_start_restart_and_crash_restart() {
+        // 第 1 次启动后立刻崩溃 → 自动重启（4002）；之后手动 restart（4003）。
+        let crash_after_ready = r#"read t; read c; echo "READY 4001"; exit 1"#;
+        let (f, _) = scripted(vec![crash_after_ready, SERVE_4002, SERVE_4003]);
+        let m = SidecarManager::new(f, recorder().0, fast());
+        let seen: Arc<std::sync::Mutex<Vec<ServerInfo>>> = Arc::default();
+        let s = seen.clone();
+        m.set_ready_hook(Arc::new(move |i: &ServerInfo| s.lock().unwrap().push(i.clone())));
+
+        m.start().await.unwrap();
+        // 等崩溃自动重启就绪
+        let info = loop {
+            let i = m.wait_info().await.unwrap();
+            if i.port == 4002 {
+                break i;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        };
+        assert_eq!(info.port, 4002);
+        m.restart().await.unwrap();
+
+        let seen = seen.lock().unwrap();
+        let ports: Vec<u16> = seen.iter().map(|i| i.port).collect();
+        assert_eq!(ports, vec![4001, 4002, 4003]);
+        assert_ne!(seen[0].cli_token, seen[1].cli_token, "每次启动都要换新 CLI token");
+        assert_ne!(seen[0].cli_token, seen[0].token, "CLI token 不得等于网页 token");
+        drop(seen);
+        m.shutdown().await;
+    }
+
+    #[test]
+    fn server_info_serialization_hides_cli_token() {
+        let i = ServerInfo { port: 1, token: "w".into(), cli_token: "secret-cli".into() };
+        let json = serde_json::to_string(&i).unwrap();
+        assert!(!json.contains("secret-cli"), "CLI token 不能经 server_info 命令交给前端: {json}");
     }
 }

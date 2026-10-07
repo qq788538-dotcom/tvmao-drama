@@ -3,7 +3,7 @@
 //! 职责划分：
 //! - **当前用哪个数据目录**只由 data_dir.rs 的 location.json 决定（P8，get_data_dir / set_data_dir）。
 //! - 本文件的 data-location.json 只记迁移待办：待迁移目录、待清理的旧目录、上次的错误。
-//!   两个文件都放在系统默认数据目录里；Go `datadir` 的 ignorable 认这两个名字，迁移时不复制、清理时不删除。
+//!   三个文件（含 cli-endpoint.json）都放在系统默认数据目录里；Go `datadir` 的 ignorable 认这些名字，迁移时不复制、清理时不删除。
 //!
 //! 流程：设置页校验目标（sidecar 的 /settings/data-dir/check，返回用户所选目录下的专用子目录）→
 //! apply_data_dir_change 记下 pendingDataDir、关掉 sidecar、重启应用 → 下次启动时，在 P8 的异步启动里、

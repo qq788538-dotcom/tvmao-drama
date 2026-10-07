@@ -28,6 +28,10 @@ const PointerFileName = "data-location.json"
 // 同样永不复制、永不删除：Cleanup 会删掉旧目录里“新目录也有”的条目，复制过去就会把它删掉。
 const LocationFileName = "location.json"
 
+// CLIEndpointFileName 是壳写在默认数据目录里的 CLI 地址文件（CLI spec 3.2）。和 location.json 一样
+// 属于"默认目录的附属文件"：迁移不复制，清理不删除，也不让目录被判为非空。
+const CLIEndpointFileName = "cli-endpoint.json"
+
 const (
 	markerName = ".miaoju-migrating"
 	dbName     = "data.db"
@@ -46,6 +50,7 @@ var ignorable = map[string]bool{
 	"System Volume Information": true, "$RECYCLE.BIN": true,
 	PointerFileName: true, PointerFileName + ".tmp": true,
 	LocationFileName: true, LocationFileName + ".tmp": true,
+	CLIEndpointFileName: true, CLIEndpointFileName + ".tmp": true,
 	MigrateLockFileName: true, InstanceLockFileName: true,
 }
 

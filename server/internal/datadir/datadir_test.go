@@ -403,3 +403,12 @@ func TestValidateChosenFolderUsesDedicatedSubdir(t *testing.T) {
 		t.Fatal("空路径应报错")
 	}
 }
+
+// 地址文件放在默认数据目录（spec D3）：迁移时不能把它当作数据复制走，也不能让默认目录被判为"非空"。
+func TestIgnorableIncludesCLIEndpoint(t *testing.T) {
+	for _, n := range []string{datadir.CLIEndpointFileName, datadir.CLIEndpointFileName + ".tmp"} {
+		if !datadir.Ignorable(n) {
+			t.Fatalf("%s 应在 ignorable 中", n)
+		}
+	}
+}
