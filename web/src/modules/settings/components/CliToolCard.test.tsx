@@ -26,10 +26,17 @@ function renderCard(ui: ReactElement) {
   );
 }
 
+const PROMPT = '请帮我安装喵剧命令行工具 miaoju，并学会使用它。依次执行：\n1. mkdir -p ~/.miaoju/bin && ln -sf "/Applications/喵剧.app/Contents/MacOS/miaoju-cli" ~/.miaoju/bin/miaoju';
+
 const base = {
   commandPath: '/Users/u/.miaoju/bin/miaoju',
   binDir: '/Users/u/.miaoju/bin',
   skillEntry: '/Applications/喵剧.app/Contents/Resources/cli-skill/SKILL.md',
+  skills: [
+    { agent: 'claude', path: '/Users/u/.claude/skills/miaoju-cli', available: true, installed: true, conflict: false },
+    { agent: 'codex', path: '/Users/u/.codex/skills/miaoju-cli', available: false, installed: false, conflict: false },
+  ],
+  agentPrompt: PROMPT,
 };
 
 describe('CliToolCard', () => {
@@ -46,7 +53,9 @@ describe('CliToolCard', () => {
     await screen.findByText('未安装'); // 状态加载前按钮是禁用的
     fireEvent.click(screen.getByRole('button', { name: /安\s*装/ }));
     await waitFor(() => expect(install).toHaveBeenCalled());
-    expect((await screen.findAllByText(/重新打开终端/)).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByText('重新打开终端后输入 miaoju --help 验证；在 Claude Code、Codex 里新开会话即可使用。')).length,
+    ).toBeGreaterThan(0);
   });
 
   it('asks to reinstall when version mismatched', async () => {
@@ -56,11 +65,42 @@ describe('CliToolCard', () => {
     expect(screen.getByRole('button', { name: '重新安装' })).toBeTruthy();
   });
 
-  it('shows ai prompt with skill path and codex config', async () => {
+  it('shows guide, skill status per agent and codex config on the default tab', async () => {
     status.mockResolvedValue({ ...base, installed: true, upToDate: true });
     renderCard(<CliToolCard />);
-    expect(await screen.findByText(`请阅读 ${base.skillEntry}，学会使用喵剧 CLI`)).toBeTruthy();
+    expect(await screen.findByText(/Claude Code：已安装/)).toBeTruthy();
+    expect(screen.getByText(/Codex：未检测到 Codex（~\/\.codex 不存在）/)).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '一键安装', selected: true })).toBeTruthy();
+    expect(screen.getAllByText(/喵剧必须保持打开/).length).toBeGreaterThan(0);
     expect(screen.getByText(/network_access = true/)).toBeTruthy();
+    expect(screen.queryByText(/请阅读 .*SKILL\.md/)).toBeNull();
+  });
+
+  it('reports a conflicting user-owned skill dir', async () => {
+    status.mockResolvedValue({
+      ...base,
+      installed: true,
+      upToDate: true,
+      skills: [
+        { ...base.skills[0], installed: false, conflict: true },
+        { ...base.skills[1], available: true, installed: true },
+      ],
+    });
+    renderCard(<CliToolCard />);
+    expect(
+      await screen.findByText(`Claude Code：已存在同名目录，未覆盖：${base.skills[0].path}`),
+    ).toBeTruthy();
+    expect(screen.getByText(/Codex：已安装/)).toBeTruthy();
+  });
+
+  it('shows the agent prompt on the "let AI install" tab', async () => {
+    status.mockResolvedValue({ ...base, installed: false, upToDate: false });
+    renderCard(<CliToolCard />);
+    fireEvent.click(await screen.findByRole('tab', { name: '让 AI 助手安装' }));
+    expect(await screen.findByText(/把下面这段话发给 Claude Code 或 Codex/)).toBeTruthy();
+    expect(
+      screen.getByText((_, el) => el?.tagName === 'PRE' && el.textContent === PROMPT),
+    ).toBeTruthy();
   });
 
   it('uninstalls', async () => {

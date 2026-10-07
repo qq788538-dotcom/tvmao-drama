@@ -141,6 +141,19 @@ export interface CliToolStatus {
   commandPath: string;
   binDir: string;
   skillEntry: string;
+  /** 每个 AI 助手（claude、codex）的 skill 安装状态 */
+  skills: CliSkillStatus[];
+  /** "让 AI 助手安装"页签里的提示词（含本机真实路径） */
+  agentPrompt: string;
+}
+export interface CliSkillStatus {
+  agent: string;
+  path: string;
+  /** 该 AI 助手的主目录（~/.claude、~/.codex）存在 */
+  available: boolean;
+  installed: boolean;
+  /** 已有用户自己的同名目录，没有覆盖 */
+  conflict: boolean;
 }
 export const cliToolStatus = () => invoke<CliToolStatus>('cli_tool_status');
 export const installCliTool = () => invoke<CliToolStatus>('install_cli_tool');

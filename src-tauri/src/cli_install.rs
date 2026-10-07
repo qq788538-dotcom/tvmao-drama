@@ -1,16 +1,15 @@
 //! 设置 → 配置 → 命令行工具（CLI spec 7.2）：把安装包里的 miaoju-cli 装成终端里的 `miaoju`。
 //! macOS：~/.miaoju/bin/miaoju 符号链接到包内文件，~/.zshrc（及已存在的 ~/.bash_profile）追加带标记的 PATH 行。
 //! Windows：复制到 %USERPROFILE%\.miaoju\bin\miaoju.exe（普通用户建不了符号链接），写用户级 Path。
+//! 同时把包内 skill 装进已存在的 ~/.claude、~/.codex（macOS 符号链接，Windows 复制并写标记文件）；
+//! 用户自己的同名目录一律不动。
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
-#[cfg_attr(not(unix), allow(dead_code))]
 const MARK_BEGIN: &str = "# >>> miaoju cli >>>";
-#[cfg_attr(not(unix), allow(dead_code))]
 const MARK_END: &str = "# <<< miaoju cli <<<";
-#[cfg_attr(not(unix), allow(dead_code))]
 const PATH_LINE: &str = r#"export PATH="$HOME/.miaoju/bin:$PATH""#;
 
 #[derive(Serialize)]
@@ -21,6 +20,184 @@ pub struct CliToolStatus {
     command_path: String,
     bin_dir: String,
     skill_entry: String,
+    skills: Vec<SkillStatus>,
+    agent_prompt: String,
+}
+
+/// 安装后 skill 在 AI 助手里的目录名，与 SKILL.md frontmatter 的 name 一致。
+const SKILL_NAME: &str = "miaoju-cli";
+/// 复制安装（Windows）时写进目录的标记文件：有它才算"我们装的"，卸载、重装才敢动。
+const MANAGED_MARK: &str = ".miaoju-managed";
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillStatus {
+    agent: String,
+    path: String,
+    /// 该 AI 助手的主目录（~/.claude、~/.codex）存在
+    available: bool,
+    installed: bool,
+    /// 已有用户自己的同名目录（或文件），没有覆盖
+    conflict: bool,
+}
+
+/// (agent, 主目录, skill 安装位置)
+fn skill_targets(home: &Path) -> [(&'static str, PathBuf, PathBuf); 2] {
+    [("claude", ".claude"), ("codex", ".codex")].map(|(agent, dir)| {
+        let root = home.join(dir);
+        let dest = root.join("skills").join(SKILL_NAME);
+        (agent, root, dest)
+    })
+}
+
+#[derive(PartialEq)]
+enum SkillOwner {
+    Missing,
+    /// 符号链接（含悬空的），或带标记文件的目录
+    Ours,
+    Foreign,
+}
+
+/// 判断存在用 symlink_metadata：悬空链接用 exists() 会被当成不存在，既删不掉也建不了新链接。
+fn skill_owner(dest: &Path) -> SkillOwner {
+    match std::fs::symlink_metadata(dest) {
+        Err(_) => SkillOwner::Missing,
+        Ok(m) if m.file_type().is_symlink() => SkillOwner::Ours,
+        Ok(m) if m.is_dir() && std::fs::symlink_metadata(dest.join(MANAGED_MARK)).is_ok() => {
+            SkillOwner::Ours
+        }
+        Ok(_) => SkillOwner::Foreign,
+    }
+}
+
+fn remove_ours(dest: &Path) -> std::io::Result<()> {
+    let m = std::fs::symlink_metadata(dest)?;
+    if m.file_type().is_symlink() {
+        // Windows 上指向目录的链接要用 remove_dir 删
+        std::fs::remove_file(dest).or_else(|_| std::fs::remove_dir(dest))
+    } else {
+        std::fs::remove_dir_all(dest)
+    }
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for e in std::fs::read_dir(src)? {
+        let e = e?;
+        let to = dst.join(e.file_name());
+        if e.file_type()?.is_dir() {
+            copy_dir_all(&e.path(), &to)?;
+        } else {
+            std::fs::copy(e.path(), &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// 把 `src`（包内 skill 目录）装进每个已存在的 AI 助手主目录。`link` 为 true 建符号链接，
+/// 否则复制并写入内容为 `version` 的标记文件。用户自己的同名目录跳过不动。
+fn install_skills(home: &Path, src: &Path, link: bool, version: &str) -> Result<(), String> {
+    for (_, root, dest) in skill_targets(home) {
+        if !root.is_dir() {
+            continue;
+        }
+        match skill_owner(&dest) {
+            SkillOwner::Foreign => continue,
+            SkillOwner::Ours => {
+                remove_ours(&dest).map_err(|e| format!("删除旧的 {} 失败：{e}", dest.display()))?
+            }
+            SkillOwner::Missing => {}
+        }
+        let parent = dest.parent().unwrap_or(&root);
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("创建 {} 失败：{e}", parent.display()))?;
+        place_skill(src, &dest, link, version)
+            .map_err(|e| format!("安装 skill 到 {} 失败：{e}", dest.display()))?;
+    }
+    Ok(())
+}
+
+fn place_skill(src: &Path, dest: &Path, link: bool, version: &str) -> std::io::Result<()> {
+    #[cfg(unix)]
+    if link {
+        return std::os::unix::fs::symlink(src, dest);
+    }
+    #[cfg(not(unix))]
+    let _ = link;
+    let r = copy_dir_all(src, dest).and_then(|()| std::fs::write(dest.join(MANAGED_MARK), version));
+    if r.is_err() {
+        // 复制到一半失败时目录里还没有标记文件，不清掉的话下次会被当成用户目录
+        let _ = std::fs::remove_dir_all(dest);
+    }
+    r
+}
+
+/// 只删我们装的（符号链接，或带标记文件的目录）。
+fn uninstall_skills(home: &Path) -> Result<(), String> {
+    for (_, _, dest) in skill_targets(home) {
+        if skill_owner(&dest) == SkillOwner::Ours {
+            remove_ours(&dest).map_err(|e| format!("删除 {} 失败：{e}", dest.display()))?;
+        }
+    }
+    Ok(())
+}
+
+fn skill_statuses(home: &Path) -> Vec<SkillStatus> {
+    skill_targets(home)
+        .into_iter()
+        .map(|(agent, root, dest)| {
+            let owner = skill_owner(&dest);
+            SkillStatus {
+                agent: agent.to_string(),
+                path: dest.display().to_string(),
+                available: root.is_dir(),
+                // 悬空链接（应用被移走）不算已安装，提示用户重新安装
+                installed: owner == SkillOwner::Ours && dest.join("SKILL.md").is_file(),
+                conflict: owner == SkillOwner::Foreign,
+            }
+        })
+        .collect()
+}
+
+const SANDBOX_NOTE: &str = "如果被沙箱拦截，请向我申请权限后重试，不要跳过。";
+
+/// "让 AI 助手安装"页签里的提示词：AI 助手照着执行即可完成与安装按钮等价的步骤。
+/// 路径一律加双引号（可能含空格和中文，如 /Applications/喵剧.app/...）。
+pub fn agent_install_prompt(windows: bool, bundled_cli: &str, skill_dir: &str) -> String {
+    if windows {
+        let skill_cmd = |dir: &str| {
+            format!(
+                r#"$d = "$env:USERPROFILE\{dir}\skills\{SKILL_NAME}"; New-Item -ItemType Directory -Force $d | Out-Null; Copy-Item "{skill_dir}\*" $d -Recurse -Force; Set-Content "$d\{MANAGED_MARK}" managed"#
+            )
+        };
+        format!(
+            r#"请帮我安装喵剧命令行工具 miaoju，并学会使用它。在 PowerShell 里依次执行：
+1. New-Item -ItemType Directory -Force "$env:USERPROFILE\.miaoju\bin" | Out-Null; Copy-Item "{bundled_cli}" "$env:USERPROFILE\.miaoju\bin\miaoju.exe" -Force
+2. 把该目录加入用户 Path（已有就跳过）：
+   $bin = "$env:USERPROFILE\.miaoju\bin"; $p = [Environment]::GetEnvironmentVariable('Path','User'); if (-not ($p -split ';' | Where-Object {{ $_.TrimEnd('\') -eq $bin }})) {{ [Environment]::SetEnvironmentVariable('Path', $(if ($p) {{ "$p;$bin" }} else {{ $bin }}), 'User') }}
+3. 安装你自己的 skill：
+   - 如果你是 Claude Code：{claude}
+   - 如果你是 Codex：{codex}
+4. 运行 & "$env:USERPROFILE\.miaoju\bin\miaoju.exe" version 确认安装成功（新开的终端里可以直接运行 miaoju version），再阅读 "{skill_dir}\SKILL.md" 学会用法。
+注意：以上命令会写入工作区以外的位置（%USERPROFILE%\.miaoju、用户 Path 环境变量、%USERPROFILE%\.claude 或 %USERPROFILE%\.codex）。{SANDBOX_NOTE}"#,
+            claude = skill_cmd(".claude"),
+            codex = skill_cmd(".codex"),
+        )
+    } else {
+        format!(
+            r#"请帮我安装喵剧命令行工具 miaoju，并学会使用它。依次执行：
+1. mkdir -p ~/.miaoju/bin && ln -sf "{bundled_cli}" ~/.miaoju/bin/miaoju
+2. 如果 ~/.zshrc 里没有 "{MARK_BEGIN}" 这一行，就在文件末尾追加这三行：
+   {MARK_BEGIN}
+   {PATH_LINE}
+   {MARK_END}
+3. 安装你自己的 skill：
+   - 如果你是 Claude Code：mkdir -p ~/.claude/skills && ln -sfn "{skill_dir}" ~/.claude/skills/{SKILL_NAME}
+   - 如果你是 Codex：mkdir -p ~/.codex/skills && ln -sfn "{skill_dir}" ~/.codex/skills/{SKILL_NAME}
+4. 运行 ~/.miaoju/bin/miaoju version 确认安装成功，再阅读 "{skill_dir}/SKILL.md" 学会用法。
+注意：以上命令会写入工作区以外的目录（~/.miaoju、~/.zshrc、~/.claude 或 ~/.codex）。{SANDBOX_NOTE}"#
+        )
+    }
 }
 
 #[cfg_attr(not(unix), allow(dead_code))]
@@ -174,12 +351,16 @@ fn bundled_cli() -> Result<PathBuf, String> {
     }
 }
 
-fn skill_entry(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+fn skill_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .resource_dir()
         .map_err(|e| format!("无法定位资源目录：{e}"))?;
-    Ok(dir.join("cli-skill").join("SKILL.md"))
+    Ok(dir.join("cli-skill"))
+}
+
+fn skill_entry(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(skill_dir(app)?.join("SKILL.md"))
 }
 
 /// 已安装命令的 `version` 输出；最多等 3 秒（Gatekeeper / 杀毒扫描可能卡住），超时按"版本不一致"处理。
@@ -197,7 +378,8 @@ fn installed_output(cmd: &Path) -> Option<String> {
 }
 
 fn status(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
-    let bin = bin_dir(&home(app)?);
+    let home = home(app)?;
+    let bin = bin_dir(&home);
     let cmd = bin.join(command_file());
     let installed = cmd.exists();
     let app_version = app.package_info().version.to_string();
@@ -209,7 +391,23 @@ fn status(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
         command_path: cmd.display().to_string(),
         bin_dir: bin.display().to_string(),
         skill_entry: skill_entry(app)?.display().to_string(),
+        skills: skill_statuses(&home),
+        agent_prompt: agent_prompt(app)?,
     })
+}
+
+fn agent_prompt(app: &tauri::AppHandle) -> Result<String, String> {
+    // 开发环境里包内 CLI 可能还没构建，提示词照样给出预期路径
+    let cli = bundled_cli().or_else(|_| {
+        let exe =
+            tauri::utils::platform::current_exe().map_err(|e| format!("无法定位主程序：{e}"))?;
+        Ok::<_, String>(exe.with_file_name(bundled_file()))
+    })?;
+    Ok(agent_install_prompt(
+        cfg!(windows),
+        &cli.display().to_string(),
+        &skill_dir(app)?.display().to_string(),
+    ))
 }
 
 /// 三个命令都是 async + spawn_blocking：同步命令在 Tauri v2 里跑在主线程，
@@ -259,6 +457,8 @@ fn install(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
         let dir = bin.display().to_string();
         win_path::update(|cur| add_to_path_list(cur, &dir))?;
     }
+    let version = app.package_info().version.to_string();
+    install_skills(&home, &skill_dir(app)?, cfg!(unix), &version)?;
     status(app)
 }
 
@@ -276,6 +476,7 @@ fn uninstall(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
         let dir = bin.display().to_string();
         win_path::update(|cur| remove_from_path_list(cur, &dir))?;
     }
+    uninstall_skills(&home)?;
     status(app)
 }
 
@@ -418,6 +619,252 @@ mod tests {
         assert_eq!(normalize_path_list(""), "");
         assert_eq!(normalize_path_list(";"), "");
         assert_eq!(normalize_path_list(r"C:\a"), r"C:\a");
+    }
+
+    // ---- AI 助手 skill ----
+
+    fn skill_src(root: &Path) -> PathBuf {
+        let src = root.join("res").join("cli-skill");
+        std::fs::create_dir_all(src.join("examples")).unwrap();
+        std::fs::write(src.join("SKILL.md"), "---\nname: miaoju-cli\n---\n").unwrap();
+        std::fs::write(src.join("examples").join("a.md"), "a").unwrap();
+        src
+    }
+
+    fn by_agent<'a>(v: &'a [SkillStatus], agent: &str) -> &'a SkillStatus {
+        v.iter().find(|s| s.agent == agent).unwrap()
+    }
+
+    fn present(p: &Path) -> bool {
+        std::fs::symlink_metadata(p).is_ok()
+    }
+
+    #[test]
+    fn skill_skips_agent_without_home_dir() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let src = skill_src(t.path());
+        for link in [true, false] {
+            install_skills(&home, &src, link, "1.2.0").unwrap();
+            assert!(!present(&home.join(".claude")), "不能替用户建 ~/.claude");
+            assert!(!present(&home.join(".codex")));
+            let st = skill_statuses(&home);
+            assert_eq!(st.len(), 2);
+            for s in &st {
+                assert!(!s.available && !s.installed && !s.conflict, "{s:?}");
+            }
+        }
+        assert!(by_agent(&skill_statuses(&home), "claude")
+            .path
+            .ends_with(&format!(
+                ".claude{0}skills{0}miaoju-cli",
+                std::path::MAIN_SEPARATOR
+            )));
+    }
+
+    fn install_twice_then_uninstall(link: bool) {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        let src = skill_src(t.path());
+        install_skills(&home, &src, link, "1.2.0").unwrap();
+        install_skills(&home, &src, link, "1.2.0").unwrap(); // 幂等
+        for agent in [".claude", ".codex"] {
+            let dest = home.join(agent).join("skills").join("miaoju-cli");
+            assert!(dest.join("SKILL.md").is_file());
+            assert!(dest.join("examples").join("a.md").is_file());
+            if link {
+                assert!(std::fs::symlink_metadata(&dest)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink());
+            } else {
+                assert_eq!(
+                    std::fs::read_to_string(dest.join(MANAGED_MARK)).unwrap(),
+                    "1.2.0"
+                );
+            }
+        }
+        for s in skill_statuses(&home) {
+            assert!(s.available && s.installed && !s.conflict, "{s:?}");
+        }
+        uninstall_skills(&home).unwrap();
+        for agent in [".claude", ".codex"] {
+            let dest = home.join(agent).join("skills").join("miaoju-cli");
+            assert!(!present(&dest));
+        }
+        assert!(
+            src.join("SKILL.md").is_file(),
+            "卸载不能删到安装包里的 skill"
+        );
+        for s in skill_statuses(&home) {
+            assert!(s.available && !s.installed && !s.conflict, "{s:?}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skill_symlink_install_is_idempotent_and_uninstallable() {
+        install_twice_then_uninstall(true);
+    }
+
+    #[test]
+    fn skill_copy_install_is_idempotent_and_uninstallable() {
+        install_twice_then_uninstall(false);
+    }
+
+    #[test]
+    fn skill_never_touches_user_owned_dir() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        let dest = home.join(".claude").join("skills").join("miaoju-cli");
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("SKILL.md"), "用户自己的").unwrap();
+        let src = skill_src(t.path());
+        for link in [true, false] {
+            install_skills(&home, &src, link, "1.2.0").unwrap();
+            assert_eq!(
+                std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+                "用户自己的"
+            );
+            assert!(!present(&dest.join(MANAGED_MARK)));
+            let st = skill_statuses(&home);
+            let c = by_agent(&st, "claude");
+            assert!(c.available && !c.installed && c.conflict, "{c:?}");
+            uninstall_skills(&home).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+                "用户自己的"
+            );
+        }
+    }
+
+    #[test]
+    fn skill_user_owned_file_is_conflict() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        let skills = home.join(".codex").join("skills");
+        std::fs::create_dir_all(&skills).unwrap();
+        std::fs::write(skills.join("miaoju-cli"), "x").unwrap();
+        let src = skill_src(t.path());
+        install_skills(&home, &src, false, "1.2.0").unwrap();
+        uninstall_skills(&home).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(skills.join("miaoju-cli")).unwrap(),
+            "x"
+        );
+        assert!(by_agent(&skill_statuses(&home), "codex").conflict);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skill_dangling_symlink_is_replaced_and_uninstalled() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        let skills = home.join(".claude").join("skills");
+        std::fs::create_dir_all(&skills).unwrap();
+        let dest = skills.join("miaoju-cli");
+        // 旧版应用被移走后留下的悬空链接
+        std::os::unix::fs::symlink(t.path().join("gone"), &dest).unwrap();
+        let s = skill_statuses(&home);
+        let c = by_agent(&s, "claude");
+        assert!(c.available && !c.installed && !c.conflict, "{c:?}");
+        let src = skill_src(t.path());
+        install_skills(&home, &src, true, "1.2.0").unwrap();
+        assert_eq!(std::fs::read_link(&dest).unwrap(), src);
+        assert!(by_agent(&skill_statuses(&home), "claude").installed);
+
+        std::fs::remove_file(&dest).unwrap();
+        std::os::unix::fs::symlink(t.path().join("gone"), &dest).unwrap();
+        uninstall_skills(&home).unwrap();
+        assert!(!present(&dest));
+    }
+
+    #[test]
+    fn skill_status_serializes_camel_case() {
+        let v = serde_json::to_value(SkillStatus {
+            agent: "claude".into(),
+            path: "/p".into(),
+            available: true,
+            installed: false,
+            conflict: false,
+        })
+        .unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({"agent":"claude","path":"/p","available":true,"installed":false,"conflict":false})
+        );
+    }
+
+    // ---- 给 AI 助手的安装提示词 ----
+
+    #[test]
+    fn agent_prompt_macos_quotes_real_paths_and_uses_markers() {
+        let cli = "/Applications/喵剧 Beta.app/Contents/MacOS/miaoju-cli";
+        let skill = "/Applications/喵剧 Beta.app/Contents/Resources/cli-skill";
+        let p = agent_install_prompt(false, cli, skill);
+        assert!(
+            p.contains(&format!(r#"ln -sf "{cli}" ~/.miaoju/bin/miaoju"#)),
+            "{p}"
+        );
+        assert!(
+            p.contains(&format!(r#"ln -sfn "{skill}" ~/.claude/skills/miaoju-cli"#)),
+            "{p}"
+        );
+        assert!(
+            p.contains(&format!(r#"ln -sfn "{skill}" ~/.codex/skills/miaoju-cli"#)),
+            "{p}"
+        );
+        assert!(p.contains(&format!(r#""{skill}/SKILL.md""#)), "{p}");
+        assert!(p.contains(&format!(r#""{MARK_BEGIN}""#)), "{p}");
+        for line in [MARK_BEGIN, PATH_LINE, MARK_END] {
+            assert!(
+                p.lines().any(|l| l.trim() == line),
+                "缺少标记行 {line}：{p}"
+            );
+        }
+        assert!(p.contains("~/.miaoju/bin/miaoju version"));
+        assert!(p.contains(SANDBOX_NOTE), "{p}");
+        assert!(p.contains("~/.zshrc"));
+    }
+
+    #[test]
+    fn agent_prompt_windows_quotes_real_paths() {
+        let cli = r"C:\Program Files\喵剧\miaoju-cli.exe";
+        let skill = r"C:\Program Files\喵剧\cli-skill";
+        let p = agent_install_prompt(true, cli, skill);
+        assert!(
+            p.contains(&format!(
+                r#"Copy-Item "{cli}" "$env:USERPROFILE\.miaoju\bin\miaoju.exe" -Force"#
+            )),
+            "{p}"
+        );
+        assert!(
+            p.contains(r#"New-Item -ItemType Directory -Force "$env:USERPROFILE\.miaoju\bin""#),
+            "{p}"
+        );
+        assert!(
+            p.contains("[Environment]::GetEnvironmentVariable('Path','User')"),
+            "{p}"
+        );
+        assert!(p.contains("SetEnvironmentVariable('Path'"), "{p}");
+        assert!(p.contains(&format!(r#""{skill}\*""#)), "{p}");
+        assert!(p.contains("-Recurse -Force"), "{p}");
+        assert!(
+            p.contains(r"$env:USERPROFILE\.claude\skills\miaoju-cli"),
+            "{p}"
+        );
+        assert!(
+            p.contains(r"$env:USERPROFILE\.codex\skills\miaoju-cli"),
+            "{p}"
+        );
+        assert!(p.contains(MANAGED_MARK) && p.contains("managed"), "{p}");
+        assert!(p.contains(&format!(r#""{skill}\SKILL.md""#)), "{p}");
+        assert!(p.contains("miaoju version"), "{p}");
+        assert!(p.contains(SANDBOX_NOTE), "{p}");
+        assert!(!p.contains("zshrc") && !p.contains("ln -s"), "{p}");
     }
 
     #[cfg(unix)]
