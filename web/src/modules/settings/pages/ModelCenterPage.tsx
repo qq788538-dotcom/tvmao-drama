@@ -3,7 +3,7 @@ import {
   Alert, App as AntApp, Button, Card, Collapse, Descriptions, Drawer, Form, Input, InputNumber, Segmented, Select, Space, Switch, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
-import { errorText, listModels, patchModel, restoreModel, SettingsApiError, type ModelPatch, type ModelView } from '../api';
+import { errorText, listModels, patchModel, restoreModel, SettingsApiError, testModelConnections, type ModelConnectionResult, type ModelPatch, type ModelView } from '../api';
 import { invalidateAfterSettingsChange } from '../invalidate';
 import { ReadonlyJson } from '../components/ReadonlyJson';
 import { UpstreamCard } from '../components/UpstreamCard';
@@ -18,6 +18,8 @@ export function ModelCenterPage() {
   const qc = useQueryClient();
   const [type, setType] = useState('image');
   const [keyword, setKeyword] = useState('');
+  // 连接测试结果：按模型 id 存在组件状态里，切类型页签保留，页面卸载即清空。
+  const [connResults, setConnResults] = useState<Record<number, ModelConnectionResult>>({});
   const [editing, setEditing] = useState<ModelView | null>(null);
   const [form] = Form.useForm<ModelFormValues>();
   const { data = [], isLoading } = useQuery({ queryKey: ['settings-models'], queryFn: listModels });
@@ -55,6 +57,12 @@ export function ModelCenterPage() {
       form.setFieldValue('upstreamApiKey', '');
       setEditing((cur) => (cur && cur.id === m.id ? null : cur));
     },
+    onError: (e) => message.error(errorText(e)),
+  });
+
+  const testConn = useMutation({
+    mutationFn: testModelConnections,
+    onSuccess: (r) => setConnResults(Object.fromEntries(r.results.map((x) => [x.id, x]))),
     onError: (e) => message.error(errorText(e)),
   });
 
@@ -98,6 +106,9 @@ export function ModelCenterPage() {
         </Typography.Paragraph>
         <Space style={{ marginBottom: 12 }} wrap>
           <Segmented options={TYPE_OPTIONS} value={type} onChange={(v) => setType(String(v))} />
+          <Button loading={testConn.isPending} onClick={() => testConn.mutate()}>
+            测试连接
+          </Button>
           <Input.Search allowClear placeholder="搜索名称或 Model ID" onChange={(e) => setKeyword(e.target.value)} style={{ width: 260 }} />
         </Space>
         <Table<ModelView>
@@ -148,6 +159,20 @@ export function ModelCenterPage() {
             {
               title: '被使用',
               render: (_, m) => m.references.map((r) => <Tag key={r}>{r}</Tag>),
+            },
+            {
+              title: '连接',
+              width: 80,
+              render: (_, m) => {
+                const r = connResults[m.id];
+                if (!r) return '—';
+                if (r.ok) return <Typography.Text type="success">成功</Typography.Text>;
+                return (
+                  <Tooltip title={r.message}>
+                    <Typography.Text type="danger">失败</Typography.Text>
+                  </Tooltip>
+                );
+              },
             },
             {
               title: '操作',
