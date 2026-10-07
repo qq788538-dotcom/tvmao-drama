@@ -246,12 +246,12 @@ interface CanvasState {
   /**
    * 整快照落地。默认语义是「换一张画布」：选中、undo/redo 栈全清。
    *
-   * `preserveUiState` 用于**同一张画布**的整拉：外部变更整拉（`useExternalChanges`）使用；
-   * `resetHistory` 一并清空撤销栈，避免撤销时删掉外部新增的节点。——那不是换画布，是把本地对齐到服务端最新状态。清掉选中会把用户正开着
-   * 的参数面板收起来、清掉 undo 栈会让他刚做的几步撤不回去，而这两样跟「服务端
-   * 有新数据」毫无关系。选中集会按新节点列表剪枝（服务端已不存在的节点不能还留在选中里）。
+   * `preserveUiState` 用于**同一张画布**的整拉——那不是换画布，是把本地对齐到服务端最新状态：
+   * 保留选中（按新节点列表剪枝，服务端已不存在的节点不能还留在选中里），否则会把用户正开着的
+   * 参数面板收起来；默认也保留 undo/redo 栈，撤销撤的仍是「我自己做过的那几步」。
    *
-   * undo 栈跨整拉保留是有意的：撤销撤的一直是「我自己做过的那几步」。
+   * `resetHistory` 额外清空 undo/redo 栈。外部（CLI）变更整拉（`useExternalChanges`）会传它：
+   * 撤销栈里记录的是整拉前的画布状态，撤销会把外部新增的节点删掉。
    */
   load: (snapshot: Partial<CanvasSnapshot>, options?: { preserveUiState?: boolean; resetHistory?: boolean }) => void;
   addNode: (type: NodeType, worldPosition: { x: number; y: number }) => string;

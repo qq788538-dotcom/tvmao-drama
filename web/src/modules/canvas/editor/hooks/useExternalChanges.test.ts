@@ -107,6 +107,49 @@ describe('useExternalChanges', () => {
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
   });
 
+  it('does not reload after reconnect when the server version only moved by local writes', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    getSnapshot.mockResolvedValue({ payload: {}, version: 5, syncedAt: null });
+    const r = mount();
+    await waitFor(() => expect(FakeES.all).toHaveLength(1));
+    act(() => FakeES.all[0].open());
+    // 本地两次写入的回执：3 -> 4 -> 5
+    act(() => { r.result.current.noteLocalVersion(4); r.result.current.noteLocalVersion(5); });
+    act(() => FakeES.all[0].fail());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+    act(() => FakeES.all[1].open());
+    await waitFor(() => expect(getSnapshot).toHaveBeenCalledWith(14));
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('still reloads for a lower-numbered cli event that arrives after a local receipt', async () => {
+    reload.mockResolvedValue(5);
+    const r = mount();
+    await waitFor(() => expect(FakeES.all).toHaveLength(1));
+    act(() => FakeES.all[0].open());
+    // CLI 先写成 v4，本地回执 v5 先到，CLI 事件后到：前端还没看到 CLI 的改动
+    act(() => r.result.current.noteLocalVersion(5));
+    act(() => FakeES.all[0].emit({ projectId: 14, version: 4, source: 'cli' }));
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+  });
+
+  it('reloads after reconnect when a non-contiguous local receipt reveals a missed write', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    getSnapshot.mockResolvedValue({ payload: {}, version: 5, syncedAt: null });
+    reload.mockResolvedValue(5);
+    const r = mount();
+    await waitFor(() => expect(FakeES.all).toHaveLength(1));
+    act(() => FakeES.all[0].open());
+    act(() => FakeES.all[0].fail());
+    // 断线期间 CLI 写成 v4（事件丢了），本地写入回执 v5：中间跳号
+    act(() => r.result.current.noteLocalVersion(5));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+    act(() => FakeES.all[1].open());
+    await waitFor(() => expect(getSnapshot).toHaveBeenCalledWith(14));
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+  });
+
   it('closes the stream on unmount', async () => {
     const r = mount();
     await waitFor(() => expect(FakeES.all).toHaveLength(1));

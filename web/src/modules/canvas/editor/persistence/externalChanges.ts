@@ -33,20 +33,24 @@ export function isEditingText(el: Element | null): boolean {
 
 export function isCanvasIdle(doc: Document = document): boolean {
   if (pointerDown) return false;
-  if (isEditingText(doc.activeElement)) return false;
+  // 窗口失焦时 activeElement 不会变（WKWebView 里点按钮也不移走焦点）：用户切到终端看 AI 改画布时
+  // 输入框仍是 activeElement，但他并没有在打字，不能因此一直不刷新。
+  if (doc.hasFocus() && isEditingText(doc.activeElement)) return false;
   if (useCanvasStore.getState().connecting) return false;
   return isCanvasPersistenceIdle();
 }
 
-/** 拉快照并换进 store，返回快照版本；拉取期间本地有新写入则丢弃结果并返回 null（调用方等空闲后重来）。 */
+/** 拉快照并换进 store，返回快照版本；拉取期间本地有新写入或画布不再空闲，则丢弃结果并返回 null（调用方等空闲后重来）。 */
 export async function reloadCanvasFromServer(pid: number): Promise<number | null> {
   const seq = canvasMutationSeq();
   const snap = await getSnapshot(pid);
-  if (canvasMutationSeq() !== seq || !isCanvasPersistenceIdle()) return null;
-  const raw = (snap.payload ?? {}) as Partial<CanvasSnapshot>;
-  const nodes = raw.nodes ?? [];
+  // 拉取期间用户可能开始拖动/打字：此时换 store 会打断操作，交给调用方稍后重试
+  if (canvasMutationSeq() !== seq || !isCanvasIdle()) return null;
+  const raw = snap.payload as Partial<CanvasSnapshot> | null | undefined;
+  const nodes = Array.isArray(raw?.nodes) ? raw!.nodes : [];
+  const connections = Array.isArray(raw?.connections) ? raw!.connections : [];
   const s = useCanvasStore.getState();
-  s.load({ nodes, connections: raw.connections ?? [], view: s.view }, { preserveUiState: true, resetHistory: true });
+  s.load({ nodes, connections, view: s.view }, { preserveUiState: true, resetHistory: true });
   // 基线必须对齐服务端，否则下一次 diff 会把旧值当成本地改动重发
   seedCanvasBaselines(nodes);
   return snap.version;
