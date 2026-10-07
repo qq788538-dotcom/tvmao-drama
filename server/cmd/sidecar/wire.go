@@ -10,6 +10,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/assets"
 	"github.com/james/huabu_studio/apps/api/internal/builtin"
 	"github.com/james/huabu_studio/apps/api/internal/canvasowner"
+	"github.com/james/huabu_studio/apps/api/internal/cliapi"
 	"github.com/james/huabu_studio/apps/api/internal/directorlibrary"
 	"github.com/james/huabu_studio/apps/api/internal/directormodels"
 	"github.com/james/huabu_studio/apps/api/internal/generation"
@@ -69,6 +70,9 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		return nil, fmt.Errorf("装配生成链路: %w", err)
 	}
 
+	// 网页上传与 CLI 上传共用同一个 AssetHandler（CLIAssetHandler 复用它的落盘与登记）。
+	assetHandler := apphttp.NewAssetHandler(storage, assetsRepo, usersRepo, signer)
+
 	deps := apphttp.Deps{
 		Auth:              auth,
 		DataDir:           dataDir,
@@ -76,7 +80,7 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		MediaSigner:       signer,
 		Media:             apphttp.NewMediaHandler(storage, signer, apphttp.NewSQLMediaMimeStore(conn), reveal.InFileManager),
 		Me:                apphttp.NewMeHandler(usersRepo),
-		Asset:             apphttp.NewAssetHandler(storage, assetsRepo, usersRepo, signer),
+		Asset:             assetHandler,
 		Project:           apphttp.NewProjectHandler(projectsRepo, signer, storage, assetsRepo, usersRepo, genTasks, orphans, conn, duplicator),
 		CanvasMutation:    apphttp.NewCanvasMutationHandler(projectsRepo, canvasowner.NewLocal(), signer),
 		CanvasAssetImport: apphttp.NewCanvasAssetImportHandler(apphttp.NewSQLCanvasAssetRefStore(conn), assetsRepo),
@@ -111,6 +115,18 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	librarySeedanceSvc.SetMediaPublisher(publisher)
 	// 生成时真人素材自动以 asset://<id> 提交（参考仓 main.go 同名装配）。
 	genW.Gen.WithRealPersonResolver(librarySeedanceSvc)
+
+	// 自由画布 CLI 契约（参考仓 cmd/server/main.go 同名装配）：service 层及以下与网页共用。
+	cliStore := cliapi.WithChangeNotifier(projectsRepo, nil) // 事件中心由 Task 6 在 main.go 注入后替换
+	deps.CLI = apphttp.NewCLIHandler(
+		cliapi.NewService(cliStore, signer.Sign).
+			WithGeneration(genW.CanvasGen, modelsRepo).
+			// 合规校验复用网页那一个 library.SeedanceService：状态挂在 object_key 上，两条路共用一份。
+			WithSeedance(librarySeedanceSvc, storage),
+		cliapi.NewSQLiteIdempotency(conn),
+	)
+	deps.CLIModel = apphttp.NewCLIModelHandler(modelsRepo)
+	deps.CLIAsset = apphttp.NewCLIAssetHandler(assetHandler, assetsRepo, signer)
 
 	// 后处理（去字幕/转高清/转白模）直接入 P1c 的生成管线。
 	deps.CanvasPostprocess = apphttp.NewCanvasPostprocessHandler(settingsRepo, genW.CanvasGen, projectsRepo, assetsRepo, genW.Gen, modelsRepo, signer).

@@ -352,3 +352,48 @@ func TestManualCanvasEditNotifiesAfterAttach(t *testing.T) {
 		t.Fatalf("手动编辑成功后应通知 1 次, got %d", got)
 	}
 }
+
+// CLI 路由经真实装配可达：CLI token 进得去，网页 token 被最外层 localauth 拒掉（CLI spec 3.3）。
+func TestWireCLIRoutesUseCLIToken(t *testing.T) {
+	conn := dbtest.Open(t)
+	dataDir := t.TempDir()
+	storage, err := assets.NewLocalStorage(assets.LocalConfig{Root: filepath.Join(dataDir, "media"), BaseURL: "http://127.0.0.1:1", Token: e2eMediaToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := localauth.Config{Token: strings.Repeat("w", 32), CLIToken: strings.Repeat("c", 32), MediaToken: e2eMediaToken}
+	a, err := wire(conn, storage, auth, dataDir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	apphttp.MustWire(a.deps)
+	apphttp.MustWireCLI(a.deps)
+	srv := httptest.NewServer(apphttp.NewRouter(a.deps))
+	defer srv.Close()
+
+	get := func(tok string) int {
+		req, _ := http.NewRequest("GET", srv.URL+"/api/v1/cli/projects", nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if c := get(auth.CLIToken); c != 200 {
+		t.Fatalf("CLI token status=%d", c)
+	}
+	if c := get(auth.Token); c != 401 {
+		t.Fatalf("网页 token status=%d，应被拒", c)
+	}
+}
+
+func TestMustWireCLIPanicsOnMissingHandler(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("缺 CLI handler 时 MustWireCLI 应 panic")
+		}
+	}()
+	apphttp.MustWireCLI(apphttp.Deps{})
+}
