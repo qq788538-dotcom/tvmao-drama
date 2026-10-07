@@ -3,6 +3,7 @@ module github.com/james/huabu_studio/apps/api
 go 1.26.0
 
 require (
+	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.6.0
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/cloudwego/eino v0.8.13
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13
@@ -10,6 +11,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/ncruces/go-sqlite3 v0.35.6
+	github.com/volcengine/ve-tos-golang-sdk/v2 v2.9.10
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -17,6 +19,7 @@ require (
 	github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/time v0.4.0 // indirect
 	lukechampine.com/adiantum v1.1.1 // indirect
 )
 
