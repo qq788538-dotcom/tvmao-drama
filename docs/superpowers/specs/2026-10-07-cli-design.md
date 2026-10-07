@@ -172,7 +172,7 @@ CLI 输出里的媒体 URL 照旧用媒体 token 签名，可以直接被 AI 助
   - 逐个 AI 助手安装，一个失败不影响另一个，错误显示在对应那一行；Windows 复制件的标记版本与应用不一致时显示"版本不一致，需要重新安装"。
 - **两个页签（D12）**：
   - "一键安装"（默认）：安装 / 重新安装 / 卸载按钮、命令位置、各 AI 助手的 skill 状态。
-  - "让 AI 助手安装"：一段可复制的提示词，写的是本机真实路径（加引号，路径可能含空格和中文），让 Claude Code 或 Codex 自己执行与安装按钮等价的几条命令（macOS 用 shell，Windows 用 PowerShell）。skill 一步带着与按钮相同的同名目录判断，遇到用户自己的目录就停下并输出"已存在同名目录，未覆盖：<路径>"。Windows 写用户 Path 直接读写注册表 `HKCU\Environment`（`GetValue(..., 'DoNotExpandEnvironmentNames')` 读原值、`GetValueKind` 取原类型，值不存在时用 ExpandString），不用 `[Environment]::SetEnvironmentVariable('Path', …)`，否则 REG_EXPAND_SZ 会被改成 REG_SZ、`%USERPROFILE%` 被固定成展开值；写完设置再清除一个临时用户变量来触发环境变量变更广播。末尾说明这些命令会写入工作区以外的目录，被沙箱拦截时请向用户申请权限。
+  - "让 AI 助手安装"：一段可复制的提示词，写的是本机真实路径（加引号，路径可能含空格和中文），让 Claude Code 或 Codex 自己执行与安装按钮等价的几条命令（macOS 用 shell，Windows 用 PowerShell）。skill 一步带着与按钮相同的同名目录判断，遇到用户自己的目录就停下并输出"已存在同名目录，未覆盖：<路径>"。Windows 版先删掉带标记的旧目录再复制（`-LiteralPath`），标记文件写入应用版本号，与按钮安装一致，不会被判为"需要重新安装"。Windows 写用户 Path 直接读写注册表 `HKCU\Environment`（`GetValue(..., 'DoNotExpandEnvironmentNames')` 读原值、`GetValueKind` 取原类型，值不存在时用 ExpandString），不用 `[Environment]::SetEnvironmentVariable('Path', …)`，否则 REG_EXPAND_SZ 会被改成 REG_SZ、`%USERPROFILE%` 被固定成展开值；写完设置再清除一个临时用户变量来触发环境变量变更广播。末尾说明这些命令会写入工作区以外的目录，被沙箱拦截时请向用户申请权限。
   - 卡片顶部说明用途、使用前提（喵剧保持打开）和用法（终端 `miaoju --help`，或在 AI 助手新会话里直接说需求）。原来的"复制给 AI 助手：请阅读 …/SKILL.md"一节已被以上两项取代。
 - **Codex 网络配置提示**（放在页签下方，两种安装方式都用得到）：卡片上附一段可复制的配置，并说明不加的话每次调用都要审批一次：
   ```toml

@@ -210,11 +210,17 @@ const SANDBOX_NOTE: &str = "如果被沙箱拦截，请向我申请权限后重�
 /// "让 AI 助手安装"页签里的提示词：AI 助手照着执行即可完成与安装按钮等价的步骤。
 /// 路径一律加双引号（可能含空格和中文，如 /Applications/喵剧.app/...）。
 /// skill 一步带着与按钮安装相同的判断：已有用户自己的同名目录（或指向别处的链接）就不覆盖。
-pub fn agent_install_prompt(windows: bool, bundled_cli: &str, skill_dir: &str) -> String {
+/// `version` 为应用版本，Windows 复制件的标记文件写它，与按钮安装一致（否则会被判为过期）。
+pub fn agent_install_prompt(
+    windows: bool,
+    bundled_cli: &str,
+    skill_dir: &str,
+    version: &str,
+) -> String {
     if windows {
         let skill_cmd = |dir: &str| {
             format!(
-                r#"$d = "$env:USERPROFILE\{dir}\skills\{SKILL_NAME}"; if ((Test-Path $d) -and -not (Test-Path "$d\{MANAGED_MARK}")) {{ Write-Error "已存在同名目录，未覆盖：$d" }} else {{ New-Item -ItemType Directory -Force $d | Out-Null; Copy-Item "{skill_dir}\*" $d -Recurse -Force; Set-Content "$d\{MANAGED_MARK}" managed }}"#
+                r#"$d = "$env:USERPROFILE\{dir}\skills\{SKILL_NAME}"; if ((Test-Path -LiteralPath $d) -and -not (Test-Path -LiteralPath "$d\{MANAGED_MARK}")) {{ Write-Error "已存在同名目录，未覆盖：$d" }} else {{ if (Test-Path -LiteralPath $d) {{ Remove-Item -LiteralPath $d -Recurse -Force }}; New-Item -ItemType Directory -Force "$env:USERPROFILE\{dir}\skills" | Out-Null; Copy-Item -LiteralPath "{skill_dir}" -Destination $d -Recurse -Force; Set-Content -LiteralPath "$d\{MANAGED_MARK}" -Value "{version}" }}"#
             )
         };
         format!(
@@ -235,7 +241,7 @@ pub fn agent_install_prompt(windows: bool, bundled_cli: &str, skill_dir: &str) -
     } else {
         let skill_cmd = |dir: &str| {
             format!(
-                r#"d=~/{dir}/skills/{SKILL_NAME}; if {{ [ -L "$d" ] && [ "$(basename "$(readlink "$d")")" != {SKILL_SRC_NAME} ]; }} || {{ [ -e "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/{MANAGED_MARK}" ]; }}; then echo "已存在同名目录，未覆盖：$d"; else mkdir -p ~/{dir}/skills && rm -rf "$d" && ln -sfn "{skill_dir}" "$d"; fi"#
+                r#"d=~/{dir}/skills/{SKILL_NAME}; if {{ [ -L "$d" ] && [ "$(readlink "$d")" != "{skill_dir}" ] && [ "$(basename "$(readlink "$d")")" != {SKILL_SRC_NAME} ]; }} || {{ [ -e "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/{MANAGED_MARK}" ]; }}; then echo "已存在同名目录，未覆盖：$d"; else mkdir -p ~/{dir}/skills && rm -rf "$d" && ln -sfn "{skill_dir}" "$d"; fi"#
             )
         };
         format!(
@@ -471,6 +477,7 @@ fn agent_prompt(app: &tauri::AppHandle) -> Result<String, String> {
         cfg!(windows),
         &cli.display().to_string(),
         &skill_dir(app)?.display().to_string(),
+        &app.package_info().version.to_string(),
     ))
 }
 
@@ -940,7 +947,7 @@ mod tests {
     fn agent_prompt_macos_quotes_real_paths_and_uses_markers() {
         let cli = "/Applications/喵剧 Beta.app/Contents/MacOS/miaoju-cli";
         let skill = "/Applications/喵剧 Beta.app/Contents/Resources/cli-skill";
-        let p = agent_install_prompt(false, cli, skill);
+        let p = agent_install_prompt(false, cli, skill, "1.2.0");
         assert!(
             p.contains(&format!(r#"ln -sf "{cli}" ~/.miaoju/bin/miaoju"#)),
             "{p}"
@@ -948,7 +955,7 @@ mod tests {
         for agent in [".claude", ".codex"] {
             assert!(
                 p.contains(&format!(
-                    r#"d=~/{agent}/skills/miaoju-cli; if {{ [ -L "$d" ] && [ "$(basename "$(readlink "$d")")" != cli-skill ]; }} || {{ [ -e "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/{MANAGED_MARK}" ]; }}; then echo "已存在同名目录，未覆盖：$d"; else mkdir -p ~/{agent}/skills && rm -rf "$d" && ln -sfn "{skill}" "$d"; fi"#
+                    r#"d=~/{agent}/skills/miaoju-cli; if {{ [ -L "$d" ] && [ "$(readlink "$d")" != "{skill}" ] && [ "$(basename "$(readlink "$d")")" != cli-skill ]; }} || {{ [ -e "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/{MANAGED_MARK}" ]; }}; then echo "已存在同名目录，未覆盖：$d"; else mkdir -p ~/{agent}/skills && rm -rf "$d" && ln -sfn "{skill}" "$d"; fi"#
                 )),
                 "缺少 {agent} 的同名目录判断：{p}"
             );
@@ -966,11 +973,33 @@ mod tests {
         assert!(p.contains("~/.zshrc"));
     }
 
+    /// 提示词装出来的复制件，标记里必须是应用版本号，否则卡片会一直显示"需要重新安装"。
+    #[test]
+    fn agent_prompt_windows_marker_is_app_version_and_not_outdated() {
+        let p = agent_install_prompt(true, r"C:\a\miaoju-cli.exe", r"C:\a\cli-skill", "1.3.0");
+        let key = format!(r#"Set-Content -LiteralPath "$d\{MANAGED_MARK}" -Value ""#);
+        let at = p.find(&key).expect("提示词里要写标记文件") + key.len();
+        let written = &p[at..at + p[at..].find('"').unwrap()];
+        assert_eq!(written, "1.3.0");
+        assert!(!p.contains(" managed"), "{p}");
+
+        // 按提示词的写法（Set-Content 会带换行）落一份复制件，状态不能是 outdated
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        let src = skill_src(t.path());
+        let dest = home.join(".codex").join("skills").join("miaoju-cli");
+        copy_dir_all(&src, &dest).unwrap();
+        std::fs::write(dest.join(MANAGED_MARK), format!("{written}\r\n")).unwrap();
+        let st = skill_statuses(&home, &src, "1.3.0", &[]);
+        let c = by_agent(&st, "codex");
+        assert!(c.installed && !c.outdated && !c.conflict, "{c:?}");
+    }
+
     #[test]
     fn agent_prompt_windows_quotes_real_paths() {
         let cli = r"C:\Program Files\喵剧\miaoju-cli.exe";
         let skill = r"C:\Program Files\喵剧\cli-skill";
-        let p = agent_install_prompt(true, cli, skill);
+        let p = agent_install_prompt(true, cli, skill, "1.2.0");
         assert!(
             p.contains(&format!(
                 r#"Copy-Item "{cli}" "$env:USERPROFILE\.miaoju\bin\miaoju.exe" -Force"#
@@ -1005,7 +1034,7 @@ mod tests {
         for agent in [".claude", ".codex"] {
             assert!(
                 p.contains(&format!(
-                    r#"$d = "$env:USERPROFILE\{agent}\skills\miaoju-cli"; if ((Test-Path $d) -and -not (Test-Path "$d\{MANAGED_MARK}")) {{ Write-Error "已存在同名目录，未覆盖：$d" }} else {{ New-Item -ItemType Directory -Force $d | Out-Null; Copy-Item "{skill}\*" $d -Recurse -Force; Set-Content "$d\{MANAGED_MARK}" managed }}"#
+                    r#"$d = "$env:USERPROFILE\{agent}\skills\miaoju-cli"; if ((Test-Path -LiteralPath $d) -and -not (Test-Path -LiteralPath "$d\{MANAGED_MARK}")) {{ Write-Error "已存在同名目录，未覆盖：$d" }} else {{ if (Test-Path -LiteralPath $d) {{ Remove-Item -LiteralPath $d -Recurse -Force }}; New-Item -ItemType Directory -Force "$env:USERPROFILE\{agent}\skills" | Out-Null; Copy-Item -LiteralPath "{skill}" -Destination $d -Recurse -Force; Set-Content -LiteralPath "$d\{MANAGED_MARK}" -Value "1.2.0" }}"#
                 )),
                 "缺少 {agent} 的同名目录判断：{p}"
             );
