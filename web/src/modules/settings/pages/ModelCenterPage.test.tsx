@@ -16,6 +16,7 @@ vi.mock('../api', async (orig) => ({
   patchModel: (id: number, p: unknown) => mocks.patch(id, p),
 }));
 
+import { SettingsApiError } from '../api';
 import { ModelCenterPage } from './ModelCenterPage';
 
 const model = (over: Record<string, unknown> = {}) => ({
@@ -158,5 +159,42 @@ describe('ModelCenterPage 独立上游', () => {
     await screen.findByText('独立上游', { selector: 'h5' });
     fireEvent.click(screen.getByText('单独配置'));
     expect(((await screen.findByPlaceholderText('sk-...')) as HTMLInputElement).value).toBe('');
+  });
+
+  it('地址输入框有 newapi 根地址提示（全局卡片 + 独立上游）', async () => {
+    renderPage();
+    const hint = '填写 newapi 根地址，如 https://example.com（无需带 /v1）';
+    expect(await screen.findByText(hint)).toBeTruthy();
+    await openEditor();
+    fireEvent.click(screen.getByText('单独配置'));
+    await waitFor(() => expect(screen.getAllByText(hint).length).toBe(2));
+  });
+
+  it('Seedance 选单独配置时显示素材提示，其他模型不显示', async () => {
+    const tip = /Seedance 已校验素材注册在全局上游账号下/;
+    mocks.models = [model({ modelId: 'doubao-seedance-2-0' })];
+    const r = renderPage();
+    await openEditor();
+    expect(screen.queryByText(tip)).toBeNull();
+    fireEvent.click(screen.getByText('单独配置'));
+    expect(await screen.findByText(tip)).toBeTruthy();
+    r.unmount();
+    mocks.models = [model()];
+    renderPage();
+    await openEditor();
+    fireEvent.click(screen.getByText('单独配置'));
+    await screen.findByPlaceholderText('sk-...');
+    expect(screen.queryByText(tip)).toBeNull();
+  });
+
+  it('后端 400 的 Key 格式错误显示在 Key 框下，地址错误显示在地址框下', async () => {
+    mocks.models = [model({ upstream: configured })];
+    mocks.patch.mockRejectedValueOnce(new SettingsApiError(400, 'KEY_FORMAT_BAD', 'upstream.apiKey'));
+    renderPage();
+    await openEditor();
+    fireEvent.change(screen.getByPlaceholderText('留空则保留已保存的 Key'), { target: { value: 'sk-abc' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /保\s*存/ }).at(-1)!);
+    const el = await screen.findByText('KEY_FORMAT_BAD', { selector: '.ant-form-item-explain-error' });
+    expect(el.closest('.ant-form-item')?.querySelector('input[type=password]')).toBeTruthy();
   });
 });
