@@ -117,7 +117,8 @@ func (r *Registrar) Register(ctx context.Context, url, assetType string) (string
 		msg = strings.TrimSpace(out.Error.Message)
 	}
 	if msg == "" {
-		msg = truncateRunes(strings.TrimSpace(string(raw)), 500)
+		// 先脱敏再截断：反过来做，Key 横跨截断点时会漏出半截。
+		msg = truncateRunes(redactKey(strings.TrimSpace(string(raw)), key), 500)
 	}
 	if msg == "" {
 		msg = fmt.Sprintf("上游未返回 asset_id（HTTP %d）", resp.StatusCode)

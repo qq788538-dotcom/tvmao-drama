@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/james/huabu_studio/apps/api/internal/seedance"
 	"github.com/james/huabu_studio/apps/api/internal/upstream"
 )
 
@@ -259,13 +260,14 @@ func cloneInputs(inputs map[string]any) map[string]any {
 // 音频）走的还是签名 URL。
 var seedanceAssetRefFields = []string{"images", "image", "videos", "video", "audios", "audio"}
 
-// ErrVerifiedAssetUpstreamMismatch：合规素材注册在全局上游账号下（library 的合规校验恒走
-// ResolveUpstream(nil, …)），目标模型走另一个账号的独立上游时上游里没有这个素材（审查 I-2）。
-var ErrVerifiedAssetUpstreamMismatch = errors.New("已校验素材注册在全局上游账号下，当前模型使用独立上游，无法引用。请改用全局上游，或在该账号下重新校验素材。")
+// ErrVerifiedAssetUpstreamMismatch：合规素材注册在内置模型 seedance-asset 解析出的上游账号下
+// （seedance-asset 设计 §2：模型可在模型中心单独配上游，否则回落全局）。生成模型解析出的上游
+// 与它不同时，上游里没有这个素材（审查 I-2 / 终审 I1）。
+var ErrVerifiedAssetUpstreamMismatch = errors.New("已校验素材注册在合规校验模型 seedance-asset 所用的上游账号下，当前模型使用的上游与之不同，无法引用。请让两者使用同一上游，或改用与合规校验相同的上游后重新生成。")
 
 // applyRealPersonRefs 是 Submit / SubmitTx / prepareExecution 共用的 doubao-seedance* 素材处理：
-// 先把已校验的图换成 asset:// 引用，再确认目标模型的上游就是素材注册时的全局账号。
-// 模型走独立上游且指纹与全局不同、请求里又有 asset:// 引用时直接拒绝，不调上游——
+// 先把已校验的图换成 asset:// 引用，再确认目标模型的上游就是素材注册时 seedance-asset 用的上游。
+// 两者解析出的上游指纹不同、请求里又有 asset:// 引用时直接拒绝，不调上游——
 // 否则用户只会看到上游一条晦涩的 asset not found。
 // 长期方案（素材按上游指纹分账号注册）见审查报告待办。
 func (s *Service) applyRealPersonRefs(userID int64, model *models.ModelConfig, inputs map[string]any) (map[string]any, error) {
@@ -276,12 +278,22 @@ func (s *Service) applyRealPersonRefs(userID int64, model *models.ModelConfig, i
 	if err != nil {
 		return nil, err
 	}
-	if !model.HasOwnUpstream() || !hasAssetRefs(out) {
+	if !hasAssetRefs(out) {
 		return out, nil
 	}
-	ownBase, ownKey, _ := models.ResolveUpstream(model, nil)
-	globalKey, globalBase, gerr := s.upstreamCredentials(userID, nil)
-	if gerr != nil || models.UpstreamFingerprint(ownBase, ownKey) != models.UpstreamFingerprint(globalBase, globalKey) {
+	// 合规模型查不到时按 ResolveUpstream(nil) 的约定回落全局。
+	var assetModel *models.ModelConfig
+	if s.models != nil {
+		if m, err := s.models.GetByModelID(seedance.ModelID); err == nil {
+			assetModel = m
+		}
+	}
+	if !model.HasOwnUpstream() && !assetModel.HasOwnUpstream() {
+		return out, nil // 两者都走全局，必然同一账号
+	}
+	genKey, genBase, gerr := s.upstreamCredentials(userID, model)
+	assetKey, assetBase, aerr := s.upstreamCredentials(userID, assetModel)
+	if gerr != nil || aerr != nil || models.UpstreamFingerprint(genBase, genKey) != models.UpstreamFingerprint(assetBase, assetKey) {
 		return nil, ErrVerifiedAssetUpstreamMismatch
 	}
 	return out, nil

@@ -19,12 +19,17 @@ type fakeRegistrar struct {
 	calls      int
 	gotURL     string
 	gotType    string
+	// onRegister 在 Register 被调用时执行（返回前），用于观察调用期间的落库状态。
+	onRegister func()
 }
 
 func (f *fakeRegistrar) Configured() bool { return f.configured }
 func (f *fakeRegistrar) Register(_ context.Context, url, t string) (string, error) {
 	f.calls++
 	f.gotURL, f.gotType = url, t
+	if f.onRegister != nil {
+		f.onRegister()
+	}
 	return f.id, f.err
 }
 
@@ -70,6 +75,7 @@ func (f *fakeSeedanceAssets) GetMany(userID int64, keys []string) (map[string]Se
 	return out, nil
 }
 func (f *fakeSeedanceAssets) Upsert(a SeedanceAsset) error {
+	a.Error, a.FirstFailedAt = nil, nil // 与真实 Upsert 一致：写入时清空 error / first_failed_at
 	f.upserts = append(f.upserts, a)
 	f.rows[a.ObjectKey] = a
 	return nil
@@ -432,5 +438,64 @@ func TestSubmitDisabledWhenModelOff(t *testing.T) {
 	}
 	if svc.Configured() {
 		t.Fatal("应未配置")
+	}
+}
+
+// 终审 I3：同步注册可能长达数分钟，调用期间必须已有 pending 行——节点角标/5 秒轮询
+// 看得到「正在进行」，生成侧 Resolve 报「请稍候」而不是把签名 URL 原样透传。
+func TestSubmitWritesPendingBeforeRegister(t *testing.T) {
+	reg := &fakeRegistrar{configured: true, id: "asset-1"}
+	svc, repo, _ := newSyncSvc(t, reg)
+	// 旧的失败行：pending 必须清掉 error，并带上本次的 asset_type。
+	repo.rows["u1/a.mp4"] = SeedanceAsset{ObjectKey: "u1/a.mp4", UserID: 1, Status: seedanceStatusFailedPermanent,
+		AssetType: seedance.AssetTypeImage, Error: libraryPtrStr("旧错误")}
+	var during SeedanceAsset
+	var resolveErr error
+	reg.onRegister = func() {
+		during = repo.rows["u1/a.mp4"]
+		_, resolveErr = svc.Resolve(1, "u1/a.mp4")
+	}
+	if _, err := svc.Submit(context.Background(), 1, "u1/a.mp4", seedance.AssetTypeVideo); err != nil {
+		t.Fatal(err)
+	}
+	if during.Status != "pending" || during.AssetType != seedance.AssetTypeVideo || during.Error != nil || during.UserID != 1 {
+		t.Fatalf("Register 期间应已有 pending 行，实际 %+v", during)
+	}
+	if !errors.Is(resolveErr, ErrRealPersonNotReady) || !strings.Contains(resolveErr.Error(), "请稍候") {
+		t.Fatalf("校验进行中生成应报「请稍候」，实际 %v", resolveErr)
+	}
+	if got := repo.rows["u1/a.mp4"]; got.Status != "active" || *got.AssetID != "asset-1" {
+		t.Fatalf("成功后应为 active，实际 %+v", got)
+	}
+}
+
+// 失败路径同样先写 pending，最终落 failed_permanent + 上游原文。
+func TestSubmitPendingThenFailedPermanent(t *testing.T) {
+	reg := &fakeRegistrar{configured: true, err: &seedance.UpstreamError{Status: 400, Message: "素材不合规"}}
+	svc, repo, _ := newSyncSvc(t, reg)
+	var during string
+	reg.onRegister = func() { during = repo.rows["u1/a.png"].Status }
+	if _, err := svc.Submit(context.Background(), 1, "u1/a.png", seedance.AssetTypeImage); err == nil {
+		t.Fatal("应返回上游错误")
+	}
+	if during != "pending" {
+		t.Fatalf("Register 期间应为 pending，实际 %q", during)
+	}
+	if got := repo.rows["u1/a.png"]; got.Status != seedanceStatusFailedPermanent {
+		t.Fatalf("失败后应为 failed_permanent，实际 %+v", got)
+	}
+	if len(repo.setError) != 1 || repo.setError[0].msg != "素材不合规" {
+		t.Fatalf("setError=%+v", repo.setError)
+	}
+}
+
+// 崩溃遗留的 pending 行不阻塞重试：Submit 只跳过 active，再点一次就重新注册。
+func TestSubmitResubmitsLeftoverPending(t *testing.T) {
+	reg := &fakeRegistrar{configured: true, id: "asset-3"}
+	svc, repo, _ := newSyncSvc(t, reg)
+	repo.rows["u1/a.png"] = SeedanceAsset{ObjectKey: "u1/a.png", UserID: 1, Status: "pending", AssetType: seedance.AssetTypeImage}
+	rec, err := svc.Submit(context.Background(), 1, "u1/a.png", seedance.AssetTypeImage)
+	if err != nil || reg.calls != 1 || rec.Status != "active" {
+		t.Fatalf("rec=%+v err=%v calls=%d", rec, err, reg.calls)
 	}
 }

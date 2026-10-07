@@ -70,7 +70,7 @@ type seedanceVerifyPayload struct {
 }
 
 // Verify: POST /seedance/verify —— body {url, kind}。
-// 幂等——已通过且版本没变的直接回原状态，不重复占用上游配额。
+// 同步调用 seedance-asset 注册：已通过的直接回原状态；否则返回时已出结果（active 或上游原文错误）。
 func (h *SeedanceHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	userID := userIDFromContext(r.Context())
 	var input seedanceVerifyPayload

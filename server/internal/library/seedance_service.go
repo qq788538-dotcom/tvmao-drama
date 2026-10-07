@@ -154,7 +154,13 @@ func isLoopbackURL(raw string) bool {
 
 // Submit 是用户在画布上点「Seedance2.0 合规校验」的入口：同步调用内置模型
 // seedance-asset 注册素材，拿到 asset_id 即通过（seedance-asset 设计 A2）。
-// 幂等——已 active 的直接返回，不重复占用上游配额。assetType 是上游 AssetType 原值。
+// 已 active 的直接返回；其余状态（含 pending、failed_permanent）一律重新注册。
+// assetType 是上游 AssetType 原值。
+//
+// 注册前先写一条临时 pending 行（终审 I3）：同步调用可能长达数分钟，期间节点角标
+// 靠它显示「正在进行」并触发前端 5 秒轮询，生成侧 Resolve 也据此报「请稍候」，
+// 而不是把未校验的签名 URL 原样透传。注册调用免费，不做在途去重；应用崩溃遗留的
+// pending 行再点一次校验即可覆盖。
 func (s *SeedanceService) Submit(ctx context.Context, userID int64, objectKey, assetType string) (*SeedanceAsset, error) {
 	if !s.client.Configured() {
 		return nil, ErrSeedanceDisabled
@@ -169,6 +175,10 @@ func (s *SeedanceService) Submit(ctx context.Context, userID int64, objectKey, a
 	}
 	url, err := s.signedURL(ctx, objectKey)
 	if err != nil {
+		return nil, err
+	}
+	// 临时 pending（Upsert 会清空旧 error）；写失败就不调上游，免得结果无处落库。
+	if err := s.repo.Upsert(SeedanceAsset{ObjectKey: objectKey, UserID: userID, AssetType: assetType, Status: "pending"}); err != nil {
 		return nil, err
 	}
 	// 同步注册：拿到 asset_id 即通过；失败原样记录上游原文，让节点角标看得到原因。

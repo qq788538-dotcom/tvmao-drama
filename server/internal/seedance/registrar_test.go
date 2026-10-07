@@ -107,6 +107,18 @@ func TestRegisterErrorRedactsKey(t *testing.T) {
 	}
 }
 
+// 终审 Ruling 5：Key 横跨 500 字截断点时，必须先脱敏再截断，否则会漏出半截 Key。
+func TestRegisterRedactsKeyBeforeTruncate(t *testing.T) {
+	r := newReg(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(502)
+		w.Write([]byte(strings.Repeat("x", 495) + testKey + strings.Repeat("y", 100)))
+	}, true)
+	_, err := r.Register(context.Background(), "https://b/a.png", AssetTypeImage)
+	if err == nil || strings.Contains(err.Error(), testKey[:5]) {
+		t.Fatalf("截断后不得残留半截 Key: %v", err)
+	}
+}
+
 func TestConfiguredFollowsModel(t *testing.T) {
 	called := false
 	off := newReg(t, func(http.ResponseWriter, *http.Request) { called = true }, false)
