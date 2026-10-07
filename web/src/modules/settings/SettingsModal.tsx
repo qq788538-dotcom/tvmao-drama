@@ -14,8 +14,8 @@ export type { SectionKey };
 
 // 菜单只有一级、没有分组标题。
 export const SECTIONS: { key: SectionKey; label: string }[] = [
-  { key: 'general', label: '通用' },
   { key: 'models', label: '模型中心' },
+  { key: 'general', label: '配置' },
   { key: 'diag', label: '环境诊断' },
 ];
 

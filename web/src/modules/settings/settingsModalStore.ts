@@ -13,7 +13,7 @@ interface SettingsModalState {
 /** 设置弹框的全局开关。任何地方想「去设置」都调 openSettings(tab?)，不再跳路由。 */
 export const useSettingsModal = create<SettingsModalState>((set) => ({
   open: false,
-  tab: 'general',
+  tab: 'models',
   openSettings: (tab) => set((s) => ({ open: true, tab: tab ?? s.tab })),
   closeSettings: () => set({ open: false }),
   setTab: (tab) => set({ tab }),

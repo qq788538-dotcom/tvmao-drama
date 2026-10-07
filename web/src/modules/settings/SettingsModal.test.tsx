@@ -35,12 +35,16 @@ describe('SettingsModal', () => {
     expect(screen.getByTestId('path').textContent).toBe('/canvas/1');
   });
 
+  it('默认打开第一项"模型中心"', () => {
+    expect(useSettingsModal.getInitialState().tab).toBe('models');
+  });
+
   it('菜单正好 3 项、没有分组标题', () => {
     setup();
     act(() => openSettings());
-    expect(SECTIONS.map((s) => s.label)).toEqual(['通用', '模型中心', '环境诊断']);
+    expect(SECTIONS.map((s) => s.label)).toEqual(['模型中心', '配置', '环境诊断']);
     const items = [...document.querySelectorAll('.ant-menu-item')].map((e) => e.textContent);
-    expect(items).toEqual(['通用', '模型中心', '环境诊断']);
+    expect(items).toEqual(['模型中心', '配置', '环境诊断']);
     expect(document.querySelector('.ant-menu-item-group-title')).toBeNull();
     expect(document.querySelector('.ant-menu-submenu')).toBeNull();
   });
