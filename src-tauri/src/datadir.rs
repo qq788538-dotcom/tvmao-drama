@@ -183,10 +183,21 @@ pub fn check_existing_data_dir(p: &str, default_dir: &Path) -> Result<PathBuf, S
     Ok(path)
 }
 
+/// 与 Go `db.IsDatabaseFile` 的宽松近似（壳里没有密钥，不能真去解密）：明文 SQLite 文件头，
+/// 或 adiantum 整库加密后的文件（文件头是密文，大小为正且是 4096 的整数倍）。
+/// 精确判定在 Go 端 InspectChosenFolder / IsDataDir（设置页选目录时已跑过一遍）。
 fn is_sqlite_file(p: &Path) -> bool {
     use std::io::Read;
+    const PAGE: u64 = 4096;
+    let Ok(meta) = std::fs::metadata(p) else { return false };
+    if !meta.is_file() || meta.len() == 0 {
+        return false;
+    }
     let mut buf = [0u8; 16];
-    std::fs::File::open(p).and_then(|mut f| f.read_exact(&mut buf)).is_ok() && &buf == b"SQLite format 3\0"
+    if meta.len() >= 16 && std::fs::File::open(p).and_then(|mut f| f.read_exact(&mut buf)).is_ok() && &buf == b"SQLite format 3\0" {
+        return true;
+    }
+    meta.len() % PAGE == 0
 }
 
 /// 用户手动切换了数据目录（set_data_dir）：尚未执行的迁移 / 清理待办作废。清理以“当前目录”为新目录，
@@ -604,6 +615,29 @@ mod tests {
         let p = std::env::temp_dir().join(format!("miaoju-datadir-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&p).unwrap();
         p
+    }
+
+    #[test]
+    fn is_sqlite_file_plain_encrypted_and_garbage() {
+        let d = tmp();
+        let plain = d.join("plain.db");
+        let mut body = b"SQLite format 3\0".to_vec();
+        body.extend(vec![0u8; 100]);
+        std::fs::write(&plain, body).unwrap();
+        assert!(is_sqlite_file(&plain));
+        let enc = d.join("enc.db");
+        let mut body = vec![0x9au8, 0x21, 0x60, 0x7f];
+        body.extend((0..8192 - 4).map(|i| (i * 31 % 251) as u8));
+        std::fs::write(&enc, body).unwrap();
+        assert!(is_sqlite_file(&enc));
+        let junk = d.join("junk.db");
+        std::fs::write(&junk, b"hello, not a database").unwrap();
+        assert!(!is_sqlite_file(&junk));
+        let empty = d.join("empty.db");
+        std::fs::write(&empty, b"").unwrap();
+        assert!(!is_sqlite_file(&empty));
+        assert!(!is_sqlite_file(&d.join("missing.db")));
+        assert!(!is_sqlite_file(&d));
     }
 
     #[test]
