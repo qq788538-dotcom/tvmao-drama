@@ -117,38 +117,6 @@ export const listModels = () => request<{ data: ModelView[] }>('GET', '/models')
 export const patchModel = (id: number, p: ModelPatch) => request<ModelView>('PATCH', `/models/${id}`, p);
 export const restoreModel = (id: number) => request<ModelView>('POST', `/models/${id}/restore-default`);
 
-// ---- 画布配置 ----
-export type ConfigKey =
-  | 'canvas_postprocess_config'
-  | 'gen_image_prompt_presets'
-  | 'canvas_multi_angle'
-  | 'canvas_light_control'
-  | 'canvas_script_config';
-export interface ConfigView<T = unknown> {
-  key: ConfigKey;
-  value: T | null;
-  modified: boolean;
-}
-export const getConfig = <T>(key: ConfigKey) => request<ConfigView<T>>('GET', `/configs/${key}`);
-export const putConfig = <T>(key: ConfigKey, value: T) => request<ConfigView<T>>('PUT', `/configs/${key}`, { value });
-export const restoreConfig = <T>(key: ConfigKey) => request<ConfigView<T>>('POST', `/configs/${key}/restore-default`);
-
-// ---- Agent 模型 ----
-export interface AgentModelItem {
-  id: number;
-  role: string;
-  alias: string;
-  modelName: string;
-  modified: boolean;
-}
-export interface AgentModelsView {
-  data: AgentModelItem[];
-  candidates: { modelId: string; name: string }[];
-}
-export const getAgentModels = () => request<AgentModelsView>('GET', '/agent-models');
-export const switchAgentModel = (id: number, modelName: string) => request<AgentModelsView>('PUT', `/agent-models/${id}`, { modelName });
-export const restoreAgentModel = (id: number) => request<AgentModelsView>('POST', `/agent-models/${id}/restore-default`);
-
 // ---- Tauri 壳 ----
 export interface DataDirStatus {
   current: string;
