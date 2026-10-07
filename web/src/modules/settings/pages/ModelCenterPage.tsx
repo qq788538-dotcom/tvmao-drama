@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  App as AntApp, Button, Card, Collapse, Descriptions, Drawer, Form, Input, InputNumber, Segmented, Select, Space, Switch, Table, Tag, Tooltip, Typography,
+  Alert, App as AntApp, Button, Card, Collapse, Descriptions, Drawer, Form, Input, InputNumber, Segmented, Select, Space, Switch, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { errorText, listModels, patchModel, restoreModel, SettingsApiError, type ModelPatch, type ModelView } from '../api';
@@ -8,7 +8,10 @@ import { invalidateAfterSettingsChange } from '../invalidate';
 import { ReadonlyJson } from '../components/ReadonlyJson';
 import { UpstreamCard } from '../components/UpstreamCard';
 import { RestoreDefaultButton } from '../components/RestoreDefaultButton';
+import { BASE_URL_HINT } from '../components/hints';
 import { filterModels, formToPatch, MODEL_FIELD_LABELS, modelToForm, TYPE_OPTIONS, upstreamFieldErrors, type ModelFormValues } from './modelForm';
+
+const SEEDANCE_HINT = 'Seedance 已校验素材注册在全局上游账号下，单独配置上游后，引用已校验素材的生成会失败。';
 
 export function ModelCenterPage() {
   const { message, modal } = AntApp.useApp();
@@ -36,8 +39,10 @@ export function ModelCenterPage() {
     },
     onError: (e) => {
       message.error(errorText(e));
-      if (e instanceof SettingsApiError && e.status === 400 && (/base|url|upstream/i.test(e.field ?? '') || e.message.includes('地址'))) {
-        form.setFields([{ name: 'upstreamBaseUrl', errors: [e.message] }]);
+      if (e instanceof SettingsApiError && e.status === 400) {
+        const f = e.field ?? '';
+        if (/apikey/i.test(f)) form.setFields([{ name: 'upstreamApiKey', errors: [e.message] }]);
+        else if (/base|url/i.test(f) || e.message.includes('地址')) form.setFields([{ name: 'upstreamBaseUrl', errors: [e.message] }]);
       }
     },
     onSettled: () => patch.reset(),
@@ -203,11 +208,15 @@ export function ModelCenterPage() {
                 <Form.Item name="upstreamMode" extra="单独配置后，这个模型的所有调用（画布、Agent、剧本等）都走这里；使用全局则走模型中心顶部的全局上游。">
                   <Segmented options={[{ value: 'global', label: '使用全局' }, { value: 'custom', label: '单独配置' }]} />
                 </Form.Item>
+                {upstreamMode === 'custom' && editing.modelId.startsWith('doubao-seedance') && (
+                  <Alert type="warning" showIcon style={{ marginBottom: 16 }} message={SEEDANCE_HINT} />
+                )}
                 {upstreamMode === 'custom' && (
                   <>
                     <Form.Item
                       label="上游地址"
                       name="upstreamBaseUrl"
+                      extra={BASE_URL_HINT}
                       dependencies={['upstreamMode', 'upstreamApiKey']}
                     rules={[{ validator: () => { const err = upstreamFieldErrors(editing, form.getFieldsValue()).baseUrl; return err ? Promise.reject(new Error(err)) : Promise.resolve(); } }]}
                     >
