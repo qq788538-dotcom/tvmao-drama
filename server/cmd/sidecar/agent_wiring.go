@@ -28,6 +28,8 @@ type agentWiringDeps struct {
 	Assets  agent.AttachmentAssetFinder  // P1b 的 assets 仓库
 	Objects agent.AttachmentObjectReader // P1b 的 assets.Storage
 	Keys    agent.MediaKeyExtractor      // P1b 的 assets.Storage（ExtractKey）；接了 Signer/Objects 就必须接它
+	// Publisher 把本机视频/音频发布到用户自配的对象存储；nil 时本机视频/音频仍报错。
+	Publisher agent.MediaPublisher
 }
 
 type agentWiring struct {
@@ -77,7 +79,7 @@ func wireAgent(ctx context.Context, d agentWiringDeps) (*agentWiring, error) {
 		objects = agentUnavailableAssets{}
 	}
 	// Keys 为 nil（P1b 未合并）时，resolver 对本机地址一律报错，绝不把 127.0.0.1 原样发给上游。
-	resolver := &agent.LocalMediaResolver{Keys: d.Keys, Objects: objects}
+	resolver := &agent.LocalMediaResolver{Keys: d.Keys, Objects: objects, Publisher: d.Publisher}
 
 	backbones := agent.NewBackboneRepo(d.DB)
 	repo := agent.NewRepository(d.DB)

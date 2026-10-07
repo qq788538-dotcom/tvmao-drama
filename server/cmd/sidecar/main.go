@@ -151,12 +151,13 @@ func run() error {
 	// P5 Agent：在 builtin.Apply 之后装配（agentseed 引用内置模型），ctx 用上面的关闭 ctx，
 	// 进行中的 Run 随 sidecar 退出取消。Keys 必须是真正的 LocalStorage（ExtractKey），否则拒绝装配。
 	agentW, err := wireAgent(ctx, agentWiringDeps{
-		DB:      conn,
-		Signer:  a.deps.MediaSigner,
-		Keys:    storage,
-		Objects: storage,
-		Assets:  a.assets,
-		Gen:     a.gen.Gen,
+		DB:        conn,
+		Signer:    a.deps.MediaSigner,
+		Keys:      storage,
+		Objects:   storage,
+		Assets:    a.assets,
+		Gen:       a.gen.Gen,
+		Publisher: a.publisher,
 	})
 	if err != nil {
 		ln.Close()
