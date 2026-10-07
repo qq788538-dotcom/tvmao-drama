@@ -12,6 +12,7 @@ vi.mock('../api', async (orig) => ({
   }),
   dataDirStatus: async () => ({ current: '/data', defaultDir: '/default', lastError: '数据目录迁移失败，仍在使用原目录：磁盘已满' }),
   appVersion: async () => '0.1.0',
+  getObjectStorage: async () => ({ configured: false, provider: '', endpoint: '', region: '', bucket: '', prefix: '', accessKey: '', secretKeySet: false, secretKeyMasked: '' }),
 }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 
