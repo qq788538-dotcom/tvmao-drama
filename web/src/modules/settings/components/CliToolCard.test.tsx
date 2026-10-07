@@ -33,8 +33,16 @@ const base = {
   binDir: '/Users/u/.miaoju/bin',
   skillEntry: '/Applications/喵剧.app/Contents/Resources/cli-skill/SKILL.md',
   skills: [
-    { agent: 'claude', path: '/Users/u/.claude/skills/miaoju-cli', available: true, installed: true, conflict: false },
-    { agent: 'codex', path: '/Users/u/.codex/skills/miaoju-cli', available: false, installed: false, conflict: false },
+    { agent: 'claude', path: '/Users/u/.claude/skills/miaoju-cli', available: true, installed: true, conflict: false, outdated: false, error: null },
+    {
+      agent: 'codex',
+      path: '/Users/u/.codex/skills/miaoju-cli',
+      available: false,
+      installed: false,
+      conflict: false,
+      outdated: false,
+      error: null,
+    },
   ],
   agentPrompt: PROMPT,
 };
@@ -91,6 +99,31 @@ describe('CliToolCard', () => {
       await screen.findByText(`Claude Code：已存在同名目录，未覆盖：${base.skills[0].path}`),
     ).toBeTruthy();
     expect(screen.getByText(/Codex：已安装/)).toBeTruthy();
+  });
+
+  it('shows outdated and per-agent errors', async () => {
+    status.mockResolvedValue({
+      ...base,
+      installed: true,
+      upToDate: true,
+      skills: [
+        { ...base.skills[0], outdated: true },
+        { ...base.skills[1], available: true, error: '创建 /Users/u/.codex/skills 失败：权限不足' },
+      ],
+    });
+    renderCard(<CliToolCard />);
+    expect(await screen.findByText('Claude Code：版本不一致，需要重新安装')).toBeTruthy();
+    expect(screen.getByText('Codex：安装失败：创建 /Users/u/.codex/skills 失败：权限不足')).toBeTruthy();
+  });
+
+  it('refreshes status when install fails', async () => {
+    status.mockResolvedValue({ ...base, installed: false, upToDate: false });
+    install.mockRejectedValue(new Error('boom'));
+    renderCard(<CliToolCard />);
+    await screen.findByText('未安装');
+    expect(status).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /安\s*装/ }));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
   });
 
   it('shows the agent prompt on the "let AI install" tab', async () => {

@@ -267,6 +267,8 @@ Windows 实机全部必做；macOS 上 sidecar 级冒烟（`project list`/`node 
 ### L12 让 AI 助手安装
 - 步骤：先卸载；切到「让 AI 助手安装」页签，复制提示词发给 Claude Code。
 - 预期：它按提示词完成安装（被沙箱拦截时会申请权限）；重新打开终端 `miaoju --help` 可用，设置卡片刷新后 Claude Code 的 skill 显示「已安装」。
+- Windows 真机上再按 Windows 版提示词做一次，完成后执行 `reg query HKCU\Environment /v Path`：值类型仍是 REG_EXPAND_SZ，原有的 `%USERPROFILE%` 类引用没有被展开。
+- 预先放一个用户自己的 `~/.claude/skills/miaoju-cli` 目录（无 `.miaoju-managed`）再发提示词：AI 报「已存在同名目录，未覆盖」，目录内容不变。
 
 ## 条目统计
 

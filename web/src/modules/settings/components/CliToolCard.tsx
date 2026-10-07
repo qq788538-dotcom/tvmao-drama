@@ -24,8 +24,10 @@ const AGENTS: Record<string, { name: string; dir: string }> = {
 
 function skillText(s: CliSkillStatus): string {
   const a = AGENTS[s.agent] ?? { name: s.agent, dir: s.agent };
+  if (s.error) return `${a.name}：${s.installed ? '操作失败' : '安装失败'}：${s.error}`;
   if (!s.available) return `${a.name}：未检测到 ${a.name}（${a.dir} 不存在）`;
   if (s.conflict) return `${a.name}：已存在同名目录，未覆盖：${s.path}`;
+  if (s.installed && s.outdated) return `${a.name}：版本不一致，需要重新安装`;
   return `${a.name}：${s.installed ? '已安装' : '未安装'}`;
 }
 
@@ -41,7 +43,11 @@ export function CliToolCard() {
       onDone(s);
       message.success(INSTALLED_HINT);
     },
-    onError: (e) => message.error(errorText(e)),
+    onError: (e) => {
+      message.error(errorText(e));
+      // 失败前可能已装好一部分（命令、PATH），刷新状态
+      void qc.invalidateQueries({ queryKey: ['cli-tool-status'] });
+    },
   });
   const uninstall = useMutation({
     mutationFn: uninstallCliTool,
@@ -49,7 +55,10 @@ export function CliToolCard() {
       onDone(s);
       message.success('已卸载');
     },
-    onError: (e) => message.error(errorText(e)),
+    onError: (e) => {
+      message.error(errorText(e));
+      void qc.invalidateQueries({ queryKey: ['cli-tool-status'] });
+    },
   });
   const s = q.data;
   const busy = install.isPending || uninstall.isPending;
@@ -82,7 +91,10 @@ export function CliToolCard() {
           <Descriptions.Item label="AI 助手 skill">
             <Space direction="vertical" size={0}>
               {(s.skills ?? []).map((k) => (
-                <Typography.Text key={k.agent} type={k.conflict ? 'warning' : undefined}>
+                <Typography.Text
+                  key={k.agent}
+                  type={k.error ? 'danger' : k.conflict || k.outdated ? 'warning' : undefined}
+                >
                   {skillText(k)}
                 </Typography.Text>
               ))}

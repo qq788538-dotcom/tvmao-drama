@@ -152,8 +152,12 @@ export interface CliSkillStatus {
   /** 该 AI 助手的主目录（~/.claude、~/.codex）存在 */
   available: boolean;
   installed: boolean;
-  /** 已有用户自己的同名目录，没有覆盖 */
+  /** 已有用户自己的同名目录（或指向别处的链接），没有覆盖 */
   conflict: boolean;
+  /** 复制安装的 skill 版本与应用不一致，需要重新安装 */
+  outdated: boolean;
+  /** 本次安装 / 卸载该 agent 时出的错 */
+  error: string | null;
 }
 export const cliToolStatus = () => invoke<CliToolStatus>('cli_tool_status');
 export const installCliTool = () => invoke<CliToolStatus>('install_cli_tool');

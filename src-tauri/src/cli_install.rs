@@ -26,6 +26,8 @@ pub struct CliToolStatus {
 
 /// 安装后 skill 在 AI 助手里的目录名，与 SKILL.md frontmatter 的 name 一致。
 const SKILL_NAME: &str = "miaoju-cli";
+/// 包内 skill 目录名（资源目录下的 cli-skill/）：指向同名目录的链接才算"我们装的"。
+const SKILL_SRC_NAME: &str = "cli-skill";
 /// 复制安装（Windows）时写进目录的标记文件：有它才算"我们装的"，卸载、重装才敢动。
 const MANAGED_MARK: &str = ".miaoju-managed";
 
@@ -37,9 +39,16 @@ pub struct SkillStatus {
     /// 该 AI 助手的主目录（~/.claude、~/.codex）存在
     available: bool,
     installed: bool,
-    /// 已有用户自己的同名目录（或文件），没有覆盖
+    /// 已有用户自己的同名目录（或文件、指向别处的链接），没有覆盖
     conflict: bool,
+    /// 复制安装的 skill 版本与应用不一致，需要重新安装
+    outdated: bool,
+    /// 本次安装 / 卸载该 agent 时出的错
+    error: Option<String>,
 }
+
+/// 某个 agent 的 skill 操作失败：(agent, 原因)
+type SkillErrors = Vec<(&'static str, String)>;
 
 /// (agent, 主目录, skill 安装位置)
 fn skill_targets(home: &Path) -> [(&'static str, PathBuf, PathBuf); 2] {
@@ -53,16 +62,21 @@ fn skill_targets(home: &Path) -> [(&'static str, PathBuf, PathBuf); 2] {
 #[derive(PartialEq)]
 enum SkillOwner {
     Missing,
-    /// 符号链接（含悬空的），或带标记文件的目录
+    /// 指向 cli-skill 的符号链接（含应用被移走后的悬空链接），或带标记文件的目录
     Ours,
     Foreign,
 }
 
 /// 判断存在用 symlink_metadata：悬空链接用 exists() 会被当成不存在，既删不掉也建不了新链接。
-fn skill_owner(dest: &Path) -> SkillOwner {
+fn skill_owner(dest: &Path, src: &Path) -> SkillOwner {
     match std::fs::symlink_metadata(dest) {
         Err(_) => SkillOwner::Missing,
-        Ok(m) if m.file_type().is_symlink() => SkillOwner::Ours,
+        Ok(m) if m.file_type().is_symlink() => match std::fs::read_link(dest) {
+            Ok(t) if t == src || t.file_name().is_some_and(|n| n == SKILL_SRC_NAME) => {
+                SkillOwner::Ours
+            }
+            _ => SkillOwner::Foreign,
+        },
         Ok(m) if m.is_dir() && std::fs::symlink_metadata(dest.join(MANAGED_MARK)).is_ok() => {
             SkillOwner::Ours
         }
@@ -96,25 +110,38 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
 
 /// 把 `src`（包内 skill 目录）装进每个已存在的 AI 助手主目录。`link` 为 true 建符号链接，
 /// 否则复制并写入内容为 `version` 的标记文件。用户自己的同名目录跳过不动。
-fn install_skills(home: &Path, src: &Path, link: bool, version: &str) -> Result<(), String> {
-    for (_, root, dest) in skill_targets(home) {
+/// 逐个 agent 尝试，一个失败不影响另一个，返回各自的错误。
+fn install_skills(home: &Path, src: &Path, link: bool, version: &str) -> SkillErrors {
+    let mut errs = Vec::new();
+    for (agent, root, dest) in skill_targets(home) {
         if !root.is_dir() {
             continue;
         }
-        match skill_owner(&dest) {
-            SkillOwner::Foreign => continue,
-            SkillOwner::Ours => {
-                remove_ours(&dest).map_err(|e| format!("删除旧的 {} 失败：{e}", dest.display()))?
-            }
-            SkillOwner::Missing => {}
+        if let Err(e) = install_skill(&root, &dest, src, link, version) {
+            errs.push((agent, e));
         }
-        let parent = dest.parent().unwrap_or(&root);
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("创建 {} 失败：{e}", parent.display()))?;
-        place_skill(src, &dest, link, version)
-            .map_err(|e| format!("安装 skill 到 {} 失败：{e}", dest.display()))?;
     }
-    Ok(())
+    errs
+}
+
+fn install_skill(
+    root: &Path,
+    dest: &Path,
+    src: &Path,
+    link: bool,
+    version: &str,
+) -> Result<(), String> {
+    match skill_owner(dest, src) {
+        SkillOwner::Foreign => return Ok(()),
+        SkillOwner::Ours => {
+            remove_ours(dest).map_err(|e| format!("删除旧的 {} 失败：{e}", dest.display()))?
+        }
+        SkillOwner::Missing => {}
+    }
+    let parent = dest.parent().unwrap_or(root);
+    std::fs::create_dir_all(parent).map_err(|e| format!("创建 {} 失败：{e}", parent.display()))?;
+    place_skill(src, dest, link, version)
+        .map_err(|e| format!("安装 skill 到 {} 失败：{e}", dest.display()))
 }
 
 fn place_skill(src: &Path, dest: &Path, link: bool, version: &str) -> std::io::Result<()> {
@@ -132,28 +159,47 @@ fn place_skill(src: &Path, dest: &Path, link: bool, version: &str) -> std::io::R
     r
 }
 
-/// 只删我们装的（符号链接，或带标记文件的目录）。
-fn uninstall_skills(home: &Path) -> Result<(), String> {
-    for (_, _, dest) in skill_targets(home) {
-        if skill_owner(&dest) == SkillOwner::Ours {
-            remove_ours(&dest).map_err(|e| format!("删除 {} 失败：{e}", dest.display()))?;
+/// 只删我们装的（指向 cli-skill 的符号链接，或带标记文件的目录），逐个 agent 尝试。
+fn uninstall_skills(home: &Path, src: &Path) -> SkillErrors {
+    let mut errs = Vec::new();
+    for (agent, _, dest) in skill_targets(home) {
+        if skill_owner(&dest, src) == SkillOwner::Ours {
+            if let Err(e) = remove_ours(&dest) {
+                errs.push((agent, format!("删除 {} 失败：{e}", dest.display())));
+            }
         }
     }
-    Ok(())
+    errs
 }
 
-fn skill_statuses(home: &Path) -> Vec<SkillStatus> {
+/// `version` 为应用版本，用于判断复制安装的 skill 是否过期；`errs` 是本次操作各 agent 的错误。
+fn skill_statuses(
+    home: &Path,
+    src: &Path,
+    version: &str,
+    errs: &[(&str, String)],
+) -> Vec<SkillStatus> {
     skill_targets(home)
         .into_iter()
         .map(|(agent, root, dest)| {
-            let owner = skill_owner(&dest);
+            let owner = skill_owner(&dest, src);
+            let installed = owner == SkillOwner::Ours && dest.join("SKILL.md").is_file();
+            // 只有复制安装才有标记文件；符号链接直接指向包内目录，不会过期
+            let outdated = installed
+                && std::fs::read_to_string(dest.join(MANAGED_MARK))
+                    .is_ok_and(|v| v.trim() != version);
             SkillStatus {
                 agent: agent.to_string(),
                 path: dest.display().to_string(),
                 available: root.is_dir(),
                 // 悬空链接（应用被移走）不算已安装，提示用户重新安装
-                installed: owner == SkillOwner::Ours && dest.join("SKILL.md").is_file(),
+                installed,
                 conflict: owner == SkillOwner::Foreign,
+                outdated,
+                error: errs
+                    .iter()
+                    .find(|(a, _)| *a == agent)
+                    .map(|(_, e)| e.clone()),
             }
         })
         .collect()
@@ -163,19 +209,22 @@ const SANDBOX_NOTE: &str = "如果被沙箱拦截，请向我申请权限后重�
 
 /// "让 AI 助手安装"页签里的提示词：AI 助手照着执行即可完成与安装按钮等价的步骤。
 /// 路径一律加双引号（可能含空格和中文，如 /Applications/喵剧.app/...）。
+/// skill 一步带着与按钮安装相同的判断：已有用户自己的同名目录（或指向别处的链接）就不覆盖。
 pub fn agent_install_prompt(windows: bool, bundled_cli: &str, skill_dir: &str) -> String {
     if windows {
         let skill_cmd = |dir: &str| {
             format!(
-                r#"$d = "$env:USERPROFILE\{dir}\skills\{SKILL_NAME}"; New-Item -ItemType Directory -Force $d | Out-Null; Copy-Item "{skill_dir}\*" $d -Recurse -Force; Set-Content "$d\{MANAGED_MARK}" managed"#
+                r#"$d = "$env:USERPROFILE\{dir}\skills\{SKILL_NAME}"; if ((Test-Path $d) -and -not (Test-Path "$d\{MANAGED_MARK}")) {{ Write-Error "已存在同名目录，未覆盖：$d" }} else {{ New-Item -ItemType Directory -Force $d | Out-Null; Copy-Item "{skill_dir}\*" $d -Recurse -Force; Set-Content "$d\{MANAGED_MARK}" managed }}"#
             )
         };
         format!(
             r#"请帮我安装喵剧命令行工具 miaoju，并学会使用它。在 PowerShell 里依次执行：
 1. New-Item -ItemType Directory -Force "$env:USERPROFILE\.miaoju\bin" | Out-Null; Copy-Item "{bundled_cli}" "$env:USERPROFILE\.miaoju\bin\miaoju.exe" -Force
-2. 把该目录加入用户 Path（已有就跳过）：
-   $bin = "$env:USERPROFILE\.miaoju\bin"; $p = [Environment]::GetEnvironmentVariable('Path','User'); if (-not ($p -split ';' | Where-Object {{ $_.TrimEnd('\') -eq $bin }})) {{ [Environment]::SetEnvironmentVariable('Path', $(if ($p) {{ "$p;$bin" }} else {{ $bin }}), 'User') }}
-3. 安装你自己的 skill：
+2. 把该目录加入用户 Path（已有就跳过；直接读写注册表，保留原值类型和其中未展开的 %USERPROFILE%）：
+   $bin = "$env:USERPROFILE\.miaoju\bin"; $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); $p = $k.GetValue('Path','','DoNotExpandEnvironmentNames'); $kind = if ($p) {{ $k.GetValueKind('Path') }} else {{ 'ExpandString' }}; if (-not ($p -split ';' | Where-Object {{ $_.TrimEnd('\') -eq $bin }})) {{ $k.SetValue('Path', $(if ($p) {{ "$p;$bin" }} else {{ $bin }}), $kind) }}; $k.Close()
+   然后执行下面这行，让新开的终端读到新的 Path（设置再清除一个临时用户变量，会广播环境变量变更）：
+   [Environment]::SetEnvironmentVariable('MIAOJU_TMP','1','User'); [Environment]::SetEnvironmentVariable('MIAOJU_TMP',$null,'User')
+3. 安装你自己的 skill（已存在用户自己的同名目录时不覆盖，会报"已存在同名目录，未覆盖"，请把这句话转告我）：
    - 如果你是 Claude Code：{claude}
    - 如果你是 Codex：{codex}
 4. 运行 & "$env:USERPROFILE\.miaoju\bin\miaoju.exe" version 确认安装成功（新开的终端里可以直接运行 miaoju version），再阅读 "{skill_dir}\SKILL.md" 学会用法。
@@ -184,18 +233,25 @@ pub fn agent_install_prompt(windows: bool, bundled_cli: &str, skill_dir: &str) -
             codex = skill_cmd(".codex"),
         )
     } else {
+        let skill_cmd = |dir: &str| {
+            format!(
+                r#"d=~/{dir}/skills/{SKILL_NAME}; if {{ [ -L "$d" ] && [ "$(basename "$(readlink "$d")")" != {SKILL_SRC_NAME} ]; }} || {{ [ -e "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/{MANAGED_MARK}" ]; }}; then echo "已存在同名目录，未覆盖：$d"; else mkdir -p ~/{dir}/skills && rm -rf "$d" && ln -sfn "{skill_dir}" "$d"; fi"#
+            )
+        };
         format!(
             r#"请帮我安装喵剧命令行工具 miaoju，并学会使用它。依次执行：
 1. mkdir -p ~/.miaoju/bin && ln -sf "{bundled_cli}" ~/.miaoju/bin/miaoju
-2. 如果 ~/.zshrc 里没有 "{MARK_BEGIN}" 这一行，就在文件末尾追加这三行：
-   {MARK_BEGIN}
-   {PATH_LINE}
-   {MARK_END}
-3. 安装你自己的 skill：
-   - 如果你是 Claude Code：mkdir -p ~/.claude/skills && ln -sfn "{skill_dir}" ~/.claude/skills/{SKILL_NAME}
-   - 如果你是 Codex：mkdir -p ~/.codex/skills && ln -sfn "{skill_dir}" ~/.codex/skills/{SKILL_NAME}
+2. 如果 ~/.zshrc 里没有 "{MARK_BEGIN}" 这一行，就在文件末尾原样追加下面三行（不带前导空格）：
+{MARK_BEGIN}
+{PATH_LINE}
+{MARK_END}
+3. 安装你自己的 skill（已存在用户自己的同名目录时不覆盖，会输出"已存在同名目录，未覆盖"，请把这句话转告我）：
+   - 如果你是 Claude Code：{claude}
+   - 如果你是 Codex：{codex}
 4. 运行 ~/.miaoju/bin/miaoju version 确认安装成功，再阅读 "{skill_dir}/SKILL.md" 学会用法。
-注意：以上命令会写入工作区以外的目录（~/.miaoju、~/.zshrc、~/.claude 或 ~/.codex）。{SANDBOX_NOTE}"#
+注意：以上命令会写入工作区以外的目录（~/.miaoju、~/.zshrc、~/.claude 或 ~/.codex）。{SANDBOX_NOTE}"#,
+            claude = skill_cmd(".claude"),
+            codex = skill_cmd(".codex"),
         )
     }
 }
@@ -378,6 +434,14 @@ fn installed_output(cmd: &Path) -> Option<String> {
 }
 
 fn status(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
+    status_with(app, &[])
+}
+
+/// `skill_errs`：本次安装 / 卸载各 agent 的 skill 错误，放进对应的 SkillStatus 里给卡片显示。
+fn status_with(
+    app: &tauri::AppHandle,
+    skill_errs: &[(&str, String)],
+) -> Result<CliToolStatus, String> {
     let home = home(app)?;
     let bin = bin_dir(&home);
     let cmd = bin.join(command_file());
@@ -391,7 +455,7 @@ fn status(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
         command_path: cmd.display().to_string(),
         bin_dir: bin.display().to_string(),
         skill_entry: skill_entry(app)?.display().to_string(),
-        skills: skill_statuses(&home),
+        skills: skill_statuses(&home, &skill_dir(app)?, &app_version, skill_errs),
         agent_prompt: agent_prompt(app)?,
     })
 }
@@ -458,8 +522,8 @@ fn install(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
         win_path::update(|cur| add_to_path_list(cur, &dir))?;
     }
     let version = app.package_info().version.to_string();
-    install_skills(&home, &skill_dir(app)?, cfg!(unix), &version)?;
-    status(app)
+    let errs = install_skills(&home, &skill_dir(app)?, cfg!(unix), &version);
+    status_with(app, &errs)
 }
 
 fn uninstall(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
@@ -476,8 +540,8 @@ fn uninstall(app: &tauri::AppHandle) -> Result<CliToolStatus, String> {
         let dir = bin.display().to_string();
         win_path::update(|cur| remove_from_path_list(cur, &dir))?;
     }
-    uninstall_skills(&home)?;
-    status(app)
+    let errs = uninstall_skills(&home, &skill_dir(app)?);
+    status_with(app, &errs)
 }
 
 #[cfg(unix)]
@@ -639,6 +703,10 @@ mod tests {
         std::fs::symlink_metadata(p).is_ok()
     }
 
+    fn statuses(home: &Path, src: &Path) -> Vec<SkillStatus> {
+        skill_statuses(home, src, "1.2.0", &[])
+    }
+
     #[test]
     fn skill_skips_agent_without_home_dir() {
         let t = tempfile::tempdir().unwrap();
@@ -646,16 +714,16 @@ mod tests {
         std::fs::create_dir_all(&home).unwrap();
         let src = skill_src(t.path());
         for link in [true, false] {
-            install_skills(&home, &src, link, "1.2.0").unwrap();
+            assert!(install_skills(&home, &src, link, "1.2.0").is_empty());
             assert!(!present(&home.join(".claude")), "不能替用户建 ~/.claude");
             assert!(!present(&home.join(".codex")));
-            let st = skill_statuses(&home);
+            let st = statuses(&home, &src);
             assert_eq!(st.len(), 2);
             for s in &st {
                 assert!(!s.available && !s.installed && !s.conflict, "{s:?}");
             }
         }
-        assert!(by_agent(&skill_statuses(&home), "claude")
+        assert!(by_agent(&statuses(&home, &src), "claude")
             .path
             .ends_with(&format!(
                 ".claude{0}skills{0}miaoju-cli",
@@ -669,8 +737,8 @@ mod tests {
         std::fs::create_dir_all(home.join(".claude")).unwrap();
         std::fs::create_dir_all(home.join(".codex")).unwrap();
         let src = skill_src(t.path());
-        install_skills(&home, &src, link, "1.2.0").unwrap();
-        install_skills(&home, &src, link, "1.2.0").unwrap(); // 幂等
+        assert!(install_skills(&home, &src, link, "1.2.0").is_empty());
+        assert!(install_skills(&home, &src, link, "1.2.0").is_empty()); // 幂等
         for agent in [".claude", ".codex"] {
             let dest = home.join(agent).join("skills").join("miaoju-cli");
             assert!(dest.join("SKILL.md").is_file());
@@ -687,10 +755,13 @@ mod tests {
                 );
             }
         }
-        for s in skill_statuses(&home) {
-            assert!(s.available && s.installed && !s.conflict, "{s:?}");
+        for s in statuses(&home, &src) {
+            assert!(
+                s.available && s.installed && !s.conflict && !s.outdated && s.error.is_none(),
+                "{s:?}"
+            );
         }
-        uninstall_skills(&home).unwrap();
+        assert!(uninstall_skills(&home, &src).is_empty());
         for agent in [".claude", ".codex"] {
             let dest = home.join(agent).join("skills").join("miaoju-cli");
             assert!(!present(&dest));
@@ -699,7 +770,7 @@ mod tests {
             src.join("SKILL.md").is_file(),
             "卸载不能删到安装包里的 skill"
         );
-        for s in skill_statuses(&home) {
+        for s in statuses(&home, &src) {
             assert!(s.available && !s.installed && !s.conflict, "{s:?}");
         }
     }
@@ -724,16 +795,16 @@ mod tests {
         std::fs::write(dest.join("SKILL.md"), "用户自己的").unwrap();
         let src = skill_src(t.path());
         for link in [true, false] {
-            install_skills(&home, &src, link, "1.2.0").unwrap();
+            assert!(install_skills(&home, &src, link, "1.2.0").is_empty());
             assert_eq!(
                 std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
                 "用户自己的"
             );
             assert!(!present(&dest.join(MANAGED_MARK)));
-            let st = skill_statuses(&home);
+            let st = statuses(&home, &src);
             let c = by_agent(&st, "claude");
             assert!(c.available && !c.installed && c.conflict, "{c:?}");
-            uninstall_skills(&home).unwrap();
+            assert!(uninstall_skills(&home, &src).is_empty());
             assert_eq!(
                 std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
                 "用户自己的"
@@ -749,13 +820,42 @@ mod tests {
         std::fs::create_dir_all(&skills).unwrap();
         std::fs::write(skills.join("miaoju-cli"), "x").unwrap();
         let src = skill_src(t.path());
-        install_skills(&home, &src, false, "1.2.0").unwrap();
-        uninstall_skills(&home).unwrap();
+        install_skills(&home, &src, false, "1.2.0");
+        uninstall_skills(&home, &src);
         assert_eq!(
             std::fs::read_to_string(skills.join("miaoju-cli")).unwrap(),
             "x"
         );
-        assert!(by_agent(&skill_statuses(&home), "codex").conflict);
+        assert!(by_agent(&statuses(&home, &src), "codex").conflict);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skill_user_symlink_elsewhere_is_conflict() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        let skills = home.join(".claude").join("skills");
+        std::fs::create_dir_all(&skills).unwrap();
+        let mine = t.path().join("my-skill");
+        std::fs::create_dir_all(&mine).unwrap();
+        let dest = skills.join("miaoju-cli");
+        std::os::unix::fs::symlink(&mine, &dest).unwrap();
+        let src = skill_src(t.path());
+        assert!(install_skills(&home, &src, true, "1.2.0").is_empty());
+        assert_eq!(
+            std::fs::read_link(&dest).unwrap(),
+            mine,
+            "用户的链接不能被替换"
+        );
+        let st = statuses(&home, &src);
+        let c = by_agent(&st, "claude");
+        assert!(c.conflict && !c.installed, "{c:?}");
+        uninstall_skills(&home, &src);
+        assert_eq!(
+            std::fs::read_link(&dest).unwrap(),
+            mine,
+            "用户的链接不能被卸载"
+        );
     }
 
     #[cfg(unix)]
@@ -766,20 +866,54 @@ mod tests {
         let skills = home.join(".claude").join("skills");
         std::fs::create_dir_all(&skills).unwrap();
         let dest = skills.join("miaoju-cli");
-        // 旧版应用被移走后留下的悬空链接
-        std::os::unix::fs::symlink(t.path().join("gone"), &dest).unwrap();
-        let s = skill_statuses(&home);
+        // 旧版应用被移走后留下的悬空链接（指向旧位置的 cli-skill）
+        let old = t.path().join("old.app").join("cli-skill");
+        std::os::unix::fs::symlink(&old, &dest).unwrap();
+        let src = skill_src(t.path());
+        let s = statuses(&home, &src);
         let c = by_agent(&s, "claude");
         assert!(c.available && !c.installed && !c.conflict, "{c:?}");
-        let src = skill_src(t.path());
-        install_skills(&home, &src, true, "1.2.0").unwrap();
+        assert!(install_skills(&home, &src, true, "1.2.0").is_empty());
         assert_eq!(std::fs::read_link(&dest).unwrap(), src);
-        assert!(by_agent(&skill_statuses(&home), "claude").installed);
+        assert!(by_agent(&statuses(&home, &src), "claude").installed);
 
         std::fs::remove_file(&dest).unwrap();
-        std::os::unix::fs::symlink(t.path().join("gone"), &dest).unwrap();
-        uninstall_skills(&home).unwrap();
+        std::os::unix::fs::symlink(&old, &dest).unwrap();
+        assert!(uninstall_skills(&home, &src).is_empty());
         assert!(!present(&dest));
+    }
+
+    #[test]
+    fn skill_copy_reports_outdated_version() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        let src = skill_src(t.path());
+        install_skills(&home, &src, false, "1.1.0");
+        let st = skill_statuses(&home, &src, "1.2.0", &[]);
+        let c = by_agent(&st, "codex");
+        assert!(c.installed && c.outdated, "{c:?}");
+        install_skills(&home, &src, false, "1.2.0");
+        assert!(!by_agent(&skill_statuses(&home, &src, "1.2.0", &[]), "codex").outdated);
+    }
+
+    #[test]
+    fn skill_failure_of_one_agent_does_not_block_other() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        // ~/.claude/skills 是个文件：建不了 skills 目录
+        std::fs::write(home.join(".claude").join("skills"), "x").unwrap();
+        let src = skill_src(t.path());
+        let errs = install_skills(&home, &src, false, "1.2.0");
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].0, "claude");
+        let st = skill_statuses(&home, &src, "1.2.0", &errs);
+        let c = by_agent(&st, "claude");
+        assert!(c.error.is_some() && !c.installed, "{c:?}");
+        let x = by_agent(&st, "codex");
+        assert!(x.installed && x.error.is_none(), "{x:?}");
     }
 
     #[test]
@@ -790,11 +924,13 @@ mod tests {
             available: true,
             installed: false,
             conflict: false,
+            outdated: false,
+            error: None,
         })
         .unwrap();
         assert_eq!(
             v,
-            serde_json::json!({"agent":"claude","path":"/p","available":true,"installed":false,"conflict":false})
+            serde_json::json!({"agent":"claude","path":"/p","available":true,"installed":false,"conflict":false,"outdated":false,"error":null})
         );
     }
 
@@ -809,20 +945,20 @@ mod tests {
             p.contains(&format!(r#"ln -sf "{cli}" ~/.miaoju/bin/miaoju"#)),
             "{p}"
         );
-        assert!(
-            p.contains(&format!(r#"ln -sfn "{skill}" ~/.claude/skills/miaoju-cli"#)),
-            "{p}"
-        );
-        assert!(
-            p.contains(&format!(r#"ln -sfn "{skill}" ~/.codex/skills/miaoju-cli"#)),
-            "{p}"
-        );
+        for agent in [".claude", ".codex"] {
+            assert!(
+                p.contains(&format!(
+                    r#"d=~/{agent}/skills/miaoju-cli; if {{ [ -L "$d" ] && [ "$(basename "$(readlink "$d")")" != cli-skill ]; }} || {{ [ -e "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/{MANAGED_MARK}" ]; }}; then echo "已存在同名目录，未覆盖：$d"; else mkdir -p ~/{agent}/skills && rm -rf "$d" && ln -sfn "{skill}" "$d"; fi"#
+                )),
+                "缺少 {agent} 的同名目录判断：{p}"
+            );
+        }
         assert!(p.contains(&format!(r#""{skill}/SKILL.md""#)), "{p}");
         assert!(p.contains(&format!(r#""{MARK_BEGIN}""#)), "{p}");
         for line in [MARK_BEGIN, PATH_LINE, MARK_END] {
             assert!(
-                p.lines().any(|l| l.trim() == line),
-                "缺少标记行 {line}：{p}"
+                p.lines().any(|l| l == line),
+                "缺少不带缩进的标记行 {line}：{p}"
             );
         }
         assert!(p.contains("~/.miaoju/bin/miaoju version"));
@@ -845,22 +981,35 @@ mod tests {
             p.contains(r#"New-Item -ItemType Directory -Force "$env:USERPROFILE\.miaoju\bin""#),
             "{p}"
         );
+        // 用户 Path 走注册表：保留 REG_EXPAND_SZ 和未展开的 %USERPROFILE%
         assert!(
-            p.contains("[Environment]::GetEnvironmentVariable('Path','User')"),
-            "{p}"
-        );
-        assert!(p.contains("SetEnvironmentVariable('Path'"), "{p}");
-        assert!(p.contains(&format!(r#""{skill}\*""#)), "{p}");
-        assert!(p.contains("-Recurse -Force"), "{p}");
-        assert!(
-            p.contains(r"$env:USERPROFILE\.claude\skills\miaoju-cli"),
+            p.contains("[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true)"),
             "{p}"
         );
         assert!(
-            p.contains(r"$env:USERPROFILE\.codex\skills\miaoju-cli"),
+            p.contains("GetValue('Path','','DoNotExpandEnvironmentNames')"),
             "{p}"
         );
-        assert!(p.contains(MANAGED_MARK) && p.contains("managed"), "{p}");
+        assert!(p.contains("GetValueKind('Path')"), "{p}");
+        assert!(p.contains("'ExpandString'"), "{p}");
+        assert!(p.contains("$k.SetValue('Path'"), "{p}");
+        assert!(
+            !p.contains("GetEnvironmentVariable('Path'")
+                && !p.contains("SetEnvironmentVariable('Path'"),
+            "{p}"
+        );
+        assert!(
+            p.contains("SetEnvironmentVariable('MIAOJU_TMP',$null,'User')"),
+            "{p}"
+        );
+        for agent in [".claude", ".codex"] {
+            assert!(
+                p.contains(&format!(
+                    r#"$d = "$env:USERPROFILE\{agent}\skills\miaoju-cli"; if ((Test-Path $d) -and -not (Test-Path "$d\{MANAGED_MARK}")) {{ Write-Error "已存在同名目录，未覆盖：$d" }} else {{ New-Item -ItemType Directory -Force $d | Out-Null; Copy-Item "{skill}\*" $d -Recurse -Force; Set-Content "$d\{MANAGED_MARK}" managed }}"#
+                )),
+                "缺少 {agent} 的同名目录判断：{p}"
+            );
+        }
         assert!(p.contains(&format!(r#""{skill}\SKILL.md""#)), "{p}");
         assert!(p.contains("miaoju version"), "{p}");
         assert!(p.contains(SANDBOX_NOTE), "{p}");
