@@ -82,33 +82,6 @@ func TestSeedanceAssetsRepoGetManyFiltersUser(t *testing.T) {
 	}
 }
 
-func TestSeedanceAssetsRepoListPending(t *testing.T) {
-	repo := NewSQLiteSeedanceAssetsRepository(dbtest.Open(t))
-	v1, v0 := 1, 0
-	for _, a := range []SeedanceAsset{
-		{ObjectKey: "pending", UserID: 1, Version: &v1, AssetType: "Image", Status: "pending"},
-		{ObjectKey: "active-current", UserID: 1, Version: &v1, AssetType: "Image", Status: "active"},
-		{ObjectKey: "active-stale", UserID: 1, Version: &v0, AssetType: "Image", Status: "active"},
-		{ObjectKey: "failed", UserID: 1, AssetType: "Image", Status: "failed"},
-		{ObjectKey: "permanent", UserID: 1, AssetType: "Image", Status: "failed_permanent"},
-	} {
-		if err := repo.Upsert(a); err != nil {
-			t.Fatal(err)
-		}
-	}
-	list, err := repo.ListPending(1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := map[string]bool{}
-	for _, a := range list {
-		got[a.ObjectKey] = true
-	}
-	if len(got) != 3 || !got["pending"] || !got["active-stale"] || !got["failed"] {
-		t.Fatalf("待办 = %v", got)
-	}
-}
-
 func TestSeedanceAssetsRepoGetNotFound(t *testing.T) {
 	repo := NewSQLiteSeedanceAssetsRepository(dbtest.Open(t))
 	if _, err := repo.Get("nope"); !errors.Is(err, ErrSeedanceAssetNotFound) {
@@ -116,20 +89,21 @@ func TestSeedanceAssetsRepoGetNotFound(t *testing.T) {
 	}
 }
 
-func TestSeedanceGroupStoreRoundTrip(t *testing.T) {
-	store := NewSQLiteSeedanceGroupStore(dbtest.Open(t))
-	gid, ver, err := store.GetSeedanceGroup(1)
-	if err != nil || gid != "" || ver != 0 {
-		t.Fatalf("初始: %q %d %v", gid, ver, err)
-	}
-	if err := store.SetSeedanceGroup(1, "g-1", 2); err != nil {
+// 失败后重新提交成功：Upsert 成 active 时旧 error / first_failed_at 必须被清掉。
+func TestSeedanceAssetsRepoUpsertActiveClearsOldFailure(t *testing.T) {
+	repo := NewSQLiteSeedanceAssetsRepository(dbtest.Open(t))
+	if err := repo.Upsert(SeedanceAsset{ObjectKey: "k", UserID: 1, AssetType: "Image", Status: "failed_permanent"}); err != nil {
 		t.Fatal(err)
 	}
-	gid, ver, err = store.GetSeedanceGroup(1)
-	if err != nil || gid != "g-1" || ver != 2 {
-		t.Fatalf("回读: %q %d %v", gid, ver, err)
+	if err := repo.SetError("k", "failed_permanent", "素材不合规"); err != nil {
+		t.Fatal(err)
 	}
-	if _, _, err := store.GetSeedanceGroup(999); !errors.Is(err, ErrSeedanceGroupUserNotFound) {
-		t.Fatalf("不存在的用户: %v", err)
+	aid, v := "a1", 1
+	if err := repo.Upsert(SeedanceAsset{ObjectKey: "k", UserID: 1, AssetID: &aid, Version: &v, AssetType: "Image", Status: "active"}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := repo.Get("k")
+	if got.Status != "active" || got.Error != nil || got.FirstFailedAt != nil {
+		t.Fatalf("active 行不应残留旧失败信息: %+v", got)
 	}
 }

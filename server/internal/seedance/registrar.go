@@ -18,6 +18,13 @@ import (
 // ModelID 是合规校验专用的隐藏内置模型（seedance-asset 设计 §2）。
 const ModelID = "seedance-asset"
 
+// AssetType 取值（上游 Seedance 素材类型）。
+const (
+	AssetTypeImage = "Image"
+	AssetTypeVideo = "Video"
+	AssetTypeAudio = "Audio"
+)
+
 const registerTimeout = 300 * time.Second
 
 // ErrModelUnavailable：模型不存在、被禁用，或解析不出上游地址与 Key。
