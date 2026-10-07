@@ -18,6 +18,8 @@ const updateProject = vi.fn();
 // 桌面端页面自己不建 WebSocket（没有观看模式、没有团队实时通道）；构造器一旦被
 // 调用，就说明还残留着实时通道代码。
 const agentClientCtor = vi.fn();
+import { useProjectsModal } from '@/modules/canvas/projectsModalStore';
+import { useSettingsModal } from '@/modules/settings/settingsModalStore';
 vi.mock('@/modules/canvas/editor/agent/agentClient', () => ({
   AgentClient: class {
     constructor(opts: unknown) { agentClientCtor(opts); }
@@ -177,7 +179,6 @@ function renderPage(queryClient = createTestQueryClient()) {
           <Routes>
             <Route path="/canvas/:projectId" element={<CanvasEditorPage />} />
             <Route path="/canvas" element={<div>canvas-projects-page</div>} />
-            <Route path="/settings" element={<div>settings-page</div>} />
           </Routes>
         </MemoryRouter>
       </AntApp>
@@ -510,24 +511,31 @@ describe('CanvasEditorPage 桌面端（spec F9、X1–X4）', () => {
     localStorage.clear();
   });
 
-  it('「所有项目」先 flush 未提交的编辑，再进项目列表页', async () => {
+  it('「所有项目」打开项目弹框：不跳转、不 flush、画布保持挂载', async () => {
+    useProjectsModal.setState({ open: false });
     renderPage();
     await waitFor(() => expect(screen.getByTestId('canvas-editor')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: '所有项目' }));
 
-    await waitFor(() => expect(screen.getByText('canvas-projects-page')).toBeInTheDocument());
-    expect(flushCanvasMutations).toHaveBeenCalledTimes(1);
+    expect(useProjectsModal.getState().open).toBe(true);
+    expect(screen.getByTestId('canvas-editor')).toBeInTheDocument();
+    expect(screen.queryByText('canvas-projects-page')).toBeNull();
+    expect(flushCanvasMutations).not.toHaveBeenCalled();
   });
 
-  it('「设置」先 flush 未提交的编辑，再进设置页（P4）', async () => {
+  it('「设置」打开设置弹框：不跳转、不 flush、画布保持挂载', async () => {
+    useSettingsModal.setState({ open: false, tab: 'general' });
+    flushCanvasMutations.mockClear();
     renderPage();
     await waitFor(() => expect(screen.getByTestId('canvas-editor')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
 
-    await waitFor(() => expect(screen.getByText('settings-page')).toBeInTheDocument());
-    expect(flushCanvasMutations).toHaveBeenCalledTimes(1);
+    expect(useSettingsModal.getState().open).toBe(true);
+    expect(screen.getByTestId('canvas-editor')).toBeInTheDocument();
+    expect(screen.queryByText('canvas-projects-page')).toBeNull();
+    expect(flushCanvasMutations).not.toHaveBeenCalled();
   });
 
   it('画布载入成功后记为「上一次打开的项目」', async () => {
