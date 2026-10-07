@@ -74,8 +74,8 @@
 | ID | 决策项 | 推荐 | 状态 |
 |---|---|---|---|
 | M1 | 模型中心存储方式 | 照搬参考仓：SQLite 里建与 MySQL 同结构的 `model_configs` 表，JSON 列（request_template、polling_template、ui_schema、gen_control 等）存 TEXT，用 SQLite json 函数；JSON 文件只用于导入导出和首次安装的种子数据，格式兼容参考仓后台导出（version 1） | ✏️ 已修改 |
-| M2 | 上游网关配置 | 照搬参考仓：全局一个 `base_domain` 存 settings 表，所有模型共用（对接 newapi）；不加 providers 层 | ✏️ 已修改 |
-| M3 | API Key 存储 | 照搬参考仓：存 SQLite（settings 表）。风险：Key 明文随 data.db 一起被备份、拷贝 | ✏️ 已修改 |
+| M2 | 上游网关配置 | 照搬参考仓：全局一个 `base_domain` 存 settings 表，所有模型共用（对接 newapi）；不加 providers 层 <br>**2026-10-07 补充（用户要求，见实施期裁定）**：全局 `base_domain` + Key 改为“默认上游”，设置入口从“通用”移到“模型中心”顶部；每个模型可单独配置上游（`model_configs.upstream_base_url` / `upstream_api_key`，迁移 0070），地址和 Key 必须同时填写，都留空则走全局。凡解析到某个模型的调用（画布生成、后处理、Agent backbone、剧本生成分镜等）一律经 `models.ResolveUpstream` 取地址和 Key；不绑定模型的调用（Seedance 合规）恒走全局。仍不加 providers 层 | ✏️ 已修改 |
+| M3 | API Key 存储 | 照搬参考仓：存 SQLite（settings 表）。风险：Key 明文随 data.db 一起被备份、拷贝 <br>**2026-10-07 补充**：模型独立上游的 Key 同样存本机 data.db（`model_configs.upstream_api_key`），不进种子，内置数据升级不覆盖；接口只返回掩码（规则同全局），不进日志 | ✏️ 已修改 |
 | M4 | 引用模型 ID 的配置（后处理、预设、多角度、打光、脚本、Agent 大模型） | 照搬参考仓：settings 表每项存一个 JSON 值；Agent 大模型存 `agent_backbone_models` 表 | ✏️ 已修改 |
 | M5 | 预设、多角度、打光的提示词正文 | 照搬参考仓在 sidecar 内拼接；正文存本地 SQLite，本地可见，设置页可直接编辑 | ✅ 已确认 |
 | M6 | 前端写死的模型 ID（重拍、续写、isVideoEditModel） | 照搬参考仓，继续写死；模型中心未配置同名模型时入口提示“未配置” | ✏️ 已修改 |
@@ -152,7 +152,7 @@ JSON 结构草案（v2，已作废）：
 | ID | 决策项 | 推荐 | 状态 |
 |---|---|---|---|
 | A1 | Eino 运行时原样复用；计费换成空实现 | 是 | ✅ 已确认 |
-| A2 | Agent 使用的大模型 | 内置：照搬参考仓存 `agent_backbone_models` 表，调用地址和 Key 用全局 base_domain 和 Key。用户只能在内置的文本模型之间切换，其余参数（max_tokens、temperature、thinking 等）不可改 | ✏️ 已修改 |
+| A2 | Agent 使用的大模型 | 内置：照搬参考仓存 `agent_backbone_models` 表，调用地址和 Key 用全局 base_domain 和 Key。用户只能在内置的文本模型之间切换，其余参数（max_tokens、temperature、thinking 等）不可改 <br>**2026-10-07 补充**：backbone 的 `model_name` 在 `model_configs` 里找到同 `model_id` 的行且该行配了独立上游时，用该模型的地址和 Key；找不到或未配置时仍用全局 | ✏️ 已修改 |
 | A3 | Skill、Skill 分类、Agent 工具目录的来源 | 从参考仓生产库导出，编译进 sidecar（go:embed），首次启动导入 SQLite，升级时随版本更新 | ✅ 已确认 |
 | A4 | 用户新建或编辑 Skill | 不允许，只用内置 Skill，隐藏创建入口（SkillCreateModal 不启用） | ✏️ 已修改 |
 | A5 | 画布能力清单一致性 | 照搬参考仓：`canvasManifest.json` 在 server 和 web 两处字节级一致，由测试检查，不一致则构建失败 | ✅ 已确认 |
@@ -338,10 +338,11 @@ JSON 结构草案（v2，已作废）：
 | 整合 | `lib.rs` 整份取 P8 版，并在 `ProcessHandle::shutdown` 补写 `SHUTDOWN` 行（最多等 500ms，再关 stdin） | brief：Rust 以 P8 为准，确认 SHUTDOWN 握手仍在 | integration-report 二 |
 | 整合 | 额外接线 `CanvasGen.SetChangeNotifier(agentW.Hub)` | 不接则生成回写画布后不推送 `canvas_changed` | integration-report 二 |
 | 整合 | `/api/v1/models` 只返回启用且未隐藏的模型（冒烟 29/47） | 与参考仓 `repo.List(true)` 一致，不是缺陷 | integration-report 四 |
-| 整合 | 迁移编号：0001 / 0002_library / 0003_builtin_overrides / 0004_generation / 0010–0012（P1d）/ 0050_agent / 0060_canvas_script_tasks | 无重号，满足外键依赖 | integration-report 三 |
+| 整合 | 迁移编号：0001 / 0002_library / 0003_builtin_overrides / 0004_generation / 0010–0012（P1d）/ 0050_agent / 0060_canvas_script_tasks（2026-10-07 追加 0070_model_upstream） | 无重号，满足外键依赖 | integration-report 三 |
 | side | side-go（cdeffd0 + b469cbe）：关闭等待 Seedance、Agent 刷新、脚本节点；generation Drain 纳入 workers | 整合遗留问题 2、5 | integration-report-ledger |
 | side | side-py（1480052）：Rust 壳传 `--python-home`，resources 映射 | 整合遗留问题 3 | integration-report-ledger |
 | side | side-ui（9bdf93e）：SidecarGate 主题色、非 Tauri 环境友好提示 | P3a parked 项 | integration-report-ledger |
 | 终审 | I-4：CSP 放行 https 图片和媒体，与参考仓直接显示上游外链一致（`img-src`、`media-src` 加 `https:`；`connect-src` 不放行 https） | 终审裁定，S5 回退保留的上游地址需能预览 | final-review-spec I-4 |
+| 2026-10-07 | 每模型独立上游：`model_configs` 加 `upstream_base_url` / `upstream_api_key`（迁移 0070，两列同空或同非空，库层 CHECK）；解析唯一入口 `models.ResolveUpstream(model, 全局)`：两列都非空用模型的，否则全局 `base_domain` + `upstream_api_key`；generation（直连提交、队列执行、重启续轮询）、canvasgen 后处理（经队列）、canvasscript、Agent backbone 全部改走它，Seedance 合规不绑定模型，经 `ResolveUpstream(nil, …)` 恒走全局；`GET /api/v1/settings/models` 每项加 `upstream{configured,baseUrl,apiKeyMasked}`，`PATCH /api/v1/settings/models/{id}` 接受 `upstream`（`{baseUrl,apiKey?}` 设置，apiKey 缺省或空串时保留原 Key；`null` 清空；最终两项必须都非空，否则 400）；全局上游卡片移到模型中心顶部，全局接口路径不变；独立上游不属于 user_overrides，`builtin.Apply` 升级、改主键、恢复默认都保留 | 用户要求，改变 M2“只有一个全局 base_domain”的决策（M2、M3、A2 已追加说明） | `.superpowers/sdd/per-model-upstream-contract.md`、`pmu-server-report.md` |
 
 人工验收项汇总见 `docs/manual-acceptance-checklist.md`。

@@ -30,12 +30,25 @@ type ModelPatch struct {
 	Concurrency            *int                       `json:"concurrency,omitempty"`
 	CanvasMaxRetries       *int                       `json:"canvasMaxRetries,omitempty"`
 	CanvasRetryIntervalSec *int                       `json:"canvasRetryIntervalSec,omitempty"`
+	// Upstream 是每模型独立上游（本机字段，不属于内置字段白名单 / user_overrides）：
+	// 缺省 = 不改；null = 清空回落全局；{baseUrl, apiKey?} = 设置。原文保留，由 handler 严格解析。
+	Upstream json.RawMessage `json:"upstream,omitempty"`
 }
 
 // Empty 报告补丁里是否一个字段都没有。
 func (p ModelPatch) Empty() bool {
+	return p.BuiltinEmpty() && len(p.Upstream) == 0
+}
+
+// BuiltinEmpty 报告补丁里是否没有任何经内置编辑服务修改的字段（不看 Upstream）。
+func (p ModelPatch) BuiltinEmpty() bool {
 	return p.Enabled == nil && p.Hidden == nil && p.Name == nil && p.SortOrder == nil &&
 		len(p.UISchemaDefaults) == 0 && p.Concurrency == nil && p.CanvasMaxRetries == nil && p.CanvasRetryIntervalSec == nil
+}
+
+// ModelUpstreamStore 写模型的独立上游（models.SQLiteRepository 直接满足）。两项都为空 = 清空。
+type ModelUpstreamStore interface {
+	SetUpstream(id int64, baseURL, apiKey string) error
 }
 
 // ModelEditService 由 P2a 的编辑策略服务实现（经 settings_center_adapter.go 适配）。
@@ -82,13 +95,15 @@ var ErrSettingsNotFound = errors.New("settings: not found")
 
 // SettingsCenterDeps 是设置接口的依赖。DataDir、Version 为空时由 NewRouter 用 Deps 的同名字段补齐。
 type SettingsCenterDeps struct {
-	Settings    settings.Repository
-	Models      models.Repository
-	ModelEdit   ModelEditService
-	SettingEdit SettingEditService
-	Agent       AgentModelService
-	DataDir     string
-	Version     string
+	Settings settings.Repository
+	Models   models.Repository
+	// ModelUpstream 为 nil 时 PATCH 里的 upstream 字段一律 400。
+	ModelUpstream ModelUpstreamStore
+	ModelEdit     ModelEditService
+	SettingEdit   SettingEditService
+	Agent         AgentModelService
+	DataDir       string
+	Version       string
 }
 
 // settingsRouteRegistrars 由各 handler 文件在 init() 里追加；路径相对 /api/v1/settings。

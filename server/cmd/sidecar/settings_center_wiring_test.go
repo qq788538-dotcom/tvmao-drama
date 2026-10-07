@@ -33,3 +33,34 @@ func TestE2ESettingsCenterWiredAndAdminCanvasAbsent(t *testing.T) {
 		t.Fatalf("应 400：%d %s", resp.StatusCode, body)
 	}
 }
+
+// 每模型独立上游经真实装配可写；任何接口响应都不带 Key 明文；内置字段编辑 / 恢复默认不影响它。
+func TestE2EModelUpstreamWiredAndNeverLeaksKey(t *testing.T) {
+	e := newE2E(t)
+	if err := builtin.Apply(e.conn); err != nil {
+		t.Fatal(err)
+	}
+	var id int64
+	if err := e.conn.QueryRow(`SELECT id FROM model_configs ORDER BY id LIMIT 1`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	const key = "sk-e2e-secret-key-9876"
+	path := "/api/v1/settings/models/" + itoa(id)
+	resp, body := e.callJSON(t, "PATCH", path, `{"name":"我的模型","upstream":{"baseUrl":"https://own.example","apiKey":"`+key+`"}}`)
+	if resp.StatusCode != 200 || !strings.Contains(string(body), `"configured":true`) {
+		t.Fatalf("PATCH: %d %s", resp.StatusCode, body)
+	}
+	if resp, body = e.callJSON(t, "POST", path+"/restore-default", ""); resp.StatusCode != 200 {
+		t.Fatalf("restore: %d %s", resp.StatusCode, body)
+	}
+	var base, k string
+	if err := e.conn.QueryRow(`SELECT upstream_base_url, upstream_api_key FROM model_configs WHERE id = ?`, id).Scan(&base, &k); err != nil || base != "https://own.example" || k != key {
+		t.Fatalf("恢复默认不应清掉独立上游: %q %q %v", base, k, err)
+	}
+	for _, p := range []string{"/api/v1/settings/models", "/api/v1/models"} {
+		resp, body := e.callJSON(t, "GET", p, "")
+		if resp.StatusCode != 200 || strings.Contains(string(body), key) || strings.Contains(string(body), "secret") {
+			t.Errorf("GET %s → %d，不得含 Key 明文: %s", p, resp.StatusCode, body)
+		}
+	}
+}

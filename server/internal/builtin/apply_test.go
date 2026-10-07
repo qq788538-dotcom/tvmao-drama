@@ -246,3 +246,69 @@ func TestApplyLeavesNonSeedSettingsAndKeepsBaseDomainOverride(t *testing.T) {
 		t.Fatalf("base_domain=%q，应保留用户值", got.Value)
 	}
 }
+
+// 每模型独立上游（upstream_base_url / upstream_api_key）是本机用户数据：升级内置数据时原样保留，
+// 无论该模型有没有 user_overrides、主键是否被种子改号。
+func modelUpstream(t *testing.T, conn *sql.DB, modelID string) (string, string) {
+	t.Helper()
+	var base, key string
+	if err := conn.QueryRow(`SELECT upstream_base_url, upstream_api_key FROM model_configs WHERE model_id = ?`, modelID).Scan(&base, &key); err != nil {
+		t.Fatalf("%s: %v", modelID, err)
+	}
+	return base, key
+}
+
+func TestApplyUpgradeKeepsModelUpstream(t *testing.T) {
+	conn := dbtest.Open(t)
+	mustApply(t, conn, mustSeed(t, []string{
+		seedModelLine(t, 1, "img-a", "image", map[string]any{"name": "A1"}),
+		seedModelLine(t, 2, "img-b", "image", nil),
+		seedModelLine(t, 3, "img-c", "image", nil),
+	}, nil))
+	// img-a：只配独立上游，没有其他用户修改；img-b：独立上游 + 字段覆盖。
+	simulateUserEdit(t, conn, `UPDATE model_configs SET upstream_base_url = 'https://a.example', upstream_api_key = 'sk-aaaaaaaaaaaa' WHERE model_id = 'img-a'`)
+	simulateUserEdit(t, conn, `UPDATE model_configs SET name = '我的 B', user_overrides = '["name"]',
+		upstream_base_url = 'https://b.example/v', upstream_api_key = 'sk-bbbbbbbbbbbb' WHERE model_id = 'img-b'`)
+	// 升级：img-a 改名（跟随种子）；img-b 与 img-c 互换主键（走改主键路径）。
+	mustApply(t, conn, mustSeed(t, []string{
+		seedModelLine(t, 1, "img-a", "image", map[string]any{"name": "A2", "base_path": "/v2/images"}),
+		seedModelLine(t, 3, "img-b", "image", nil),
+		seedModelLine(t, 2, "img-c", "image", nil),
+	}, nil))
+	if b, k := modelUpstream(t, conn, "img-a"); b != "https://a.example" || k != "sk-aaaaaaaaaaaa" {
+		t.Fatalf("img-a 独立上游被改动: %q %q", b, k)
+	}
+	if r := modelByID(t, conn, "img-a"); r.Parts.Name != "A2" || r.BasePath != "/v2/images" {
+		t.Fatalf("img-a 其余字段应跟随新版: %+v", r)
+	}
+	if b, k := modelUpstream(t, conn, "img-b"); b != "https://b.example/v" || k != "sk-bbbbbbbbbbbb" {
+		t.Fatalf("img-b 改主键后独立上游丢失: %q %q", b, k)
+	}
+	if r := modelByID(t, conn, "img-b"); r.ID != 3 || r.Parts.Name != "我的 B" {
+		t.Fatalf("img-b: %+v", r)
+	}
+	if b, k := modelUpstream(t, conn, "img-c"); b != "" || k != "" {
+		t.Fatalf("img-c 不应串到别的模型的上游: %q %q", b, k)
+	}
+}
+
+// 种子删掉的模型，独立上游随行删除；之后同 model_id 重新加回来也是干净的。
+func TestApplyRemovedModelDropsUpstream(t *testing.T) {
+	conn := dbtest.Open(t)
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil)}, nil))
+	simulateUserEdit(t, conn, `UPDATE model_configs SET upstream_base_url = 'https://b.example', upstream_api_key = 'sk-bbbbbbbbbbbb' WHERE model_id = 'img-b'`)
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil)}, nil))
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", map[string]any{"name": "回来"})}, nil))
+	if b, k := modelUpstream(t, conn, "img-b"); b != "" || k != "" {
+		t.Fatalf("重新加入的模型不应带旧上游: %q %q", b, k)
+	}
+}
+
+// 不变量：两列要么同时为空，要么同时非空（库层 CHECK 兜底）。
+func TestModelUpstreamColumnsMustBePaired(t *testing.T) {
+	conn := dbtest.Open(t)
+	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil)}, nil))
+	if _, err := conn.Exec(`UPDATE model_configs SET upstream_base_url = 'https://a.example' WHERE model_id = 'img-a'`); err == nil {
+		t.Fatal("只写地址不写 Key 应被 CHECK 拒绝")
+	}
+}

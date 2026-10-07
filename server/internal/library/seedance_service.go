@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/james/huabu_studio/apps/api/internal/models"
 	"github.com/james/huabu_studio/apps/api/internal/seedance"
 )
 
@@ -25,11 +26,12 @@ func seedanceAssetName(objectKey string) string {
 	return hex.EncodeToString(sum[:])[:8]
 }
 
-// 桌面端合规校验走 newapi（spec X5）：鉴权用全局 upstream_api_key，网关地址用 base_domain，
+// 桌面端合规校验走 newapi（spec X5）：鉴权用全局 upstream_api_key，网关地址用 base_domain
+// （经 models.ResolveUpstream(nil, …) 取，合规校验不绑定模型，所以恒为全局），
 // 接口路径与版本号在 seedance_compliance_config 里（见 seedance.ComplianceConfig）。
 const (
-	settingUpstreamAPIKey = "upstream_api_key"
-	settingBaseDomain     = "base_domain"
+	settingUpstreamAPIKey = models.SettingUpstreamAPIKey
+	settingBaseDomain     = models.SettingBaseDomain
 )
 
 // 以下都是窄接口，让 SeedanceService 只依赖它真正用到的那几个方法，测试可注入 fake。
@@ -164,11 +166,8 @@ func (s *SeedanceService) config() (sdKey string, version int, err error) {
 	if err != nil {
 		return "", 0, err
 	}
-	base, err := s.settings.Get(settingBaseDomain)
-	if err != nil {
-		return "", 0, err
-	}
-	key, err := s.settings.Get(settingUpstreamAPIKey)
+	// 合规校验不属于任何模型，ResolveUpstream(nil, …) 即全局 base_domain + upstream_api_key。
+	base, key, err := models.ResolveUpstream(nil, s.settings)
 	if err != nil {
 		return "", 0, err
 	}

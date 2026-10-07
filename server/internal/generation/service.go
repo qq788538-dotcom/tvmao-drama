@@ -376,7 +376,7 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 		return nil, err
 	}
 
-	apiKey, baseDomain, err := s.upstreamCredentials(input.UserID)
+	apiKey, baseDomain, err := s.upstreamCredentials(input.UserID, model)
 	if err != nil {
 		return nil, err
 	}
@@ -769,22 +769,17 @@ func (s *Service) ResumeOrphanedTasks() {
 	if len(tasks) == 0 {
 		return
 	}
-	baseDomain, err := s.settings.Get("base_domain")
-	if err != nil || baseDomain == "" {
-		log.Printf("generation: ResumeOrphanedTasks: base_domain unavailable, %d tasks skipped", len(tasks))
-		return
-	}
 	resumed := 0
 	for _, task := range tasks {
-		// 逐任务取 key:不同任务属于不同用户,各自可能配了独立 SK。
-		apiKey, err := s.upstreamKey.Resolve(task.UserID)
-		if err != nil || apiKey == "" {
-			log.Printf("generation: resume task %d: upstream key unavailable (user %d): %v", task.ID, task.UserID, err)
-			continue
-		}
 		model, err := s.models.GetByModelID(task.ModelID)
 		if err != nil {
 			log.Printf("generation: resume task %d: model %s missing: %v", task.ID, task.ModelID, err)
+			continue
+		}
+		// 逐任务解析上游:不同模型可能单独配了上游(每模型独立上游),没配的回落全局。
+		apiKey, baseDomain, err := s.upstreamCredentials(task.UserID, model)
+		if err != nil {
+			log.Printf("generation: resume task %d: upstream unavailable (model %s): %v", task.ID, task.ModelID, err)
 			continue
 		}
 		// 从持久化的 task.Input（形如 {"modelId":...,"inputs":{...},"note":...}）

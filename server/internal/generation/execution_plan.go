@@ -67,7 +67,7 @@ func (s *Service) prepareExecution(ctx context.Context, userID int64, modelID st
 		inputs = replaced
 	}
 
-	apiKey, baseDomain, err := s.upstreamCredentials(userID)
+	apiKey, baseDomain, err := s.upstreamCredentials(userID, model)
 	if err != nil {
 		return nil, err
 	}

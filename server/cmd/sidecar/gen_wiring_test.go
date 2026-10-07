@@ -74,6 +74,20 @@ type fakeUpstream struct {
 	imagePosts atomic.Int32
 	videoPosts atomic.Int32
 	videoPolls atomic.Int32
+	authMu     sync.Mutex
+	auths      []string // 打到本上游的生成/轮询请求带的 Authorization（下载产物不计）
+}
+
+func (f *fakeUpstream) recordAuth(r *http.Request) {
+	f.authMu.Lock()
+	defer f.authMu.Unlock()
+	f.auths = append(f.auths, r.Header.Get("Authorization"))
+}
+
+func (f *fakeUpstream) authHeaders() []string {
+	f.authMu.Lock()
+	defer f.authMu.Unlock()
+	return append([]string(nil), f.auths...)
 }
 
 func newFakeUpstream(t *testing.T) *fakeUpstream {
@@ -82,12 +96,15 @@ func newFakeUpstream(t *testing.T) *fakeUpstream {
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/images/generations":
+			f.recordAuth(r)
 			f.imagePosts.Add(1)
 			_, _ = io.WriteString(w, `{"data":[{"url":"`+f.srv.URL+`/out.png"}]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/video/generations":
+			f.recordAuth(r)
 			f.videoPosts.Add(1)
 			_, _ = io.WriteString(w, `{"task_id":"up-new"}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/tasks/up-1":
+			f.recordAuth(r)
 			f.videoPolls.Add(1)
 			_, _ = io.WriteString(w, `{"status":"completed","video_url":"`+f.srv.URL+`/out.mp4"}`)
 		case r.URL.Path == "/out.png":

@@ -3,6 +3,8 @@ package generation
 import (
 	"errors"
 	"fmt"
+
+	"github.com/james/huabu_studio/apps/api/internal/models"
 )
 
 // 首次启动 settings 里还没有 base_domain / upstream_api_key（种子数据不含 Key，research §6）。
@@ -13,17 +15,20 @@ var (
 )
 
 // upstreamCredentials 现读本次调用要用的 Key 与上游地址（spec M2/M3：每次请求现读 settings）。
-func (s *Service) upstreamCredentials(userID int64) (apiKey, baseDomain string, err error) {
-	apiKey, err = s.upstreamKey.Resolve(userID)
+// 经 models.ResolveUpstream 解析：模型单独配了上游就用模型的，否则回落全局（Key 走 upstreamKey）。
+func (s *Service) upstreamCredentials(userID int64, model *models.ModelConfig) (apiKey, baseDomain string, err error) {
+	global := models.GlobalWithKey(s.settings, func() (string, error) {
+		if s.upstreamKey == nil {
+			return "", nil
+		}
+		return s.upstreamKey.Resolve(userID)
+	})
+	baseDomain, apiKey, err = models.ResolveUpstream(model, global)
 	if err != nil {
-		return "", "", fmt.Errorf("load upstream api key: %w", err)
+		return "", "", fmt.Errorf("load upstream config: %w", err)
 	}
 	if apiKey == "" {
 		return "", "", ErrUpstreamKeyNotConfigured
-	}
-	baseDomain, err = s.settings.Get("base_domain")
-	if err != nil {
-		return "", "", fmt.Errorf("load base_domain: %w", err)
 	}
 	if baseDomain == "" {
 		return "", "", ErrBaseDomainNotConfigured

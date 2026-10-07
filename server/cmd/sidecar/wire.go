@@ -93,7 +93,8 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 
 	// Seedance 合规走 newapi（spec X5）：地址、路径每次请求现读 settings。
 	seedanceClient := seedance.NewClient(
-		func() string { v, _ := settingsRepo.Get("base_domain"); return v },
+		// 合规校验不绑定模型：ResolveUpstream(nil, …) = 全局 base_domain。
+		func() string { v, _, _ := models.ResolveUpstream(nil, settingsRepo); return v },
 		func() seedance.Paths { c, _ := seedance.LoadComplianceConfig(settingsRepo.Get); return c.Paths },
 	)
 	librarySeedanceSvc := library.NewSeedanceService(
@@ -125,10 +126,12 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		return nil, fmt.Errorf("初始化内置数据编辑服务: %w", err)
 	}
 	deps.SettingsCenter = apphttp.SettingsCenterDeps{
-		Settings:    settingsRepo,
-		Models:      modelsRepo,
-		ModelEdit:   apphttp.NewPolicyModelEdit(policy, modelsRepo),
-		SettingEdit: apphttp.NewPolicySettingEdit(policy, settingsRepo),
+		Settings: settingsRepo,
+		Models:   modelsRepo,
+		// 每模型独立上游：本机字段，直接写 model_configs，不经内置编辑策略（2026-10-07）。
+		ModelUpstream: modelsRepo,
+		ModelEdit:     apphttp.NewPolicyModelEdit(policy, modelsRepo),
+		SettingEdit:   apphttp.NewPolicySettingEdit(policy, settingsRepo),
 		Agent: apphttp.NewBackboneAgentModels(agent.NewBackboneRepo(conn), agent.NewBackboneSwitcher(conn),
 			agentseed.DefaultBackboneModelName),
 	}

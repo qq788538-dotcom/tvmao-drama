@@ -164,8 +164,8 @@ func boolToInt(b bool) int {
 
 // PlannerDeps 是 BuildPlannerForUser 需要的一组依赖。
 //
-// 上游 SK 走 UpstreamKey 解析：用户配了独立 key 用用户的，否则回落全局
-// settings.upstream_api_key——和 chat handler 一致。Settings 供 base_domain。
+// 上游地址与 SK 经 models.ResolveUpstream 解析：backbone.ModelName 对应的模型行单独配了上游
+// 就用模型的；否则回落全局——Settings 供 base_domain，UpstreamKey 供全局 SK（和 chat handler 一致）。
 //
 // Models + Billing 让 agent 的每次 LLM 往返都能像 chat 一样 freeze→settle：
 // backbone 没有自己的计费字段，所以按 backbone.ModelName 去 model_configs 取计费
@@ -207,8 +207,8 @@ type AgentBilling interface {
 // BuildPlannerForUser 解析当前 active 的 planner backbone，返回一个全新的
 // eino ChatModel。
 //
-// 每个 backbone 都走平台的 newapi upstream：BaseURL = settings.base_domain
-// （自动补 "/v1" 后缀），APIKey = 每用户独立的 upstream_credentials[userID]。
+// 每个 backbone 都走 OpenAI 兼容上游：BaseURL / APIKey 由 models.ResolveUpstream 给出
+// （模型独立上游优先，否则全局 base_domain + upstream_api_key；BaseURL 自动补 "/v1" 后缀）。
 // cfg.Provider 只是元数据——newapi 会在 /v1/chat/completions 上把每个
 // provider 都归一成 OpenAI 形态，所以我们始终用 eino-ext 的 openai client，
 // 按 cfg.ModelName 路由。
@@ -285,30 +285,35 @@ func buildModelForUser(ctx context.Context, userID int64, role string, deps Plan
 	if deps.Models == nil {
 		return nil, nil, noBilling, fmt.Errorf("%s backbone: models repo not wired", role)
 	}
-	baseDomain, err := deps.Settings.Get("base_domain")
-	if err != nil {
-		return nil, nil, noBilling, fmt.Errorf("%s backbone: read base_domain: %w", role, err)
-	}
-	if baseDomain == "" {
-		return nil, nil, noBilling, fmt.Errorf("%s backbone: base_domain is not configured", role)
-	}
-	// 用户独立 key 优先、回落全局(UpstreamKeyResolver)——和 chat handler 一致。
-	apiKey, err := deps.UpstreamKey.Resolve(userID)
-	if err != nil {
-		return nil, nil, noBilling, fmt.Errorf("%s backbone: read upstream_api_key: %w", role, err)
-	}
-	if apiKey == "" {
-		return nil, nil, noBilling, fmt.Errorf("%s backbone: upstream_api_key is not configured", role)
-	}
 	// backbone 没有自己的计费字段：按 backbone.ModelName 去 model_configs 取计费配置。
 	// 桌面端计费是空实现（NoopBilling），查不到时降级成零值计费继续运行——参考仓在这里
 	// 拒绝 Run（防白嫖），桌面端照搬会让 Agent 依赖模型种子是否恰好含这个 model_id，
 	// 设置页切过去的模型被种子删掉后 Agent 就永久不可用。
 	mb := noBilling
-	if mcfg, merr := deps.Models.GetByModelID(cfg.ModelName); merr != nil || mcfg == nil {
+	var mcfg *models.ModelConfig
+	if m, merr := deps.Models.GetByModelID(cfg.ModelName); merr != nil || m == nil {
 		log.Printf("%s backbone: model_configs 里没有 %q 的计费配置，按无计费继续: %v", role, cfg.ModelName, merr)
 	} else {
-		mb = mcfg.BillingConfig()
+		mcfg = m
+		mb = m.BillingConfig()
+	}
+	// 上游地址与 Key 经 models.ResolveUpstream 解析（每模型独立上游）：同 model_id 的模型行配了
+	// 独立上游就用它的；没配或找不到该行回落全局（Key 走 UpstreamKeyResolver，和 chat handler 一致）。
+	global := models.GlobalWithKey(deps.Settings, func() (string, error) {
+		if deps.UpstreamKey == nil {
+			return "", nil
+		}
+		return deps.UpstreamKey.Resolve(userID)
+	})
+	baseDomain, apiKey, err := models.ResolveUpstream(mcfg, global)
+	if err != nil {
+		return nil, nil, noBilling, fmt.Errorf("%s backbone: read upstream config: %w", role, err)
+	}
+	if baseDomain == "" {
+		return nil, nil, noBilling, fmt.Errorf("%s backbone: base_domain is not configured", role)
+	}
+	if apiKey == "" {
+		return nil, nil, noBilling, fmt.Errorf("%s backbone: upstream_api_key is not configured", role)
 	}
 	baseURL := normaliseNewapiBaseURL(baseDomain)
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{

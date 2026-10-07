@@ -39,13 +39,18 @@ func (f *fakeSettings) Set(key, value string) error {
 	return nil
 }
 
-type fakeModels struct{ missing map[string]bool }
+type fakeModels struct {
+	missing  map[string]bool
+	upstream map[string][2]string // model_id → {独立上游地址, Key}
+}
 
 func (f fakeModels) GetByModelID(id string) (*models.ModelConfig, error) {
 	if f.missing[id] {
 		return nil, models.ErrNotFound
 	}
-	return &models.ModelConfig{RequestTemplate: json.RawMessage(`{"max_tokens":8000,"messages":"{{messages}}"}`)}, nil
+	up := f.upstream[id]
+	return &models.ModelConfig{ModelID: id, RequestTemplate: json.RawMessage(`{"max_tokens":8000,"messages":"{{messages}}"}`),
+		UpstreamBaseURL: up[0], UpstreamAPIKey: up[1]}, nil
 }
 
 type fakeKeys struct{ key string }

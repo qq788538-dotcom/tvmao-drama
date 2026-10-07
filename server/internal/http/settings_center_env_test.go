@@ -204,7 +204,7 @@ func newSCEnv(t *testing.T) *scEnv {
 
 func (e *scEnv) deps() SettingsCenterDeps {
 	return SettingsCenterDeps{
-		Settings: e.settings, Models: e.models,
+		Settings: e.settings, Models: e.models, ModelUpstream: e.models,
 		ModelEdit: e.modelEdit, SettingEdit: e.settingEdit, Agent: e.agent,
 		DataDir: e.dataDir, Version: "9.9.9",
 	}
