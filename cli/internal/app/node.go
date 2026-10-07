@@ -116,7 +116,7 @@ func newNodeCreateCommand(st *runtimeState) *cobra.Command {
 --left 可重复传入，按传入顺序建边。**连线数组的顺序就是模型输入的顺序**，
 所以「第一张参考图」= 第一个 --left。
 
-创建与运行严格分离：本命令只建节点和连线，不冻结积分、不提交生成。
+创建与运行严格分离：本命令只建节点和连线，不提交生成。
 `),
 		Example: strings.TrimSpace(`
   miaoju node create --type image-input --content https://...

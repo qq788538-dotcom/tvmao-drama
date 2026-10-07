@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
+	"github.com/james/huabu_studio/apps/cli/internal/client"
 	"github.com/james/huabu_studio/apps/cli/internal/endpoint"
 	"github.com/james/huabu_studio/apps/cli/internal/exitcode"
 	"github.com/james/huabu_studio/apps/cli/internal/workspace"
@@ -21,8 +25,12 @@ import (
 // harness 是一次命令执行的完整隔离环境：自己的 stdout/stderr、
 // 自己的工作目录（项目绑定）、自己的假服务端。
 type harness struct {
-	t              *testing.T
-	stdout, stderr bytes.Buffer
+	// noEndpoint 为 true 时 run 不写 cli-endpoint.json（模拟应用未运行）。
+	noEndpoint bool
+	// endpointAppVersion 非空时写进地址文件的 appVersion（默认用 version）。
+	endpointAppVersion string
+	t                  *testing.T
+	stdout, stderr     bytes.Buffer
 	// stdin 默认空；需要喂 stdin 的用例（node move --file -）在 run 前赋值。
 	stdin   io.Reader
 	workDir string
@@ -67,7 +75,11 @@ func (h *harness) writeEndpoint() {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	blob, _ := json.Marshal(endpoint.Info{Version: 1, Port: port, Token: harnessCLIToken, AppVersion: h.version})
+	appVer := h.version
+	if h.endpointAppVersion != "" {
+		appVer = h.endpointAppVersion
+	}
+	blob, _ := json.Marshal(endpoint.Info{Version: 1, Port: port, Token: harnessCLIToken, AppVersion: appVer})
 	if err := os.WriteFile(filepath.Join(h.endpointDir, endpoint.FileName), blob, 0o600); err != nil {
 		h.t.Fatal(err)
 	}
@@ -76,7 +88,9 @@ func (h *harness) writeEndpoint() {
 func (h *harness) run(args ...string) int {
 	h.stdout.Reset()
 	h.stderr.Reset()
-	h.writeEndpoint()
+	if !h.noEndpoint {
+		h.writeEndpoint()
+	}
 	root := NewRootCommand(Dependencies{
 		Stdin:       h.stdinOrEmpty(),
 		Stdout:      &h.stdout,
@@ -262,4 +276,49 @@ func (h *harness) stdinOrEmpty() io.Reader {
 		return strings.NewReader("")
 	}
 	return h.stdin
+}
+
+func TestAppNotRunningExits8(t *testing.T) {
+	h := newHarness(t, http.NotFound)
+	h.noEndpoint = true
+	code := h.run("project", "list")
+	if code != exitcode.AppNotRunning || !strings.Contains(h.stderr.String(), "喵剧未运行，请先打开应用") {
+		t.Fatalf("code=%d stderr=%q", code, h.stderr.String())
+	}
+}
+
+func TestVersionWorksWithoutApp(t *testing.T) {
+	h := newHarness(t, http.NotFound)
+	h.noEndpoint = true
+	if code := h.run("version"); code != 0 {
+		t.Fatalf("version 不应依赖应用是否打开，code=%d", code)
+	}
+}
+
+func TestVersionMismatchWarnsOnStderr(t *testing.T) {
+	h := newHarness(t, jsonHandler(`{"data":[]}`))
+	h.version = "1.0.0"
+	h.endpointAppVersion = "9.9.9"
+	code := h.run("project", "list")
+	if code != 0 || !strings.Contains(h.stderr.String(), "9.9.9") || strings.Contains(h.stdout.String(), "9.9.9") {
+		t.Fatalf("code=%d stdout=%q stderr=%q；警告只能走 stderr", code, h.stdout.String(), h.stderr.String())
+	}
+}
+
+func TestReportErrorMapsSandboxBlocked(t *testing.T) {
+	var buf bytes.Buffer
+	code := reportError(&cobra.Command{Use: "miaoju"}, &client.SandboxBlockedError{Err: errors.New("x")}, &buf)
+	if code != exitcode.SandboxBlocked || !strings.Contains(buf.String(), "网络被 AI 助手的沙箱拦截，请允许本命令访问网络后重试") {
+		t.Fatalf("code=%d out=%q", code, buf.String())
+	}
+}
+
+// 401 连续两次后的 AppNotRunningError 里包着 APIError，必须先判 AppNotRunning。
+func TestReportErrorAppNotRunningWrappingAPIError(t *testing.T) {
+	var buf bytes.Buffer
+	err := &client.AppNotRunningError{Err: &client.APIError{Status: 401, Message: "bad"}}
+	code := reportError(&cobra.Command{Use: "miaoju"}, err, &buf)
+	if code != exitcode.AppNotRunning || !strings.Contains(buf.String(), "喵剧未运行，请先打开应用") {
+		t.Fatalf("code=%d out=%q", code, buf.String())
+	}
 }

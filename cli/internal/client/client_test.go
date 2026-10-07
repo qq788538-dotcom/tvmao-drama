@@ -121,7 +121,7 @@ func TestClientRetriesGETOn503(t *testing.T) {
 }
 
 // 这是本层最重要的一条：不带幂等键的写请求**绝不重试**。
-// 重试一次「运行节点」就是第二次冻结积分。
+// 重试一次「运行节点」就是第二次跑上游。
 func TestClientDoesNotRetryWriteWithoutIdempotencyKey(t *testing.T) {
 	var calls int32
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +155,7 @@ func TestClientRetriesWriteWithIdempotencyKey(t *testing.T) {
 	if atomic.LoadInt32(&calls) != 3 {
 		t.Fatalf("calls = %d", calls)
 	}
-	// 每次重试必须带**同一个** key，否则服务端会当成新请求再冻结一次。
+	// 每次重试必须带**同一个** key，否则服务端会当成新请求再提交一次。
 	for i, k := range keys {
 		if k != "key-1" {
 			t.Fatalf("第 %d 次重试的 key = %q", i, k)
@@ -405,5 +405,46 @@ func TestVersionMismatchWarnsOnce(t *testing.T) {
 	_, _ = c.ListProjects(context.Background())
 	if len(warns) != 1 || !strings.Contains(warns[0], "2.0.0") {
 		t.Fatalf("warns=%v", warns)
+	}
+}
+
+func pingServer(t *testing.T, h http.HandlerFunc) *Client {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	info := infoFor(t, srv, testCLIToken, "9.9.9")
+	return New(Options{Resolve: func() (endpoint.Info, error) { return info, nil }, Version: "9.9.9"})
+}
+
+// 端口上不是喵剧（应用崩溃后端口被别的程序占用）：ping 404 / 200 HTML 都按未运行处理。
+func TestPingNon401ErrorMeansAppNotRunning(t *testing.T) {
+	c := pingServer(t, http.NotFound)
+	_, err := c.ListProjects(context.Background())
+	var anr *AppNotRunningError
+	if !errors.As(err, &anr) {
+		t.Fatalf("ping 404 应为 AppNotRunningError，got %T %v", err, err)
+	}
+}
+
+func TestPingHTMLBodyMeansAppNotRunning(t *testing.T) {
+	c := pingServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("<html>hello</html>"))
+	})
+	_, err := c.ListProjects(context.Background())
+	var anr *AppNotRunningError
+	if !errors.As(err, &anr) {
+		t.Fatalf("ping 200 HTML 应为 AppNotRunningError，got %T %v", err, err)
+	}
+}
+
+func TestDownloadURLConnectionRefusedIsClassified(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	u := srv.URL
+	srv.Close()
+	c := pingServer(t, http.NotFound)
+	_, err := c.DownloadURL(context.Background(), u, &strings.Builder{})
+	var anr *AppNotRunningError
+	if !errors.As(err, &anr) {
+		t.Fatalf("连接被拒应经 classifyNetErr 归为 AppNotRunningError，got %T %v", err, err)
 	}
 }

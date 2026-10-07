@@ -63,7 +63,7 @@ func (c *Client) DownloadURL(ctx context.Context, signedURL string, w io.Writer)
 	hc.Timeout = uploadTimeout
 	resp, err := hc.Do(req)
 	if err != nil {
-		return 0, &NetworkError{Err: err}
+		return 0, classifyNetErr(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {

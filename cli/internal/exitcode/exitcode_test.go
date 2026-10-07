@@ -29,7 +29,7 @@ func TestFromAPIError(t *testing.T) {
 	}
 }
 
-// 余额不足归 6 而不是 2：用户改命令没用，得去充值。
+// 该业务码归 6 而不是 2：用户改命令没用。
 func TestInsufficientBalanceIsServerNotUsage(t *testing.T) {
 	if got := FromAPIError("INSUFFICIENT_BALANCE", 400); got != Server {
 		t.Fatalf("= %d, want %d", got, Server)
