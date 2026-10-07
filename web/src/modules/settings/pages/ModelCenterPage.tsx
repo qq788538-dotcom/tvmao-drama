@@ -6,8 +6,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { errorText, listModels, patchModel, restoreModel, type ModelPatch, type ModelView } from '../api';
 import { invalidateAfterSettingsChange } from '../invalidate';
 import { ReadonlyJson } from '../components/ReadonlyJson';
+import { UpstreamCard } from '../components/UpstreamCard';
 import { RestoreDefaultButton } from '../components/RestoreDefaultButton';
-import { filterModels, formToPatch, MODEL_FIELD_LABELS, modelToForm, TYPE_OPTIONS, type ModelFormValues } from './modelForm';
+import { filterModels, formToPatch, MODEL_FIELD_LABELS, modelToForm, TYPE_OPTIONS, upstreamFieldErrors, type ModelFormValues } from './modelForm';
 
 export function ModelCenterPage() {
   const { message } = AntApp.useApp();
@@ -57,7 +58,10 @@ export function ModelCenterPage() {
   };
 
   const rows = filterModels(data, type, keyword);
+  const upstreamMode = Form.useWatch('upstreamMode', form);
   return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <UpstreamCard />
     <Card title="模型中心">
       <Typography.Paragraph type="secondary">
         模型全部内置，可以启用 / 隐藏、改显示名和排序、调整参数默认值、并发与重试；请求模板等技术参数只读。
@@ -79,6 +83,7 @@ export function ModelCenterPage() {
               <Space direction="vertical" size={0}>
                 <span>
                   {m.name} {m.modifiedFields.length > 0 && <Tag color="blue">已修改</Tag>}
+                  {m.upstream?.configured && <Tag color="purple">独立上游</Tag>}
                 </span>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   {m.modelId}
@@ -169,6 +174,29 @@ export function ModelCenterPage() {
                   <InputNumber min={0} max={600} />
                 </Form.Item>
               </Space>
+              <Typography.Title level={5}>独立上游</Typography.Title>
+              <Form.Item name="upstreamMode" extra="单独配置后，这个模型的所有调用（画布、Agent、剧本等）都走这里；使用全局则走模型中心顶部的全局上游。">
+                <Segmented options={[{ value: 'global', label: '使用全局' }, { value: 'custom', label: '单独配置' }]} />
+              </Form.Item>
+              {upstreamMode === 'custom' && (
+                <>
+                  <Form.Item
+                    label="上游地址"
+                    name="upstreamBaseUrl"
+                    rules={[{ validator: () => { const err = upstreamFieldErrors(editing, form.getFieldsValue()).baseUrl; return err ? Promise.reject(new Error(err)) : Promise.resolve(); } }]}
+                  >
+                    <Input placeholder="例如 https://your-gateway.example.com" autoComplete="off" />
+                  </Form.Item>
+                  <Form.Item
+                    label="API Key"
+                    name="upstreamApiKey"
+                    rules={[{ validator: () => { const err = upstreamFieldErrors(editing, form.getFieldsValue()).apiKey; return err ? Promise.reject(new Error(err)) : Promise.resolve(); } }]}
+                    extra={editing.upstream?.configured ? <span>当前：{editing.upstream.apiKeyMasked}</span> : '尚未设置。Key 以明文保存在本机 data.db 中。'}
+                  >
+                    <Input.Password placeholder={editing.upstream?.configured ? '留空则保留已保存的 Key' : 'sk-...'} autoComplete="new-password" />
+                  </Form.Item>
+                </>
+              )}
             </Form>
             <Collapse
               style={{ marginTop: 8 }}
@@ -201,5 +229,6 @@ export function ModelCenterPage() {
         )}
       </Drawer>
     </Card>
+    </Space>
   );
 }

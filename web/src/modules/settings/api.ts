@@ -93,6 +93,13 @@ export interface ModelView {
   genControl: GenControl | null;
   modifiedFields: string[];
   references: string[];
+  /** 模型单独配置的上游；未配置时 configured=false，走全局。 */
+  upstream: ModelUpstream;
+}
+export interface ModelUpstream {
+  configured: boolean;
+  baseUrl: string;
+  apiKeyMasked: string;
 }
 export interface ModelPatch {
   enabled?: boolean;
@@ -103,6 +110,8 @@ export interface ModelPatch {
   concurrency?: number;
   canvasMaxRetries?: number;
   canvasRetryIntervalSec?: number;
+  /** 对象：设置/修改（apiKey 不传表示保留原 Key）；null：清空，恢复走全局；不带：不改。 */
+  upstream?: { baseUrl: string; apiKey?: string } | null;
 }
 export const listModels = () => request<{ data: ModelView[] }>('GET', '/models').then((r) => r.data);
 export const patchModel = (id: number, p: ModelPatch) => request<ModelView>('PATCH', `/models/${id}`, p);

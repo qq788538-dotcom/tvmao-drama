@@ -44,7 +44,7 @@ describe('pickDataDir', () => {
 });
 
 describe('GeneralPage', () => {
-  it('只显示 Key 掩码，显示版本、数据目录和上次迁移错误', async () => {
+  it('不再显示上游服务卡片；显示版本、数据目录和上次迁移错误', async () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <AntApp>
@@ -52,11 +52,12 @@ describe('GeneralPage', () => {
         </AntApp>
       </QueryClientProvider>,
     );
-    await waitFor(() => expect(screen.getByText(/sk-••••••••WXYZ/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/磁盘已满/)).toBeTruthy());
+    expect(screen.queryByText(/上游服务/)).toBeNull();
+    expect(screen.queryByText(/sk-••••••••WXYZ/)).toBeNull();
     expect(screen.getAllByText('0.1.0').length).toBeGreaterThan(0);
     expect(screen.getByText('/data')).toBeTruthy();
     expect(screen.getByText(/磁盘已满/)).toBeTruthy();
-    expect(screen.getByText('已修改')).toBeTruthy();
   });
 });
 
