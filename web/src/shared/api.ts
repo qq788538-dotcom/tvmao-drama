@@ -1005,7 +1005,7 @@ export interface SeedanceAssetState {
   error?: string;
 }
 
-// 提交一个画布素材（图片/视频/音频）做 Seedance 2.0 合规校验。幂等——已通过的直接回原状态。
+// 提交一个画布素材（图片/视频/音频）做 Seedance 合规校验。幂等——已通过的直接回原状态。
 // 以 URL 而不是 assetId 为入口：assetId 要靠前端在生成那一刻存进节点，历史节点、
 // agent 产出的节点都没有；URL 则是节点始终持有的东西。
 // kind 必传：上游按类型套用不同规格要求，而它无法从 object_key 可靠推断（生成产物

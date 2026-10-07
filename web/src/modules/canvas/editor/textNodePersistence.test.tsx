@@ -215,7 +215,7 @@ describe('文本节点的四态展示', () => {
     expect(getByText('粘贴')).toBeTruthy();
     expect(getByText('删除')).toBeTruthy();
     expect(queryByText('保存到素材库')).toBeNull();
-    expect(queryByText('Seedance2.0 合规校验')).toBeNull();
+    expect(queryByText('Seedance 合规校验')).toBeNull();
     expect(queryByText('拷贝节点')).toBeNull();
   });
 

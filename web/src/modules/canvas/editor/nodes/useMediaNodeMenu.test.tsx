@@ -113,7 +113,7 @@ describe('useMediaNodeMenu 合规校验（图片/视频/音频）', () => {
     for (const kind of ['image', 'video', 'audio'] as const) {
       renderProbe({ url: `http://x.${kind}`, kind, nodeId: 'n-1' });
       openMenu();
-      expect(screen.getAllByText('Seedance2.0 合规校验').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Seedance 合规校验').length).toBeGreaterThan(0);
       cleanup();
     }
   });
@@ -133,7 +133,7 @@ describe('useMediaNodeMenu 合规校验（图片/视频/音频）', () => {
     spy.mockRestore();
 
     openMenu();
-    const item = screen.getByText('Seedance2.0 合规校验').closest('button')!;
+    const item = screen.getByText('Seedance 合规校验').closest('button')!;
     expect(item).toBeDisabled();
     expect(item.getAttribute('title')).toContain('35.0s');
   });
@@ -150,7 +150,7 @@ describe('useMediaNodeMenu 合规校验（图片/视频/音频）', () => {
     spy.mockRestore();
 
     openMenu();
-    expect(screen.getByText('Seedance2.0 合规校验').closest('button')!).not.toBeDisabled();
+    expect(screen.getByText('Seedance 合规校验').closest('button')!).not.toBeDisabled();
   });
 
   // 已 active 的素材（自己校验过的，或公共角色库那种天生 active 的）再提交
@@ -165,7 +165,7 @@ describe('useMediaNodeMenu 合规校验（图片/视频/音频）', () => {
     // 等状态查询落地后再开菜单
     await act(async () => {});
     openMenu();
-    const item = screen.getByText('Seedance2.0 合规校验').closest('button')!;
+    const item = screen.getByText('Seedance 合规校验').closest('button')!;
     expect(item).toBeDisabled();
     expect(item.getAttribute('title')).toContain('已通过校验');
   });
@@ -173,7 +173,7 @@ describe('useMediaNodeMenu 合规校验（图片/视频/音频）', () => {
   it('? 悬浮显示对应类型的要求条件', async () => {
     renderProbe({ url: 'http://x.mp3', kind: 'audio', nodeId: 'n-1' });
     openMenu();
-    fireEvent.mouseEnter(screen.getByLabelText('查看「Seedance2.0 合规校验」说明'));
+    fireEvent.mouseEnter(screen.getByLabelText('查看「Seedance 合规校验」说明'));
     expect(screen.getByText('待校验音频要求')).toBeInTheDocument();
     expect(screen.getByText('2 ~ 15 秒')).toBeInTheDocument();
   });
@@ -211,12 +211,12 @@ describe('useMediaNodeMenu 「删除」', () => {
     expect(buttons[buttons.length - 1].textContent).toBe('删除');
   });
 
-  it('「Seedance2.0 合规校验」固定是菜单首项（用户拍板）', () => {
+  it('「Seedance 合规校验」固定是菜单首项（用户拍板）', () => {
     renderProbe({ url: 'http://x.png', kind: 'image', nodeId: 'n-1' });
     openMenu();
     const menu = screen.getByText('删除').closest('.canvas-menu-enter')!;
     const buttons = menu.querySelectorAll('button');
-    expect(buttons[0].textContent).toContain('Seedance2.0 合规校验');
+    expect(buttons[0].textContent).toContain('Seedance 合规校验');
   });
 
   it('「删除」标红警示', () => {

@@ -195,7 +195,7 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
     // 排最前让「先校验再生成」的路径最短。
     {
       key: 'seedance',
-      label: 'Seedance2.0 合规校验',
+      label: 'Seedance 合规校验',
       onPick: () => {
         setMenuPos(null);
         void verify();
@@ -255,7 +255,7 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
   const seedanceBadge = !state ? null : state.status === 'active' ? (
     <span
       className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-600/90 text-white text-[11px] leading-none font-medium"
-      title="已通过 Seedance 2.0 合规校验"
+      title="已通过 Seedance 合规校验"
     >
       <ShieldCheck size={11} />
       已校验
