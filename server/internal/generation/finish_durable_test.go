@@ -7,6 +7,10 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/ncruces/go-sqlite3"
+
+	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
 )
 
 func zeroFinishRetryDelays(t *testing.T) {
@@ -88,5 +92,85 @@ func TestFinishSuccessDurableBoundedAndNoRetryOnPermanent(t *testing.T) {
 	}
 	if won, err := svc.finishSuccessDurable(context.Background(), 1, 1, finishOutcome{}); won || err != nil || calls != 1 {
 		t.Fatalf("失租不重试, calls=%d", calls)
+	}
+}
+
+// ncruces 下语句执行中途超时返回 sqlite3: interrupted（不带 DeadlineExceeded），必须认成瞬时错误。
+func TestIsTransientDBErrorRecognizesInterrupt(t *testing.T) {
+	conn := dbtest.Open(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	var n int64
+	err := conn.QueryRowContext(ctx, `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c)
+		SELECT count(*) FROM c`).Scan(&n)
+	if err == nil {
+		t.Fatal("无限递归查询应被超时打断")
+	}
+	if !isTransientDBError(err) {
+		t.Fatalf("语句中途超时应判为瞬时错误: %v (deadline=%v interrupt=%v)",
+			err, errors.Is(err, context.DeadlineExceeded), errors.Is(err, sqlite3.INTERRUPT))
+	}
+
+	for _, c := range []struct {
+		err  error
+		want bool
+	}{
+		{sqlite3.INTERRUPT, true},
+		{fmt.Errorf("finish: %w", sqlite3.INTERRUPT), true},
+		{fmt.Errorf("finish: %w", sqlite3.BUSY), true},
+		{sqlite3.LOCKED, true},
+		{fmt.Errorf("finish: %w", context.DeadlineExceeded), true},
+		{fmt.Errorf("finish: %w", context.Canceled), false},
+		{errors.Join(sqlite3.INTERRUPT, context.Canceled), false},
+		{sqlite3.CONSTRAINT, false},
+		{errors.New("constraint failed"), false},
+	} {
+		if got := isTransientDBError(c.err); got != c.want {
+			t.Errorf("isTransientDBError(%v) = %v, 期望 %v", c.err, got, c.want)
+		}
+	}
+}
+
+func TestFinishSuccessDurableRetriesInterrupt(t *testing.T) {
+	zeroFinishRetryDelays(t)
+	svc := &Service{}
+	calls := 0
+	svc.finishSuccessHook = func(context.Context, int64, int64, finishOutcome) (bool, error) {
+		calls++
+		if calls < 3 {
+			return false, fmt.Errorf("finish: %w", sqlite3.INTERRUPT)
+		}
+		return true, nil
+	}
+	won, err := svc.finishSuccessDurable(context.Background(), 1, 1, finishOutcome{})
+	if err != nil || !won || calls != 3 {
+		t.Fatalf("单次超时被中断应重试到成功, won=%v err=%v calls=%d", won, err, calls)
+	}
+
+	// 执行 ctx 只是到期（30 分钟队列超时）：照常重试。
+	calls = 0
+	dctx, dcancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer dcancel()
+	if won, err := svc.finishSuccessDurable(dctx, 1, 1, finishOutcome{}); err != nil || !won || calls != 3 {
+		t.Fatalf("执行 ctx 到期不应影响重试, won=%v err=%v calls=%d", won, err, calls)
+	}
+}
+
+// 执行 ctx 被主动取消（关闭流程）：做完手头这一次就返回，不再退避重试。
+func TestFinishSuccessDurableNoRetryWhenParentCanceled(t *testing.T) {
+	zeroFinishRetryDelays(t)
+	svc := &Service{}
+	calls := 0
+	svc.finishSuccessHook = func(ctx context.Context, _, _ int64, _ finishOutcome) (bool, error) {
+		calls++
+		if ctx.Err() != nil {
+			t.Fatalf("单次尝试的 ctx 不应继承取消")
+		}
+		return false, fmt.Errorf("finish: %w", sqlite3.INTERRUPT)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := svc.finishSuccessDurable(ctx, 1, 1, finishOutcome{}); err == nil || calls != 1 {
+		t.Fatalf("主动取消后不应重试, calls=%d err=%v", calls, err)
 	}
 }
