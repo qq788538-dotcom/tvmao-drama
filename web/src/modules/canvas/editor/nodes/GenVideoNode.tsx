@@ -30,7 +30,7 @@ import { uploadFileIntoNode } from '../utils/uploadIntoNode';
 import { NodeShell } from '../NodeShell';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
 import { VideoActionsBar } from './VideoActionsBar';
-import { stopIfInVideoControls } from './videoControlsGuard';
+import { VideoPlayer } from './VideoPlayer';
 import {
   listRuntimeModels,
   pollCanvasTaskUntilDone,
@@ -612,17 +612,15 @@ export function GenVideoNode({ id }: { id: string }) {
             {/* 预览 = `history[historyIndex]`。重新生成期间，旧视频原地保留
                 并加一层变暗浮层，直到新视频 resolve，这样用户不会丢失上下文。 */}
             {currentUrl ? (
-              <video
+              <VideoPlayer
                 src={currentUrl} crossOrigin={mediaCrossOrigin(currentUrl)}
                 className="w-full h-full object-contain bg-black"
-                controls
                 playsInline
                 preload="metadata"
                 onContextMenu={(e) => {
                   e.preventDefault();
                   mediaMenu.onContextMenu(e);
                 }}
-                onMouseDown={stopIfInVideoControls}
               />
             ) : (
               <PlayCircle size={48} className="text-muted-foreground/60" />

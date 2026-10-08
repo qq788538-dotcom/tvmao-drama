@@ -138,8 +138,11 @@ describe('GenVideoNode', () => {
 
     const { container } = renderNode();
 
-    const player = container.querySelector('video[controls]') as HTMLVideoElement;
+    const player = container.querySelector('video') as HTMLVideoElement;
     expect(player).not.toBeNull();
+    // 原生控制条在 WKWebView 窄节点里会被压坏，统一走自绘 VideoPlayer。
+    expect(player).not.toHaveAttribute('controls');
+    expect(container.querySelector('[data-video-controls]')).not.toBeNull();
     expect(player.muted).toBe(false);
     expect(player.loop).toBe(false);
   });

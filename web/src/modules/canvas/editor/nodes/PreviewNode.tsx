@@ -6,7 +6,7 @@ import { NodeShell } from '../NodeShell';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
 import { ImageActionsBar } from './ImageActionsBar';
 import { VideoActionsBar } from './VideoActionsBar';
-import { stopIfInVideoControls } from './videoControlsGuard';
+import { VideoPlayer } from './VideoPlayer';
 import { useGenerationTimer } from '../hooks/useGenerationTimer';
 import { useThumbUrl } from '../thumbs';
 import { useStoryboardMode } from '../../storyboard/StoryboardContext';
@@ -117,9 +117,9 @@ export function PreviewNode({ id }: { id: string }) {
             }}
           >
             {/* 容器不再整体拦 mousedown（那会连图片预览都拖不动节点）；只有视频
-                的原生控制条区域需要保护，交给 stopIfInVideoControls。 */}
+                的控制条需要保护，VideoPlayer 的控制条自己拦冒泡。 */}
             {isVideo ? (
-              <video src={url} crossOrigin={mediaCrossOrigin(url)} controls className="w-full h-full object-contain" onMouseDown={stopIfInVideoControls} />
+              <VideoPlayer src={url} crossOrigin={mediaCrossOrigin(url)} className="w-full h-full object-contain" />
             ) : isAudio ? (
               /* 波形播放器自己在交互区拦 mousedown（seek 拖动不能被节点拖拽吃掉），
                  无需 stopIfInVideoControls。底部行时间靠左、播放键居中——右下角留给

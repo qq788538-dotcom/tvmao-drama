@@ -4,6 +4,7 @@ import { App as AntApp } from 'antd';
 import { useCanvasStore } from './store';
 import { extFromUrl, saveMediaToDisk, saveWithFeedback } from '@/shared/saveToDisk';
 import { mediaCrossOrigin } from './utils/mediaCrossOrigin';
+import { VideoPlayer } from './nodes/VideoPlayer';
 
 export function Lightbox() {
   const lightbox = useCanvasStore((s) => s.lightbox);
@@ -41,11 +42,11 @@ export function Lightbox() {
         onClick={(e) => e.stopPropagation()}
       >
         {lightbox.kind === 'video' ? (
-          <video
+          <VideoPlayer
             src={lightbox.url} crossOrigin={mediaCrossOrigin(lightbox.url)}
-            controls
             autoPlay
-            className="max-w-[92vw] max-h-[92vh] rounded-lg shadow-2xl"
+            wrapperClassName="flex rounded-lg shadow-2xl"
+            className="block max-w-[92vw] max-h-[92vh]"
           />
         ) : lightbox.kind === 'audio' ? (
           <div className="bg-card rounded-lg shadow-2xl p-6 w-[480px] max-w-[92vw] flex flex-col items-center gap-4">

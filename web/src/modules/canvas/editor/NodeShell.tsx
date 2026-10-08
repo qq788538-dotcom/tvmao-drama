@@ -214,7 +214,7 @@ export function NodeShell({
     if (storyboardMode) return;
     if (e.button !== 0 || e.target === e.currentTarget) return;
     const interactive = (e.target as HTMLElement).closest(
-      'input, textarea, select, button, a, video, audio, [contenteditable="true"]',
+      'input, textarea, select, button, a, video, audio, [contenteditable="true"], [data-video-controls]',
     );
     if (!interactive) return;
     // video 只有底部控制条算交互区，画面区域要走冒泡阶段的单节点拖动。

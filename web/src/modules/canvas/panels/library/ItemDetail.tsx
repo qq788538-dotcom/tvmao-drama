@@ -7,6 +7,7 @@ import { persistNodeById } from '@/modules/canvas/editor/persistence/canvasMutat
 import type { NodeType } from '@/modules/canvas/editor/types';
 import type { LibraryItem } from './types';
 import { mediaCrossOrigin } from '../../editor/utils/mediaCrossOrigin';
+import { VideoPlayer } from '../../editor/nodes/VideoPlayer';
 
 interface Props {
   item: LibraryItem;
@@ -100,10 +101,10 @@ export function ItemDetail({
         />
       )}
       {item.kind === 'video' && item.url && (
-        <video
+        <VideoPlayer
           src={item.url} crossOrigin={mediaCrossOrigin(item.url)}
-          controls
-          className="w-full max-h-72 rounded-xl mb-3 bg-black"
+          wrapperClassName="w-full rounded-xl mb-3 bg-black"
+          className="block w-full max-h-72"
         />
       )}
       {item.kind === 'audio' && item.url && (

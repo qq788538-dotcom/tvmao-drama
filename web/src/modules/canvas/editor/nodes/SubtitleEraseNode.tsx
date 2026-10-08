@@ -7,7 +7,7 @@ import { useCanvasStore } from '../store';
 import { persistNodeById } from '../persistence/canvasMutations';
 import { NodeShell } from '../NodeShell';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
-import { stopIfInVideoControls } from './videoControlsGuard';
+import { VideoPlayer } from './VideoPlayer';
 import {
   currentProjectId,
   fetchCanvasPostprocessConfig,
@@ -131,17 +131,15 @@ export function SubtitleEraseNode({ id }: { id: string }) {
           <div className="relative flex-1 rounded-2xl bg-popover/30 border border-border/60 flex items-center justify-center overflow-hidden min-h-0">
             {/* 已有产物：展示去字幕结果，可走 useMediaNodeMenu 保存/发送。 */}
             {node.content ? (
-              <video
+              <VideoPlayer
                 src={node.content} crossOrigin={mediaCrossOrigin(node.content)}
                 className="w-full h-full object-contain bg-black"
-                controls
                 playsInline
                 preload="metadata"
                 onContextMenu={(e) => {
                   e.preventDefault();
                   mediaMenu.onContextMenu(e);
                 }}
-                onMouseDown={stopIfInVideoControls}
               />
             ) : sourceUrl ? (
               // 还没有产物：展示上游视频缩略，纯预览。时长不从这里读（见上方预估注释）。

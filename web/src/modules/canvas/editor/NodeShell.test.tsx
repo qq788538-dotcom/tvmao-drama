@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NodeShell } from './NodeShell';
+import { VideoPlayer } from './nodes/VideoPlayer';
 import { stopIfInVideoControls } from './nodes/videoControlsGuard';
 import { useCanvasStore } from './store';
 import { setCanvasOwnerToken } from './persistence/canvasMutations';
@@ -158,6 +159,24 @@ describe('NodeShell 视频拖动与画布平移的边界', () => {
   it('控制条区域按下：视频自己拦断冒泡，节点被选中但不开始拖动', () => {
     const { node, video, canvasMouseDown } = renderVideoInShell('video-ctrl');
     fireEvent.mouseDown(video, { button: 0, clientY: 390 });
+    expect(canvasMouseDown).not.toHaveBeenCalled();
+    expect(useCanvasStore.getState().selectedIds.has(node.id)).toBe(true);
+  });
+});
+
+describe('NodeShell × 自绘视频控制条', () => {
+  it('控制条上按下：节点被选中，事件不冒到画布（不拖动、不平移）', () => {
+    const node = makeNode('video-custom-ctrl', 0);
+    useCanvasStore.setState({ nodes: [node], selectedIds: new Set<string>() });
+    const canvasMouseDown = vi.fn();
+    render(
+      <div onMouseDown={canvasMouseDown}>
+        <NodeShell node={node}>
+          <VideoPlayer src="https://example.com/a.mp4" />
+        </NodeShell>
+      </div>,
+    );
+    fireEvent.mouseDown(screen.getByRole('button', { name: '播放' }), { button: 0 });
     expect(canvasMouseDown).not.toHaveBeenCalled();
     expect(useCanvasStore.getState().selectedIds.has(node.id)).toBe(true);
   });
