@@ -155,6 +155,7 @@ func (f *fakeProjectRepository) GetForUser(_, _ int64) (*projects.Project, error
 }
 func (f *fakeProjectRepository) Update(int64, int64, string, string) error { return nil }
 func (f *fakeProjectRepository) SetCover(int64, int64, string) error       { return nil }
+func (f *fakeProjectRepository) Touch(int64, int64) error                  { return nil }
 func (f *fakeProjectRepository) Delete(int64, int64) error                 { return nil }
 func (f *fakeProjectRepository) SaveAuthoritative(int64, json.RawMessage) (int64, error) {
 	return 0, nil

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -128,6 +129,11 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	// 网页端只在打开项目时 GET 它（画布加载、启动时恢复上次项目）：顺手刷新 updated_at，
+	// 列表按 updated_at 倒序即「最近打开在前」。失败不影响打开。CLI 走 /cli 路由，不触发。
+	if err := h.repo.Touch(userID, projectID); err != nil {
+		log.Printf("project %d touch updated_at: %v", projectID, err)
 	}
 	writeJSON(w, http.StatusOK, p)
 }

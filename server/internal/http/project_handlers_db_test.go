@@ -332,3 +332,25 @@ func TestProjectCleanerStartDoneClosesAfterCancel(t *testing.T) {
 		t.Fatal("ctx 取消 3 秒后清理 worker 仍未退出")
 	}
 }
+
+// 打开项目（GET /projects/{id}）即刷新 updated_at：「所有项目」按 updated_at 倒序，最近打开的排第一。
+func TestProjectGetMovesProjectToTopOfList(t *testing.T) {
+	e := newProjectEnv(t)
+	older, _ := e.projects.Create(LocalUserID, "旧项目", "")
+	newer, _ := e.projects.Create(LocalUserID, "新项目", "")
+	e.conn.Exec(`UPDATE projects SET updated_at = '2026-01-01 00:00:00' WHERE id = ?`, older)
+	e.conn.Exec(`UPDATE projects SET updated_at = '2026-01-02 00:00:00' WHERE id = ?`, newer)
+
+	rec := httptest.NewRecorder()
+	e.handler.Get(rec, projectReq(http.MethodGet, older, ""))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body)
+	}
+	list, _, err := e.projects.ListForUser(LocalUserID, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].ID != older {
+		t.Fatalf("刚打开的项目应排第一，got %v", list)
+	}
+}

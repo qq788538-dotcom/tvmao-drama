@@ -38,6 +38,8 @@ type Repository interface {
 	ListForUser(userID int64, limit, offset int) ([]Project, int, error)
 	GetForUser(userID, projectID int64) (*Project, error)
 	Update(userID, projectID int64, name, description string) error
+	// Touch 把 updated_at 刷成当前时间（打开项目时调用，让「所有项目」里最近打开的排第一）。
+	Touch(userID, projectID int64) error
 	// SetCover 手动指定封面（canonical media://key 形态）；传空串=清除手动指定，
 	// 封面回落到自动取图。
 	SetCover(userID, projectID int64, coverURL string) error
@@ -156,6 +158,11 @@ func (r *SQLiteRepository) GetForUser(userID, projectID int64) (*Project, error)
 		return nil, err
 	}
 	return &p, nil
+}
+
+func (r *SQLiteRepository) Touch(userID, projectID int64) error {
+	_, err := r.db.Exec(`UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, projectID)
+	return err
 }
 
 func (r *SQLiteRepository) Update(userID, projectID int64, name, description string) error {
