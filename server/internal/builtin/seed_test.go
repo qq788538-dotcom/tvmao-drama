@@ -151,3 +151,35 @@ func TestSeedHasHiddenSeedanceAssetModel(t *testing.T) {
 	}
 	t.Fatal("种子里没有 seedance-asset")
 }
+
+// 豆包 5.0-pro（1k/2k）上游最多接受 5 张参考图：经 gen_control.inputLimits 限制，
+// 后端 generation 与前端图片节点共用这一配置。
+func TestSeedSeedream5ProLimitsImagesToFive(t *testing.T) {
+	s, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"doubao-seedream-5-0-pro-260628-1k": false, "doubao-seedream-5-0-pro-260628-2k": false}
+	for _, m := range s.Models {
+		if _, ok := want[m.ModelID]; !ok {
+			continue
+		}
+		var gc struct {
+			InputLimits map[string]struct {
+				Max *int `json:"max"`
+			} `json:"inputLimits"`
+		}
+		if err := json.Unmarshal(m.GenControl, &gc); err != nil {
+			t.Fatal(err)
+		}
+		if lim, ok := gc.InputLimits["image"]; !ok || lim.Max == nil || *lim.Max != 5 {
+			t.Errorf("%s 的 inputLimits.image.max 应为 5: %s", m.ModelID, m.GenControl)
+		}
+		want[m.ModelID] = true
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Errorf("种子里没有 %s", id)
+		}
+	}
+}

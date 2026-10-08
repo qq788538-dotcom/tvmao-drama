@@ -271,6 +271,30 @@ describe('GenImageNode 提示词预设', () => {
     expect(screen.getByText('该预设需要恰好 1 张图片')).toBeInTheDocument();
   });
 
+  it('超过模型 inputLimits.image.max：生成按钮禁用并显示与后端一致的原因', async () => {
+    vi.mocked(listRuntimeModels).mockResolvedValue([
+      { ...imageModel, genControl: { inputLimits: { image: { max: 0 } } } },
+      unboundModel,
+    ]);
+    setNode({ prompt: '一只猫' }, true);
+    await renderReady();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '生成' })).toBeDisabled());
+    expect(screen.getByText('该模型不支持连接图片')).toBeInTheDocument();
+  });
+
+  it('未超过模型 inputLimits.image.max：生成按钮可用', async () => {
+    vi.mocked(listRuntimeModels).mockResolvedValue([
+      { ...imageModel, genControl: { inputLimits: { image: { max: 5 } } } },
+      unboundModel,
+    ]);
+    setNode({ prompt: '一只猫' }, true);
+    await renderReady();
+
+    expect(screen.getByRole('button', { name: '生成' })).toBeEnabled();
+    expect(screen.queryByText(/该模型最多支持连接/)).toBeNull();
+  });
+
   it('图片数满足约束后生成按钮恢复可用', async () => {
     setNode({ promptPreset: 'three_view', prompt: '一只猫' }, true);
     await renderReady();

@@ -60,6 +60,7 @@ import { ImageActionsBar } from './ImageActionsBar';
 import { ThumbImg } from '../ThumbImg';
 import { pickRefUploadForNode } from '../utils/uploadRefPicker';
 import { renderRejected } from '../utils/rejectedFiles';
+import { inputLimitViolation } from '../utils/inputLimits';
 
 export function GenImageNode({ id }: { id: string }) {
   const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
@@ -437,6 +438,16 @@ export function GenImageNode({ id }: { id: string }) {
           ? '该预设不支持连接图片'
           : `该预设需要至多 ${presetMaxImages} 张图片`;
 
+  // 模型 gen_control.inputLimits 的图片数上限（如豆包 5.0-pro 最多 5 张）：与预设约束合并成
+  // 同一个「图片数」闸门。图片节点只喂图片给上游，视频/音频按 0 计。文案与后端逐字一致。
+  const modelImagesHint = inputLimitViolation(selectedModel?.genControl?.inputLimits, {
+    image: connectedImages.length,
+    video: 0,
+    audio: 0,
+  });
+  const imagesOk = presetImagesOk && !modelImagesHint;
+  const imagesHint = presetImagesHint ?? modelImagesHint;
+
   const pickPreset = (key: string) => {
     // 换预设时清掉旧预设的参数选择——维度 key 是各预设私有的，带过去要么悬空
     // 要么撞名生效，两种都错。
@@ -547,7 +558,7 @@ export function GenImageNode({ id }: { id: string }) {
     if (!selectedModelId) return;
     // 预设图片数约束的兜底：按钮 disabled 是体验层，这里再拦一道（服务端还有
     // 权威校验，三层同一规则）。
-    if (!presetImagesOk) return;
+    if (!imagesOk) return;
     // 提交给上游的最终提示词：@ 提及已展开成「图片2」这类纯文本，再与上游文本
     // 节点合并（composePrompt，上游在前）。这也是要记进 history 的那一句——记
     // 「实际生成用的」而不是编辑器里的原始标记，这样以后连线变了、上游节点删了，
@@ -1247,16 +1258,16 @@ export function GenImageNode({ id }: { id: string }) {
 
             {/* 预设图片数不满足时的原因灰字——按钮 disabled 后 Tooltip 要 hover
                 才看得到，数量约束这种「要去连线才能修好」的原因得常驻可见。 */}
-            {presetImagesHint && (
+            {imagesHint && (
               <span className="shrink-0 text-[11px] text-muted-foreground select-none">
-                {presetImagesHint}
+                {imagesHint}
               </span>
             )}
 
             {/* 禁用原因即显（mouseEnterDelay=0）——原生 title 要悬停 ~1s 且 disabled 上
                 行为不一，用户发现不了原因；disabled 按钮不派发鼠标事件，须包 span 接管 hover */}
             <Tooltip
-              title={isGenerating ? '生成中…' : !selectedModelId ? '请先选择模型' : !hasPrompt ? '请先输入提示词' : presetImagesHint}
+              title={isGenerating ? '生成中…' : !selectedModelId ? '请先选择模型' : !hasPrompt ? '请先输入提示词' : imagesHint}
               mouseEnterDelay={0}
               placement="top"
             >
@@ -1264,7 +1275,7 @@ export function GenImageNode({ id }: { id: string }) {
                 <button
                   onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
                   onMouseDown={(e) => e.stopPropagation()}
-                  disabled={!selectedModelId || !hasPrompt || isGenerating || !presetImagesOk}
+                  disabled={!selectedModelId || !hasPrompt || isGenerating || !imagesOk}
                   className="w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center border-none shrink-0"
                   aria-label="生成"
                 >
