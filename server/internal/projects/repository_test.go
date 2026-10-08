@@ -129,8 +129,9 @@ func TestListForUserStorageBytesAndAutoCover(t *testing.T) {
 	if list[0].StorageBytes != 1000 {
 		t.Fatalf("storageBytes=%d want 1000", list[0].StorageBytes)
 	}
-	if list[0].CoverURL != "media://gen-first" {
-		t.Fatalf("自动封面=%q want 最早一张生成图 media://gen-first", list[0].CoverURL)
+	// 自动封面 = 项目里最早的一张图片，上传的也算（视频不算）。
+	if list[0].CoverURL != "media://k1" {
+		t.Fatalf("自动封面=%q want 最早一张图片（上传的）media://k1", list[0].CoverURL)
 	}
 }
 

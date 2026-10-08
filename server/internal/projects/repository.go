@@ -108,14 +108,13 @@ func (r *SQLiteRepository) ListForUser(userID int64, limit, offset int) ([]Proje
 	rows, err := r.db.Query(`
 		SELECT p.id, p.user_id, p.name, IFNULL(p.description, ''), p.created_at, p.updated_at,
 		       IFNULL(SUM(a.size_bytes), 0) AS storage_bytes,
-		       -- 封面两层来源：手动指定优先，没指定才自动取最早一张成图。
+		       -- 封面两层来源：手动指定优先，没指定才自动取项目里最早的一张图片（上传、生成都算）。
 		       -- NULLIF 是必需的——「清除封面」写的是空串而不是 NULL（见 SetCover），
 		       -- 只用 IFNULL 的话空串会被当成有效值，清除后封面直接变没，而不是
 		       -- 回落到自动取图。
 		       IFNULL(NULLIF(p.cover_url, ''), IFNULL((
 		         SELECT g.url FROM assets g
 		          WHERE g.project_id = p.id
-		            AND g.source_kind = 'generation'
 		            AND g.mime_type LIKE 'image/%'
 		          ORDER BY g.id ASC
 		          LIMIT 1
