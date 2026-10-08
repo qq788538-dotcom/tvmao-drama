@@ -19,4 +19,4 @@ type MediaPublisher interface {
 }
 
 // ErrMediaNeedsPublicURL：本机视频/音频需要对象存储才能交给上游，但用户还没配置。
-var ErrMediaNeedsPublicURL = errors.New("未配置对象存储：视频和音频需要上传到你自己的对象存储，请在 设置 → 配置 → 对象存储 中填写")
+var ErrMediaNeedsPublicURL = errors.New("未配置对象存储：视频和音频需要上传到你自己的对象存储，请在 设置 → 对象存储 中填写")

@@ -8,6 +8,7 @@ import { settingsTheme } from './theme';
 import { GeneralPage } from './pages/GeneralPage';
 import { ModelCenterPage } from './pages/ModelCenterPage';
 import { CliToolCard } from './components/CliToolCard';
+import { ObjectStorageCard } from './components/ObjectStorageCard';
 import { DiagPage } from '@/diag/DiagPage';
 import { type SectionKey, useSettingsModal } from './settingsModalStore';
 
@@ -17,6 +18,7 @@ export type { SectionKey };
 export const SECTIONS: { key: SectionKey; label: string }[] = [
   { key: 'models', label: '模型中心' },
   { key: 'cli', label: '命令行工具' },
+  { key: 'storage', label: '对象存储' },
   { key: 'general', label: '配置' },
   { key: 'diag', label: '环境诊断' },
 ];
@@ -25,6 +27,7 @@ const PAGES: Record<SectionKey, () => ReactNode> = {
   general: () => <GeneralPage />,
   models: () => <ModelCenterPage />,
   cli: () => <CliToolCard />,
+  storage: () => <ObjectStorageCard />,
   diag: () => <DiagPage embedded />,
 };
 

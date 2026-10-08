@@ -30,7 +30,7 @@ func skipImagesFor(m *models.ModelConfig) bool {
 
 // ErrLocalMediaUnreachable：插值后的上游请求里仍有本机媒体地址（未配置对象存储）。
 // 在调上游之前失败，不产生任何上游调用。
-var ErrLocalMediaUnreachable = errors.New("未配置对象存储：视频和音频需要上传到你自己的对象存储，请在 设置 → 配置 → 对象存储 中填写")
+var ErrLocalMediaUnreachable = errors.New("未配置对象存储：视频和音频需要上传到你自己的对象存储，请在 设置 → 对象存储 中填写")
 
 // ensureNoLocalMediaForRequest 只检查真正会发给上游的内容（C1）。
 // edits 模式且有落盘参考图时走 multipart：payload 里的 image/images/mask 不会发送

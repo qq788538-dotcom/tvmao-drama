@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var ErrNotConfigured = errors.New("未配置对象存储：视频和音频需要上传到你自己的对象存储，请在 设置 → 配置 → 对象存储 中填写")
+var ErrNotConfigured = errors.New("未配置对象存储：视频和音频需要上传到你自己的对象存储，请在 设置 → 对象存储 中填写")
 
 // Client 是对各服务商 SDK 的最小封装。
 type Client interface {

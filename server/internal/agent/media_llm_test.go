@@ -151,7 +151,7 @@ func TestResolverVideoUnconfiguredGuides(t *testing.T) {
 	r := newResolver()
 	r.Publisher = fakePub{configured: false}
 	_, err := r.ResolveForLLM(context.Background(), "video", "media://u1/v.mp4")
-	if !errors.Is(err, ErrMediaNeedsPublicURL) || !strings.Contains(err.Error(), "设置 → 配置 → 对象存储") {
+	if !errors.Is(err, ErrMediaNeedsPublicURL) || !strings.Contains(err.Error(), "设置 → 对象存储") {
 		t.Fatalf("err=%v", err)
 	}
 }

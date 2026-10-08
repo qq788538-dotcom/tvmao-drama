@@ -12,7 +12,6 @@ import {
   getGeneral,
   type DataDirCheck,
 } from '../api';
-import { ObjectStorageCard } from '../components/ObjectStorageCard';
 
 type OpenDialog = (o: { directory: true; multiple: false; defaultPath?: string; title?: string }) => Promise<string | string[] | null>;
 
@@ -99,7 +98,6 @@ export function GeneralPage() {
   const g = general.data;
   return (
     <Space direction="vertical" size={16} style={{ width: '100%', maxWidth: 760 }}>
-      <ObjectStorageCard />
       <Card title="数据目录" extra={<Button onClick={changeDir}>更改…</Button>}>
         {dirs.data?.lastError && (
           <Alert type="error" showIcon message={dirs.data.lastError} closable onClose={() => dismiss.mutate()} style={{ marginBottom: 12 }} />

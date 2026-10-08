@@ -43,9 +43,9 @@ describe('SettingsModal', () => {
   it('菜单正好 3 项、没有分组标题', () => {
     setup();
     act(() => openSettings());
-    expect(SECTIONS.map((s) => s.label)).toEqual(['模型中心', '命令行工具', '配置', '环境诊断']);
+    expect(SECTIONS.map((s) => s.label)).toEqual(['模型中心', '命令行工具', '对象存储', '配置', '环境诊断']);
     const items = [...document.querySelectorAll('.ant-menu-item')].map((e) => e.textContent);
-    expect(items).toEqual(['模型中心', '命令行工具', '配置', '环境诊断']);
+    expect(items).toEqual(['模型中心', '命令行工具', '对象存储', '配置', '环境诊断']);
     expect(document.querySelector('.ant-menu-item-group-title')).toBeNull();
     expect(document.querySelector('.ant-menu-submenu')).toBeNull();
   });

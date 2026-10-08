@@ -185,7 +185,7 @@ func TestPrepareExecutionUnconfiguredStillFailsWithGuide(t *testing.T) {
 	svc.SetMediaPublisher(&fakePublisher{configured: false})
 	_, err := svc.prepareExecution(context.Background(), 1, "m",
 		map[string]any{"video": "media://u1/v.mp4"}, "", "", nil)
-	if !errors.Is(err, ErrLocalMediaUnreachable) || !strings.Contains(err.Error(), "设置 → 配置 → 对象存储") {
+	if !errors.Is(err, ErrLocalMediaUnreachable) || !strings.Contains(err.Error(), "设置 → 对象存储") {
 		t.Fatalf("err=%v", err)
 	}
 }

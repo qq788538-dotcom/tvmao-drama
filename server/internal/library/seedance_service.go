@@ -117,7 +117,7 @@ type MediaPublisher interface {
 func (s *SeedanceService) SetMediaPublisher(p MediaPublisher) { s.publisher = p }
 
 // ErrLocalMediaNoPublicURL：素材只能签出本机回环地址，且未配置对象存储。
-var ErrLocalMediaNoPublicURL = errors.New("未配置对象存储：合规校验需要把素材上传到你自己的对象存储，请在 设置 → 配置 → 对象存储 中填写")
+var ErrLocalMediaNoPublicURL = errors.New("未配置对象存储：合规校验需要把素材上传到你自己的对象存储，请在 设置 → 对象存储 中填写")
 
 // signedURL 把 object key 签成对外直链，并断言结果确实是 http(s)。
 // 签不出直链时宁可就地失败给人话原因，也不要把一个不是 URL 的字符串发给上游——
