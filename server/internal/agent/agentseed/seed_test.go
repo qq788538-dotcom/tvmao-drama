@@ -179,13 +179,14 @@ func TestImportHandlesSwappedCategoryNames(t *testing.T) {
 
 // 旧库里 model_name 仍是合并前的 canvas-agent-gpt-5.5：升级导入后变成 gpt-5.5；
 // 被用户在设置页覆盖过的行（model_name_overridden=1）同样回到种子值（Agent 模型已写死，2026-10-07）。
-func TestImportUpgradesMergedGPT55ModelName(t *testing.T) {
+// 已安装用户库里的旧名（canvas-agent-gpt-5.5、gpt-5.5）在下次启动导入时都升级为种子值 gpt-latest。
+func TestImportUpgradesOldGPTModelNames(t *testing.T) {
 	conn := dbtest.Open(t)
 	insertModels(t, conn, toolModelIDs...)
 	if _, err := Import(conn); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := conn.Exec(`UPDATE agent_backbone_models SET model_name='canvas-agent-gpt-5.5' WHERE id IN (1,2)`); err != nil {
+	if _, err := conn.Exec(`UPDATE agent_backbone_models SET model_name='gpt-5.5' WHERE id IN (1,2)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := conn.Exec(`UPDATE agent_backbone_models SET model_name_overridden=1 WHERE id=2`); err != nil {
@@ -201,10 +202,10 @@ func TestImportUpgradesMergedGPT55ModelName(t *testing.T) {
 	if err := conn.QueryRow(`SELECT model_name FROM agent_backbone_models WHERE id=2`).Scan(&m2); err != nil {
 		t.Fatal(err)
 	}
-	if m1 != "gpt-5.5" {
-		t.Fatalf("未覆盖的旧行应升级为 gpt-5.5，got %q", m1)
+	if m1 != "gpt-latest" {
+		t.Fatalf("未覆盖的旧行应升级为 gpt-latest，got %q", m1)
 	}
-	if m2 == "canvas-agent-gpt-5.5" {
+	if m2 != "gpt-latest" {
 		t.Fatalf("用户覆盖过的行也应回到种子值，got %q", m2)
 	}
 }

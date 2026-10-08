@@ -26,7 +26,11 @@ export function TextGenPanel({ nodeId }: { nodeId: string }) {
   // 模型下拉的口径：/models 里 type==='text' 的行。
   // VL（视觉）模型也配成 text 类型——是否吃图由模型的 requestTemplate 决定。
   const textModels = (modelsQuery.data ?? []).filter((m) => m.type === 'text');
-  const selectedModelId = (node.settings?.modelId as string | undefined) ?? textModels[0]?.modelId ?? '';
+  // 节点里存的模型已不在列表（内置模型改名/下线，如 gpt-5.5 → gpt-latest）时回退到第一个，
+  // 否则会拿一个不存在的 id 提交。模型列表未加载完时保持原值，避免闪一下被改写。
+  const savedModelId = node.settings?.modelId as string | undefined;
+  const savedValid = savedModelId && (!modelsQuery.data || textModels.some((m) => m.modelId === savedModelId));
+  const selectedModelId = (savedValid ? savedModelId : undefined) ?? textModels[0]?.modelId ?? '';
   const selectedModel = textModels.find((m) => m.modelId === selectedModelId);
 
   // 指令存 settings.genPrompt——不能占 settings.text（那是正文），也别叫 prompt

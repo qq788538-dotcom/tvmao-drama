@@ -135,6 +135,20 @@ describe('文本节点 AI 生成', () => {
     });
   });
 
+  it('节点存的模型已不存在（如 gpt-5.5 改名为 gpt-latest）：回退到第一个文本模型提交', async () => {
+    seedTextNode('t-1', { genPrompt: '写一段文案', modelId: 'gpt-5.5' });
+    const { findByTitle } = renderNode('t-1');
+
+    const submitBtn = await findByTitle('生成');
+    await waitFor(() => expect(submitBtn).not.toBeDisabled());
+    await act(async () => {
+      fireEvent.click(submitBtn);
+    });
+
+    await waitFor(() => expect(submitCanvasTask).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(submitCanvasTask).mock.calls[0][0].modelId).toBe('qwen-vl');
+  });
+
   it('无指令时生成按钮禁用——绝不空提交扣积分', async () => {
     seedTextNode('t-2');
     const { findByTitle } = renderNode('t-2');

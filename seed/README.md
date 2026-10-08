@@ -5,7 +5,7 @@
 
 | 文件 | 行数 | 说明 |
 |---|---|---|
-| `model_configs.jsonl` | 27 | 模型中心（text 2 / image 7 / video 16 / audio 2；2026-10-06 删除 19 个：gpt-image-2.1（id 29）、工作流专用与停用的 id 2、3、5、6、7、8、14、40、45，以及 cm-seedance 系列 id 21–26、32–34）。合并 gpt-5.5 三合一：删除 id 36、41；`sd-2.0-mini-yd` 去掉价格。保留原始 `id`，`agent_tools.source_model_id` 引用它。2026-10-07：除 gpt-image-2（edits）与 gemini（base64）外，`image_input_format` 统一为 `data_uri`（对象存储设计 D1）。2026-10-07：新增隐藏模型 seedance-asset（id 51），合规校验专用 |
+| `model_configs.jsonl` | 27 | 模型中心（text 2 / image 7 / video 16 / audio 2；2026-10-06 删除 19 个：gpt-image-2.1（id 29）、工作流专用与停用的 id 2、3、5、6、7、8、14、40、45，以及 cm-seedance 系列 id 21–26、32–34）。合并 gpt-5.5 三合一：删除 id 36、41；`sd-2.0-mini-yd` 去掉价格。保留原始 `id`，`agent_tools.source_model_id` 引用它。2026-10-07：除 gpt-image-2（edits）与 gemini（base64）外，`image_input_format` 统一为 `data_uri`（对象存储设计 D1）。2026-10-07：新增隐藏模型 seedance-asset（id 51），合规校验专用。2026-10-08：gpt-5.5 的名称、model_id 与模板 model 统一改为 gpt-latest（newapi 侧别名，升级 GPT 版本不再改客户端） |
 | `settings.jsonl` | 6 | 只含 `base_domain`、`canvas_light_control`、`canvas_multi_angle`、`canvas_postprocess_config`、`canvas_script_config`、`gen_image_prompt_presets` |
 | `agent_backbone_models.jsonl` | 4 | Agent 使用的大模型（planner / utility / subagent_audio / subagent_video）；planner、utility 的 model_name 已由 canvas-agent-gpt-5.5 改为 gpt-5.5，`canvas_script_config` 候选同理（canvas-gpt-5.5 → gpt-5.5）。副本由 `scripts/sync-seed.sh` 同步到 `server/internal/agent/agentseed/data/` |
 | `agent_tools.jsonl` | 4 | Agent 工具目录 |
