@@ -254,6 +254,9 @@ export function CanvasProjectsPage({ onOpenProject, onProjectDeleted, embedded =
   // 混用会让两边互相污染。
   const projectsQuery = useInfiniteQuery({
     queryKey: ['projects', 'paged'],
+    // 列表按 updated_at 倒序，打开项目会刷新 updated_at（最近打开排第一）；每次打开列表都重拉，
+    // 不吃全局 30s staleTime 的旧顺序。
+    refetchOnMount: 'always',
     initialPageParam: 0,
     queryFn: ({ pageParam }) => listProjectsPage(PAGE_SIZE, pageParam as number),
     getNextPageParam: (lastPage, allPages) => {

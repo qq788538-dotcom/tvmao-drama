@@ -261,6 +261,9 @@ export function CanvasEditorPage() {
   const projectQuery = useQuery({
     queryKey: ['project', pid],
     queryFn: () => getProject(pid),
+    // 每次进画布都真正 GET 一次：后端借此刷新 updated_at（「所有项目」最近打开排第一），
+    // 30s 内来回切项目也不能吃缓存跳过。
+    refetchOnMount: 'always',
     enabled: Number.isFinite(pid) && pid > 0,
   });
 

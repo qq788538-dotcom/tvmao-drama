@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CanvasProjectsPage } from '../CanvasProjectsPage';
@@ -182,5 +182,26 @@ describe('CanvasProjectsPage', () => {
     // 第二页的 offset 必须是已加载条数，不是页码。
     expect(listProjectsPage).toHaveBeenLastCalledWith(24, 1);
     await screen.findByText('项目 2');
+  });
+});
+
+describe('CanvasProjectsPage 排序刷新', () => {
+  it('每次打开都重新拉列表：刚打开过的项目要排第一，不能用 30s 内的缓存顺序', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: false } } });
+    const renderWith = () =>
+      render(
+        <QueryClientProvider client={qc}>
+          <MemoryRouter>
+            <AntApp>
+              <CanvasProjectsPage />
+            </AntApp>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    const first = renderWith();
+    await screen.findByText('有封面的项目');
+    first.unmount();
+    renderWith();
+    await waitFor(() => expect(listProjectsPage).toHaveBeenCalledTimes(2));
   });
 });
