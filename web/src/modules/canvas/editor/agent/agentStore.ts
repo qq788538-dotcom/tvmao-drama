@@ -168,6 +168,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
           }
         }
       }
+      list = keepLocalErrors(existing, list);
       return {
         messages: { ...state.messages, [threadId]: list },
         pageState: { ...state.pageState, [threadId]: { hasMore: nextHasMore, loadingOlder: false } },
@@ -333,6 +334,25 @@ function padBlocksTo(blocks: ContentBlock[], idx: number): ContentBlock[] {
     if (blocks[i] === undefined) blocks[i] = { type: 'text', text: '' };
   }
   return blocks;
+}
+
+// keepLocalErrors 把 error 帧生成的本地错误气泡（err_*，服务端不落库）重新插回
+// hydrate 后的列表：放在同 action 最后一条服务端消息之后。轮次以错误收尾时完成
+// 对账必然会 hydrate，不保留的话错误提示连同上下文「闪一下就没了」。同 action
+// 在新列表里已无任何消息（如被压缩）则丢弃，避免孤立气泡。
+function keepLocalErrors(existing: AgentMessage[], list: AgentMessage[]): AgentMessage[] {
+  const errs = existing.filter((m) => m.id.startsWith('err_') && m.action_id);
+  if (errs.length === 0) return list;
+  const out = list.slice();
+  for (const e of errs) {
+    if (out.some((m) => m.id === e.id)) continue;
+    let at = -1;
+    for (let i = out.length - 1; i >= 0; i--) {
+      if (out[i].action_id === e.action_id) { at = i; break; }
+    }
+    if (at >= 0) out.splice(at + 1, 0, e);
+  }
+  return out;
 }
 
 function lastPendingAssistant(list: AgentMessage[]): AgentMessage | undefined {

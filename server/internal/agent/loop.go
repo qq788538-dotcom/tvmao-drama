@@ -235,6 +235,10 @@ func (a *Agent) Run(ctx context.Context, threadID, actionID, userText string, me
 		assistant, nextIdx, serr := a.streamOnce(ctx, boundModel, msgs, threadID, actionID, blockIdx, llmOpts...)
 		blockIdx = nextIdx
 		if serr != nil {
+			// 上游可能先吐出一段正文、再在流中途报错（实测 new-api 会 200 后推
+			// 「servers are currently overloaded」）。用户已经看到这段文字，不落库的话
+			// 轮次结束后的 re-hydrate 会把它抹掉——只保存文本，丢掉可能半截的 tool_call。
+			a.persistPartialText(threadID, actionID, assistant)
 			// 用户主动取消（abort 帧 → Hub.CancelRun 掐 Run ctx）不是故障：错误码
 			// 固定 aborted，前端据此渲染中性的「已停止」而不是红色报错。计费边界
 			//（用户拍板）：已消耗的 LLM 轮次照常结算（settle 走 Background ctx，
@@ -409,9 +413,34 @@ func (a *Agent) Run(ctx context.Context, threadID, actionID, userText string, me
 // （WS handler 的 thread_not_found、runner 的 skill_not_found / no_planner），
 // 它们同样需要完整三件套，而不是各发各的裸 error 帧。
 func SendFatal(sink FrameSink, threadID, actionID, code, msg string) {
+	log.Printf("agent fatal: thread=%s action=%s code=%s msg=%s", threadID, actionID, code, msg)
 	sink.Send(Frame{Type: FrameError, ThreadID: threadID, ActionID: actionID, Error: &ErrorPayload{Code: code, Message: msg}})
 	sink.Send(Frame{Type: FrameActionEnd, ThreadID: threadID, ActionID: actionID, StopReason: "error"})
 	sink.Send(Frame{Type: FrameThreadEnd, ThreadID: threadID})
+}
+
+// persistPartialText 把出错轮次里已流出的正文存成一条 stop_reason=error 的
+// assistant 消息；没有正文时什么都不做。落库失败只记日志，不改变本轮结局。
+func (a *Agent) persistPartialText(threadID, actionID string, partial *schema.Message) {
+	if partial == nil || strings.TrimSpace(partial.Content) == "" {
+		return
+	}
+	blocks := []ContentBlock{{Type: "text", Text: partial.Content}}
+	a.canonicalizeBlocks(blocks)
+	bj, err := json.Marshal(blocks)
+	if err == nil {
+		err = a.Repo.AppendMessage(Message{
+			ID:            uuid.NewString(),
+			ThreadID:      threadID,
+			ActionID:      actionID,
+			Role:          "assistant",
+			ContentBlocks: bj,
+			StopReason:    "error",
+		})
+	}
+	if err != nil {
+		log.Printf("agent: 保存中断轮次的部分回复失败 thread=%s action=%s: %v", threadID, actionID, err)
+	}
 }
 
 func (a *Agent) sendFatal(threadID, actionID, code, msg string) {

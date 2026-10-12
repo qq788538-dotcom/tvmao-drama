@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -994,5 +995,44 @@ func TestRun_CancelledCtx_EndsWithAbortedCode(t *testing.T) {
 	}
 	if !gotAborted || !gotActionEnd {
 		t.Fatalf("want aborted error + action_end, frames: %+v", sink.frames)
+	}
+}
+
+// midStreamErrModel：先吐一段正文，再在流中途报错——new-api 上游过载时的真实形态
+// （HTTP 200 后推 "servers are currently overloaded"）。
+type midStreamErrModel struct{ stubChatModel }
+
+func (m *midStreamErrModel) Stream(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	sr, sw := schema.Pipe[*schema.Message](2)
+	go func() {
+		defer sw.Close()
+		sw.Send(&schema.Message{Role: schema.Assistant, Content: "你好！有什么"}, nil)
+		sw.Send(nil, errors.New("Our servers are currently overloaded"))
+	}()
+	return sr, nil
+}
+
+// 用户已经看到的半截回复必须落库：否则轮次结束后的 re-hydrate 会把它从界面抹掉。
+func TestRun_MidStreamError_PersistsPartialText(t *testing.T) {
+	sink := &stubFrameSink{}
+	repo := newInMemRepo()
+	_ = repo.CreateThread(Thread{ID: "thr_mid", ProjectID: 1, UserID: 1})
+	a := &Agent{Planner: &midStreamErrModel{}, Tools: newStubRegistryWith(&fakeTool{name: "fake_image"}), Repo: repo, Sink: sink}
+	if err := a.Run(context.Background(), "thr_mid", "act_1", "你好", nil, nil); err == nil {
+		t.Fatal("mid-stream error must fail the run")
+	}
+
+	msgs, _ := repo.ListMessages("thr_mid")
+	var got *Message
+	for i := range msgs {
+		if msgs[i].Role == "assistant" {
+			got = &msgs[i]
+		}
+	}
+	if got == nil {
+		t.Fatalf("partial assistant text not persisted, msgs: %+v", msgs)
+	}
+	if got.StopReason != "error" || !strings.Contains(string(got.ContentBlocks), "你好！有什么") {
+		t.Fatalf("unexpected persisted row: stop=%q blocks=%s", got.StopReason, got.ContentBlocks)
 	}
 }

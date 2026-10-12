@@ -323,3 +323,19 @@ it('error 帧 code=aborted 渲染中性文案而非红色报错', () => {
   expect(text).toBe('已停止生成。');
   expect(text).not.toContain('错误');
 });
+
+// 轮次以 error 帧收尾后，完成对账的 hydrateTail 不能把本地错误气泡抹掉——
+// 错误只存在于前端，抹掉后用户看到的就是「回复闪一下就没了」。
+it('hydrateTail 保留本轮的本地错误气泡，排在同 action 的服务端消息之后', () => {
+  useAgentStore.setState({ messages: {}, pageState: {}, currentProjectId: null });
+  const s = useAgentStore.getState();
+  s.handleFrame({ type: 'action_start', thread_id: 'thr_e', action_id: 'act_e' });
+  s.handleFrame({ type: 'error', thread_id: 'thr_e', action_id: 'act_e', error: { code: 'llm', message: 'overloaded' } });
+  s.hydrateTail('thr_e', [
+    { id: 'u1', thread_id: 'thr_e', action_id: 'act_e', role: 'user', blocks: [{ type: 'text', text: '你好' }], createdAt: '2026-01-01T00:00:01Z' },
+    { id: 'a1', thread_id: 'thr_e', action_id: 'act_e', role: 'assistant', blocks: [{ type: 'text', text: '你好！有什么' }], createdAt: '2026-01-01T00:00:02Z' },
+  ], false);
+  const msgs = useAgentStore.getState().messages['thr_e'];
+  expect(msgs.map((m) => m.id.startsWith('err_') ? 'err' : m.id)).toEqual(['u1', 'a1', 'err']);
+  expect(msgs[2].blocks[0].text).toContain('overloaded');
+});
