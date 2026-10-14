@@ -15,7 +15,7 @@ func TestAICharacterListNonEmptyAfterSeedImport(t *testing.T) {
 	if _, err := aicharacters.Import(conn); err != nil {
 		t.Fatal(err)
 	}
-	h := NewAICharacterHandler(aicharacters.NewSQLiteRepository(conn), aiCharFakeSigner{}, aiCharSettings(""))
+	h := NewAICharacterHandler(aicharacters.NewSQLiteRepository(conn), aiCharFakeSigner{})
 	rec := httptest.NewRecorder()
 	h.List(rec, httptest.NewRequest("GET", "/canvas/ai-characters", nil))
 	var body struct {

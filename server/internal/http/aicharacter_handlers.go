@@ -3,7 +3,6 @@ package http
 import (
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
 )
@@ -16,15 +15,14 @@ type aiCharacterSigner interface {
 
 // AICharacterHandler 暴露自由画布的「AI 角色库」列表。只读——这批角色是平台
 // 预置数据（内置种子导入），没有任何写入口。形象图经本地 /media 提供，本地没有时
-// 由 aicharacters.ImageCache 按需从在线地址下载（spec F7）。
+// 由 aicharacters.ImageCache 从 sidecar 内置资源复制过去。
 type AICharacterHandler struct {
-	repo     aicharacters.Repository
-	signer   aiCharacterSigner
-	settings func(key string) (string, error)
+	repo   aicharacters.Repository
+	signer aiCharacterSigner
 }
 
-func NewAICharacterHandler(repo aicharacters.Repository, signer aiCharacterSigner, settingsGet func(string) (string, error)) *AICharacterHandler {
-	return &AICharacterHandler{repo: repo, signer: signer, settings: settingsGet}
+func NewAICharacterHandler(repo aicharacters.Repository, signer aiCharacterSigner) *AICharacterHandler {
+	return &AICharacterHandler{repo: repo, signer: signer}
 }
 
 // aiCharacterListLimit 是单页上限，也是前端滚动加载的批大小。
@@ -89,15 +87,7 @@ func (h *AICharacterHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":   items,
 		"hasMore": hasMore,
-		// 形象图地址没配时图片全部加载不出来，前端据此提示（P3a）。
-		"imageConfigured": h.imageConfigured(),
+		// 形象图已内置，恒为 true；字段保留是为了前端「图片未配置」提示的契约不变。
+		"imageConfigured": true,
 	})
-}
-
-func (h *AICharacterHandler) imageConfigured() bool {
-	if h.settings == nil {
-		return false
-	}
-	base, err := h.settings(aicharacters.SettingImageBaseURL)
-	return err == nil && strings.TrimSpace(base) != ""
 }

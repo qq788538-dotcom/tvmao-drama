@@ -11,7 +11,7 @@
 | `agent_tools.jsonl` | 4 | Agent 工具目录 |
 | `skills.jsonl` | 10 | 官方 Skill（全部 `is_official=1`，其中 2 个 `is_published=0`） |
 | `skill_categories.jsonl` | 4 | Skill 分类 |
-| `seedance_characters.jsonl` | 1729 | AI 角色库；`image_url` 是 `media://tapnow/sd-assets/…`，图片在生产 TOS 上 |
+| `seedance_characters.jsonl` | 1729 | AI 角色库；`image_url` 是 `media://tapnow/sd-assets/<asset_id>.webp`。2026-10-08：形象图改为内置（原图 556MB 不内置，转 512px WebP q82 共约 27MB，放 `server/internal/aicharacters/images/` 由 go:embed 编进 sidecar），不再从 TOS 在线拉取；Seedance 生成走 `asset://<asset_id>`，用不到原图 |
 
 未导出（有意排除）：
 - 密钥类 settings：`upstream_api_key`、`upstream_access_token`、`drama_seedance_sd_key`

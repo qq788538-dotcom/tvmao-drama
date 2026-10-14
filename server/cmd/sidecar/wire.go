@@ -102,7 +102,7 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	settingsRepo := settings.NewSQLiteRepository(conn)
 	modelsRepo := models.NewSQLiteRepository(conn)
 	aiCharactersRepo := aicharacters.NewSQLiteRepository(conn)
-	charImages := aicharacters.NewImageCache(aiCharactersRepo, settingsRepo.Get, charImageStore{storage})
+	charImages := aicharacters.NewImageCache(aiCharactersRepo, aicharacters.EmbeddedImages(), charImageStore{storage})
 
 	// Seedance 合规走隐藏内置模型 seedance-asset（seedance-asset 设计）：同步注册，拿到 asset_id 即通过。
 	librarySeedanceSvc := library.NewSeedanceService(
@@ -136,7 +136,7 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	deps.GenImagePreset = apphttp.NewGenImagePresetHandler(settingsRepo)
 	deps.MultiAngle = apphttp.NewMultiAngleHandler(settingsRepo)
 	deps.LightControl = apphttp.NewLightControlHandler(settingsRepo)
-	deps.AICharacter = apphttp.NewAICharacterHandler(aiCharactersRepo, signer, settingsRepo.Get)
+	deps.AICharacter = apphttp.NewAICharacterHandler(aiCharactersRepo, signer)
 	deps.AICharacterImages = charImages
 	deps.Seedance = apphttp.NewSeedanceHandler(librarySeedanceSvc, storage, conn)
 	deps.DirectorModel = apphttp.NewDirectorModelHandler(

@@ -57,7 +57,7 @@ func manyCharacters(n int) []aicharacters.Character {
 
 func TestAICharacterListPagination(t *testing.T) {
 	repo := &fakeAICharactersRepo{items: manyCharacters(60)}
-	h := NewAICharacterHandler(repo, aiCharFakeSigner{}, aiCharSettings(""))
+	h := NewAICharacterHandler(repo, aiCharFakeSigner{})
 
 	rec := httptest.NewRecorder()
 	h.List(rec, httptest.NewRequest("GET", "/canvas/ai-characters", nil))
@@ -89,7 +89,7 @@ func TestAICharacterListPagination(t *testing.T) {
 
 func TestAICharacterListFilters(t *testing.T) {
 	repo := &fakeAICharactersRepo{}
-	h := NewAICharacterHandler(repo, aiCharFakeSigner{}, aiCharSettings(""))
+	h := NewAICharacterHandler(repo, aiCharFakeSigner{})
 
 	h.List(httptest.NewRecorder(), httptest.NewRequest(
 		"GET", "/canvas/ai-characters?search=%E6%BC%94%E5%91%98&gender=%E5%A5%B3&ageGroup=%E9%9D%92%E5%B9%B4", nil))
@@ -118,30 +118,19 @@ func (aiCharFakeSigner) SignThumb(s string, w int) string {
 	return fmt.Sprintf("https://signed/%s?w=%d", strings.TrimPrefix(s, "media://"), w)
 }
 
-func aiCharSettings(base string) func(string) (string, error) {
-	return func(k string) (string, error) {
-		if k == aicharacters.SettingImageBaseURL {
-			return base, nil
-		}
-		return "", nil
-	}
-}
-
-// imageConfigured 让前端在形象图地址没配时给出提示，而不是一屏裂图。
+// 形象图内置后恒为已配置：前端不再出现「图片未配置」提示。
 func TestAICharacterListReportsImageConfigured(t *testing.T) {
 	repo := &fakeAICharactersRepo{items: manyCharacters(1)}
-	for base, want := range map[string]bool{"": false, "  ": false, "https://img.example.com": true} {
-		h := NewAICharacterHandler(repo, aiCharFakeSigner{}, aiCharSettings(base))
-		rec := httptest.NewRecorder()
-		h.List(rec, httptest.NewRequest("GET", "/canvas/ai-characters", nil))
-		var body struct {
-			ImageConfigured bool `json:"imageConfigured"`
-		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-			t.Fatal(err)
-		}
-		if body.ImageConfigured != want {
-			t.Fatalf("base=%q imageConfigured=%v want %v", base, body.ImageConfigured, want)
-		}
+	h := NewAICharacterHandler(repo, aiCharFakeSigner{})
+	rec := httptest.NewRecorder()
+	h.List(rec, httptest.NewRequest("GET", "/canvas/ai-characters", nil))
+	var body struct {
+		ImageConfigured bool `json:"imageConfigured"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.ImageConfigured {
+		t.Fatal("imageConfigured 应恒为 true")
 	}
 }
