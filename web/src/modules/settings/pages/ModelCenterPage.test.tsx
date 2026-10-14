@@ -5,12 +5,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const mocks = vi.hoisted(() => ({ models: [] as any[], patch: vi.fn(), testConn: vi.fn() }));
+const mocks = vi.hoisted(() => ({ models: [] as any[], patch: vi.fn(), testConn: vi.fn(), signupUrl: undefined as string | undefined, open: vi.fn(async (_u: string) => {}) }));
+
+vi.mock('@/shared/openExternal', () => ({ openExternal: (u: string) => mocks.open(u) }));
 
 vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
   getGeneral: async () => ({
-    version: '0.1.0', dataDir: '/data', baseDomain: 'http://gw:3000', baseDomainModified: false, apiKeySet: true, apiKeyMasked: 'sk-••••••••WXYZ',
+    version: '0.1.0', dataDir: '/data', baseDomain: 'http://gw:3000', baseDomainModified: false, apiKeySet: true, apiKeyMasked: 'sk-••••••••WXYZ', signupUrl: mocks.signupUrl,
   }),
   listModels: async () => mocks.models,
   patchModel: (id: number, p: unknown) => mocks.patch(id, p),
@@ -162,9 +164,20 @@ describe('ModelCenterPage 独立上游', () => {
     expect(((await screen.findByPlaceholderText('sk-...')) as HTMLInputElement).value).toBe('');
   });
 
+  it('全局卡片给出申请账号链接，点击用系统浏览器打开', async () => {
+    mocks.signupUrl = 'https://signup.example.com';
+    try {
+      renderPage();
+      fireEvent.click(await screen.findByText('https://signup.example.com'));
+      expect(mocks.open).toHaveBeenCalledWith('https://signup.example.com');
+    } finally {
+      mocks.signupUrl = undefined;
+    }
+  });
+
   it('地址输入框有 newapi 根地址提示（全局卡片 + 独立上游）', async () => {
     renderPage();
-    const hint = '填写 newapi 根地址，如 https://example.com（无需带 /v1）';
+    const hint = '填写兼容 newapi 协议的网关根地址，如 https://example.com（无需带 /v1）';
     expect(await screen.findByText(hint)).toBeTruthy();
     await openEditor();
     fireEvent.click(screen.getByText('单独配置'));

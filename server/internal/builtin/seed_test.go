@@ -28,7 +28,11 @@ func TestLoadEmbeddedSeed(t *testing.T) {
 	if m, ok := s.Model("gpt-image-2"); !ok || m.ID != 9 || m.Type != "image" {
 		t.Fatalf("gpt-image-2 = %+v, %v", m, ok)
 	}
-	for _, key := range []string{"base_domain", "canvas_light_control", "canvas_multi_angle", "canvas_postprocess_config", "canvas_script_config", "gen_image_prompt_presets"} {
+	// base_domain 默认留空，由用户在设置页填写。
+	if st, ok := s.Setting("base_domain"); !ok || st.Value != "" {
+		t.Fatalf("base_domain 种子应存在且为空：%+v %v", st, ok)
+	}
+	for _, key := range []string{"canvas_light_control", "canvas_multi_angle", "canvas_postprocess_config", "canvas_script_config", "gen_image_prompt_presets"} {
 		if st, ok := s.Setting(key); !ok || st.Value == "" {
 			t.Fatalf("缺少种子配置 %s", key)
 		}

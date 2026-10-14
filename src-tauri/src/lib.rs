@@ -266,6 +266,8 @@ pub fn run() {
         }))
         // 前端只有 dialog:allow-open（数据目录选择，只返回路径）；保存对话框只走 Rust 侧 API（media_save），前端不授予 dialog:allow-save / fs:*，写盘路径只能来自用户在 Rust 对话框里的选择。
         .plugin(tauri_plugin_dialog::init())
+        // opener 只授予 opener:allow-open-url，且 URL 范围限定在 qqdao 官网（capabilities/default.json）。
+        .plugin(tauri_plugin_opener::init())
         .manage(media_save::MediaRoot::default())
         .setup(|app| {
             let handle = app.handle().clone();

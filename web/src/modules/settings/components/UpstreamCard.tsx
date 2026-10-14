@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { BASE_URL_HINT } from './hints';
+import { openExternal } from '@/shared/openExternal';
 import { App as AntApp, Button, Card, Form, Input, Space, Tag, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { errorText, getGeneral, restoreBaseDomain, updateUpstream, type GeneralSettings, type UpstreamUpdate } from '../api';
@@ -83,9 +84,31 @@ export function UpstreamCard() {
       }
       extra={<RestoreDefaultButton label="恢复默认地址" onConfirm={() => restore.mutate()} loading={restore.isPending} disabled={!g?.baseDomainModified} />}
     >
-      <Typography.Paragraph type="secondary">没有单独配置上游的模型，都通过这个地址调用（newapi 网关），共用同一个 API Key。</Typography.Paragraph>
+      <Typography.Paragraph type="secondary">没有单独配置上游的模型，都通过这个网关地址调用，共用同一个 API Key。</Typography.Paragraph>
       <Form form={form} layout="vertical" onFinish={onSubmit}>
-        <Form.Item label="上游地址" name="baseDomain" extra={BASE_URL_HINT} rules={[{ required: true, message: '请填写上游地址' }]}>
+        <Form.Item
+          label="上游地址"
+          name="baseDomain"
+          extra={
+            g?.signupUrl ? (
+              <>
+                {BASE_URL_HINT}。还没有账号？前往{' '}
+                <Typography.Link
+                  href={g.signupUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void openExternal(g.signupUrl!).catch((err) => message.error(errorText(err)));
+                  }}
+                >
+                  {g.signupUrl}
+                </Typography.Link>{' '}
+                申请
+              </>
+            ) : (
+              BASE_URL_HINT
+            )
+          }
+          rules={[{ required: true, message: '请填写上游地址' }]}>
           <Input placeholder="例如 https://your-gateway.example.com" autoComplete="off" />
         </Form.Item>
         <Form.Item

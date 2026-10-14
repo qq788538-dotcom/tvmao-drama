@@ -61,7 +61,12 @@ type generalSettingsView struct {
 	BaseDomainModified bool   `json:"baseDomainModified"`
 	APIKeySet          bool   `json:"apiKeySet"`
 	APIKeyMasked       string `json:"apiKeyMasked"`
+	// SignupURL 是设置页"还没有账号"引导链接；前端不写死公网地址（noPublicHost 守护）。
+	SignupURL string `json:"signupUrl"`
 }
+
+// upstreamSignupURL：全局上游默认留空，引导用户去 qqdao 申请账号。
+const upstreamSignupURL = "https://www.qqdao.com"
 
 func (h *generalSettingsHandler) view(r *nethttp.Request) (generalSettingsView, error) {
 	bd, err := h.d.Settings.Get(settingBaseDomain)
@@ -86,6 +91,7 @@ func (h *generalSettingsHandler) view(r *nethttp.Request) (generalSettingsView, 
 		Version: h.d.Version, DataDir: h.d.DataDir,
 		BaseDomain: bd, BaseDomainModified: modified,
 		APIKeySet: key != "", APIKeyMasked: maskAPIKey(key),
+		SignupURL: upstreamSignupURL,
 	}, nil
 }
 

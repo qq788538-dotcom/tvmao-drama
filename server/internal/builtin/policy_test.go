@@ -31,6 +31,10 @@ func TestSeedValuesPassTheirOwnRules(t *testing.T) {
 		}
 	}
 	for _, st := range s.Settings {
+		// base_domain 默认留空，由用户在设置页填写（去 qqdao 申请账号）。
+		if st.Key == SettingBaseDomain && st.Value == "" {
+			continue
+		}
 		pl, ok := settingPolicies[st.Key]
 		if !ok {
 			t.Errorf("种子配置 %s 没有 policy", st.Key)

@@ -51,6 +51,8 @@ export interface GeneralSettings {
   baseDomainModified: boolean;
   apiKeySet: boolean;
   apiKeyMasked: string;
+  /** 设置页"还没有账号"的申请链接，由 sidecar 给出。 */
+  signupUrl?: string;
 }
 export interface UpstreamUpdate {
   baseDomain?: string;
