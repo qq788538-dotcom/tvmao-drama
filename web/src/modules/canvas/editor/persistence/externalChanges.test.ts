@@ -101,6 +101,18 @@ describe('reloadCanvasFromServer', () => {
     ta.remove();
   });
 
+  it('拉取期间订阅已失效（切了项目）时丢弃快照，不换进 store', async () => {
+    useCanvasStore.setState({ nodes: [{ id: 'b' } as never] });
+    let current = true;
+    getSnapshot.mockImplementation(async () => {
+      current = false; // 拉取期间用户切到了别的项目
+      return { payload: { nodes: [{ id: 'old' }], connections: [] }, version: 9, syncedAt: null };
+    });
+    await expect(reloadCanvasFromServer(14, () => current)).resolves.toBeNull();
+    expect(useCanvasStore.getState().nodes.map((n) => n.id)).toEqual(['b']);
+    expect(seed).not.toHaveBeenCalled();
+  });
+
   it('treats non-array nodes/connections as empty', async () => {
     getSnapshot.mockResolvedValue({ payload: { nodes: { bad: 1 }, connections: 'x' }, version: 9, syncedAt: null });
     await expect(reloadCanvasFromServer(14)).resolves.toBe(9);

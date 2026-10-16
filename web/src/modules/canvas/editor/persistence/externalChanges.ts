@@ -40,10 +40,17 @@ export function isCanvasIdle(doc: Document = document): boolean {
   return isCanvasPersistenceIdle();
 }
 
-/** 拉快照并换进 store，返回快照版本；拉取期间本地有新写入或画布不再空闲，则丢弃结果并返回 null（调用方等空闲后重来）。 */
-export async function reloadCanvasFromServer(pid: number): Promise<number | null> {
+/** 拉快照并换进 store，返回快照版本；拉取期间本地有新写入或画布不再空闲，则丢弃结果并返回 null（调用方等空闲后重来）。
+ *  isCurrent：调用方的订阅是否仍有效。拉取期间切到了别的项目时，旧项目的快照绝不能
+ *  换进 store——那会让新项目的画布显示旧项目节点，基线也被播成旧项目的，之后的编辑
+ *  会按新项目落库。 */
+export async function reloadCanvasFromServer(
+  pid: number,
+  isCurrent: () => boolean = () => true,
+): Promise<number | null> {
   const seq = canvasMutationSeq();
   const snap = await getSnapshot(pid);
+  if (!isCurrent()) return null;
   // 拉取期间用户可能开始拖动/打字：此时换 store 会打断操作，交给调用方稍后重试
   if (canvasMutationSeq() !== seq || !isCanvasIdle()) return null;
   const raw = snap.payload as Partial<CanvasSnapshot> | null | undefined;
