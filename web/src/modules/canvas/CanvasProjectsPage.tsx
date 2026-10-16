@@ -144,11 +144,24 @@ function CoverModal({
 
   useEffect(() => {
     if (!project) return;
+    // 关掉 A 的弹窗马上打开 B 时，A 的慢响应不能落进 B 的弹窗——否则点选的是
+    // A 项目的图，被设成 B 的封面。上一个项目的图也先清掉，不在 B 里闪现。
+    let cancelled = false;
+    setImages([]);
     setLoading(true);
     listProjectImages(project.id)
-      .then(setImages)
-      .catch((err: any) => message.error(err?.response?.data?.error || '读取项目图片失败'))
-      .finally(() => setLoading(false));
+      .then((rows) => {
+        if (!cancelled) setImages(rows);
+      })
+      .catch((err: any) => {
+        if (!cancelled) message.error(err?.response?.data?.error || '读取项目图片失败');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [project, message]);
 
   async function handleUpload(file: File) {
