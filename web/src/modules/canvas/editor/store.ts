@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { setApiWritesBlocked } from '@/shared/apiGuards';
@@ -752,52 +753,95 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     view: get().view,
   }),
 
-  getConnectedInputs: (nodeId) => {
-    const state = get();
-    const incoming = state.connections.filter((c) => c.to === nodeId);
-    const images: string[] = [];
-    const texts: string[] = [];
-    const videos: string[] = [];
-    const audios: string[] = [];
-    const refs: ConnectedMediaRef[] = [];
-    for (const conn of incoming) {
-      const src = state.nodes.find((n) => n.id === conn.from);
-      if (!src) continue;
-      if (src.type === 'text-node') {
-        const t = (src.settings?.text as string | undefined) ?? '';
-        if (t) texts.push(t);
-        continue;
-      }
-      const url = src.content;
-      if (typeof url === 'string' && /^https?:\/\//.test(url)) {
-        // 只取用户自定义名（与 NodeShell.displayLabelFor 的 customName 同源），不回退
-        // 类型默认名——store 是纯逻辑，不 import 组件文件。
-        const name = ((src.settings?.name as string | undefined) ?? '').trim() || undefined;
-        // settings.kind（'image' | 'video'）是节点自报的产物类型。preview 是通用媒体
-        // 容器必须靠它；后处理节点（去字幕/转高清）成功时也会写它，所以这里不再限定
-        // 只读 preview 的——限定过头曾导致去字幕产物被当成图片（见下方 WHY）。
-        const declaredKind = src.settings?.kind as string | undefined;
-        // refs 与三个数组在同一分支里 push——分类与顺序天然一致,@ 提及序列化的
-        // 「图片N」下标才能对上提交给后端的 images[N-1]。
-        // gen-audio 产物的签名 URL 无扩展名（对象 key 形如 gen/task-N-0），只靠
-        // 扩展名正则会漏进 images——节点类型 / declaredKind 必须先兜住。
-        // （与后端 canvasinputs.Connected 逐字同构）
-        if (src.type === 'input-audio' || src.type === 'gen-audio' || declaredKind === 'audio' || /\.(mp3|wav|aac|ogg|flac|m4a)(\?|$)/i.test(url)) {
-          audios.push(url);
-          refs.push({ nodeId: src.id, kind: 'audio', url, name });
-        } else if (
-          VIDEO_OUTPUT_NODE_TYPES.has(src.type) ||
-          declaredKind === 'video' ||
-          /\.(mp4|webm|mov)(\?|$)/i.test(url)
-        ) {
-          videos.push(url);
-          refs.push({ nodeId: src.id, kind: 'video', url, name });
-        } else {
-          images.push(url);
-          refs.push({ nodeId: src.id, kind: 'image', url, name });
-        }
+  getConnectedInputs: (nodeId) => connectedInputsOf(get(), nodeId),
+}));
+
+// getConnectedInputs 的纯函数本体：组件订阅（useConnectedInputs）要对传入的
+// state 快照求值，不能走 get()。
+function connectedInputsOf(
+  state: Pick<CanvasState, 'nodes' | 'connections'>,
+  nodeId: string,
+): ConnectedInputs {
+  const incoming = state.connections.filter((c) => c.to === nodeId);
+  const images: string[] = [];
+  const texts: string[] = [];
+  const videos: string[] = [];
+  const audios: string[] = [];
+  const refs: ConnectedMediaRef[] = [];
+  for (const conn of incoming) {
+    const src = state.nodes.find((n) => n.id === conn.from);
+    if (!src) continue;
+    if (src.type === 'text-node') {
+      const t = (src.settings?.text as string | undefined) ?? '';
+      if (t) texts.push(t);
+      continue;
+    }
+    const url = src.content;
+    if (typeof url === 'string' && /^https?:\/\//.test(url)) {
+      // 只取用户自定义名（与 NodeShell.displayLabelFor 的 customName 同源），不回退
+      // 类型默认名——store 是纯逻辑，不 import 组件文件。
+      const name = ((src.settings?.name as string | undefined) ?? '').trim() || undefined;
+      // settings.kind（'image' | 'video'）是节点自报的产物类型。preview 是通用媒体
+      // 容器必须靠它；后处理节点（去字幕/转高清）成功时也会写它，所以这里不再限定
+      // 只读 preview 的——限定过头曾导致去字幕产物被当成图片（见下方 WHY）。
+      const declaredKind = src.settings?.kind as string | undefined;
+      // refs 与三个数组在同一分支里 push——分类与顺序天然一致,@ 提及序列化的
+      // 「图片N」下标才能对上提交给后端的 images[N-1]。
+      // gen-audio 产物的签名 URL 无扩展名（对象 key 形如 gen/task-N-0），只靠
+      // 扩展名正则会漏进 images——节点类型 / declaredKind 必须先兜住。
+      // （与后端 canvasinputs.Connected 逐字同构）
+      if (src.type === 'input-audio' || src.type === 'gen-audio' || declaredKind === 'audio' || /\.(mp3|wav|aac|ogg|flac|m4a)(\?|$)/i.test(url)) {
+        audios.push(url);
+        refs.push({ nodeId: src.id, kind: 'audio', url, name });
+      } else if (
+        VIDEO_OUTPUT_NODE_TYPES.has(src.type) ||
+        declaredKind === 'video' ||
+        /\.(mp4|webm|mov)(\?|$)/i.test(url)
+      ) {
+        videos.push(url);
+        refs.push({ nodeId: src.id, kind: 'video', url, name });
+      } else {
+        images.push(url);
+        refs.push({ nodeId: src.id, kind: 'image', url, name });
       }
     }
-    return { images, texts, videos, audios, refs };
-  },
-}));
+  }
+  return { images, texts, videos, audios, refs };
+}
+
+function sameStrings(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function sameConnectedInputs(a: ConnectedInputs, b: ConnectedInputs): boolean {
+  return (
+    sameStrings(a.images, b.images) &&
+    sameStrings(a.texts, b.texts) &&
+    sameStrings(a.videos, b.videos) &&
+    sameStrings(a.audios, b.audios) &&
+    a.refs.length === b.refs.length &&
+    a.refs.every((r, i) => {
+      const o = b.refs[i];
+      return r.nodeId === o.nodeId && r.kind === o.kind && r.url === o.url && r.name === o.name;
+    })
+  );
+}
+
+/**
+ * 订阅式的 getConnectedInputs：连线增删、上游节点内容/改名都会触发重渲染，
+ * 内容不变时返回同一个对象引用（下游 useMemo/effect 依赖才稳定）。
+ *
+ * 渲染期直接调 `getConnectedInputs(id)`（订阅的是稳定的函数引用）不会因连线
+ * 变化重渲染——撤销一条连线、agent 增删连线后，节点上的参考图/输入数一直是
+ * 旧的，只能等别的无关更新顺带刷新。
+ */
+export function useConnectedInputs(nodeId: string): ConnectedInputs {
+  const cacheRef = useRef<ConnectedInputs | null>(null);
+  return useCanvasStore((s) => {
+    const next = connectedInputsOf(s, nodeId);
+    const prev = cacheRef.current;
+    if (prev && sameConnectedInputs(prev, next)) return prev;
+    cacheRef.current = next;
+    return next;
+  });
+}

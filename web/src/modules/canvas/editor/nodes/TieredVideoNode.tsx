@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, PlayCircle } from 'lucide-react';
-import { useCanvasStore } from '../store';
+import { useCanvasStore, useConnectedInputs } from '../store';
 import { persistNodeById } from '../persistence/canvasMutations';
 import { NodeShell } from '../NodeShell';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
@@ -78,7 +78,7 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
   useReconcileCanvasTask(id);
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
-  const inputs = useCanvasStore((s) => s.getConnectedInputs(id));
+  const inputs = useConnectedInputs(id);
   // 天然是单输入操作，取连进来的第一条视频线即可。
   const srcRef = inputs.refs.find((r) => r.kind === 'video');
   const sourceNodeId = srcRef?.nodeId;

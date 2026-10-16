@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { App as AntApp, Tooltip, message } from 'antd';
-import { useCanvasStore } from '../store';
+import { useCanvasStore, useConnectedInputs } from '../store';
 import { useStoryboardMode } from '../../storyboard/StoryboardContext';
 import { getDragNodeId, hasDragNode, useNodeDragActive } from '../../storyboard/dragConnect';
 import {
@@ -71,12 +71,9 @@ export function GenVideoNode({ id }: { id: string }) {
   const { modal } = AntApp.useApp();
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
-  const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
+  const linked = useConnectedInputs(id);
   const addNode = useCanvasStore((s) => s.addNode);
   const allNodes = useCanvasStore((s) => s.nodes);
-  // 订阅连线：getConnectedInputs 是稳定引用，不订阅的话连线变化不会触发重渲染
-  // （此前靠估价 query 的状态变化顺带重渲染，去掉估价后要显式订阅）。
-  useCanvasStore((s) => s.connections);
   // 只读画布（分享查看器等）下 store.addNode 直接 no-op 返回 ''——「高级编辑」
   // 保存链路拿着这个空 id 去 updateNode/addConnection 会产出一堆挂不上任何节点
   // 的脏 token，禁用按钮比让保存链路半途失败更直接。
@@ -338,7 +335,6 @@ export function GenVideoNode({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ratioField]);
 
-  const linked = getConnectedInputs(id);
   const connectedImages = linked.images;
   const connectedVideos = linked.videos;
   const connectedAudios = linked.audios;

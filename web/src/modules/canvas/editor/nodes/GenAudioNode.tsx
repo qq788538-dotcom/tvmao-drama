@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Tooltip } from 'antd';
-import { useCanvasStore } from '../store';
+import { useCanvasStore, useConnectedInputs } from '../store';
 import { useStoryboardMode } from '../../storyboard/StoryboardContext';
 import {
   flushNodePatch,
@@ -55,7 +55,7 @@ export function GenAudioNode({ id }: { id: string }) {
   useReconcileCanvasTask(id);
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
-  const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
+  const linked = useConnectedInputs(id);
   const addNode = useCanvasStore((s) => s.addNode);
   const allNodes = useCanvasStore((s) => s.nodes);
   const isSelected = useCanvasStore((s) => s.selectedIds.has(id));
@@ -211,7 +211,6 @@ export function GenAudioNode({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.status, node.taskId, id, updateNode, updateNodeSettings]);
 
-  const linked = getConnectedInputs(id);
   const connectedAudios = linked.audios;
   // 音频节点只把音频（音色参考）喂给上游——@ 引用也只开放音频，避免 @图片1
   // 序列化出上游拿不到的引用。

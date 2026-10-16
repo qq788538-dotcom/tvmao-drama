@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { App as AntApp, Tooltip } from 'antd';
-import { useCanvasStore } from '../store';
+import { useCanvasStore, useConnectedInputs } from '../store';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 import {
   flushNodePatch,
@@ -69,7 +69,7 @@ export function GenImageNode({ id }: { id: string }) {
   const { modal } = AntApp.useApp();
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
-  const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
+  const linked = useConnectedInputs(id);
   const addNode = useCanvasStore((s) => s.addNode);
   const setLightbox = useCanvasStore((s) => s.setLightbox);
   const allNodes = useCanvasStore((s) => s.nodes);
@@ -399,7 +399,6 @@ export function GenImageNode({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ratioField]);
 
-  const linked = getConnectedInputs(id);
   const connectedImages = linked.images;
 
   // 切到未绑定预设的模型时自动清掉已选预设——「不命中就完全不显示」的语义下，
