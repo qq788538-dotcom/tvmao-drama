@@ -190,8 +190,7 @@ export function HistoryPanel({ open, projectId, onClose }: Props) {
       try {
         const resp = await fetch(f.url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const blob = await resp.blob();
-        zip.file(f.name, blob);
+        zip.file(f.name, await resp.arrayBuffer());
       } catch (err) {
         console.error('download failed', f.name, err);
       }
