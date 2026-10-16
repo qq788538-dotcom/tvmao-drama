@@ -599,9 +599,33 @@ fn edit_rc(path: &Path, create: bool, f: fn(&str) -> String) -> Result<(), Strin
     };
     let next = f(&cur);
     if next != cur {
-        std::fs::write(path, next).map_err(|e| format!("写入 {} 失败：{e}", path.display()))?;
+        write_rc(path, &next).map_err(|e| format!("写入 {} 失败：{e}", path.display()))?;
     }
     Ok(())
+}
+
+/// 改写已有的 shell 配置：写同目录临时文件、fsync 后改名。直接 fs::write 会先截断原文件，
+/// 写到一半失败（磁盘满、配额）用户的 .zshrc 就只剩半截。~/.zshrc 常是指向 dotfiles 仓库的符号链接：
+/// 改写链接指向的真实文件（不把链接换成普通文件），并沿用原文件权限。文件还不存在时直接写。
+#[cfg(unix)]
+fn write_rc(path: &Path, body: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let Ok(real) = std::fs::canonicalize(path) else {
+        return std::fs::write(path, body);
+    };
+    let name = real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = real.with_file_name(format!(".{name}.miaoju-{}.tmp", uuid::Uuid::new_v4().simple()));
+    let r = (|| {
+        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        f.write_all(body.as_bytes())?;
+        f.sync_all()?;
+        std::fs::set_permissions(&tmp, std::fs::metadata(&real)?.permissions())?;
+        std::fs::rename(&tmp, &real)
+    })();
+    if r.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    r
 }
 
 #[cfg(windows)]
@@ -1082,6 +1106,41 @@ mod tests {
         assert!(p.contains("miaoju version"), "{p}");
         assert!(p.contains(SANDBOX_NOTE), "{p}");
         assert!(!p.contains("zshrc") && !p.contains("ln -s"), "{p}");
+    }
+
+    /// 改 rc 文件：经符号链接改写真实文件（链接保留）、沿用权限、不留临时文件；不存在且 create=false 时不新建。
+    #[cfg(unix)]
+    #[test]
+    fn edit_rc_follows_symlink_and_keeps_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let dotfiles = t.path().join("dotfiles");
+        std::fs::create_dir_all(&dotfiles).unwrap();
+        let real = dotfiles.join("zshrc");
+        std::fs::write(&real, "export FOO=1\n").unwrap();
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let home = t.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let rc = home.join(".zshrc");
+        std::os::unix::fs::symlink(&real, &rc).unwrap();
+
+        edit_rc(&rc, true, add_path_block).unwrap();
+        assert!(std::fs::symlink_metadata(&rc).unwrap().file_type().is_symlink(), "链接不能被换成普通文件");
+        let body = std::fs::read_to_string(&real).unwrap();
+        assert!(body.starts_with("export FOO=1\n") && body.contains(PATH_LINE), "{body}");
+        assert_eq!(std::fs::metadata(&real).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read_dir(&dotfiles).unwrap().count(), 1, "不应留下临时文件");
+
+        edit_rc(&rc, false, remove_path_block).unwrap();
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "export FOO=1\n");
+
+        let missing = home.join(".bash_profile");
+        edit_rc(&missing, false, add_path_block).unwrap();
+        assert!(!missing.exists(), "不存在的 .bash_profile 不能替用户新建");
+        let fresh = t.path().join("fresh").join(".zshrc");
+        std::fs::create_dir_all(fresh.parent().unwrap()).unwrap();
+        edit_rc(&fresh, true, add_path_block).unwrap();
+        assert!(std::fs::read_to_string(&fresh).unwrap().contains(PATH_LINE));
     }
 
     #[test]
