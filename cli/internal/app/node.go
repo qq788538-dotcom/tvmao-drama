@@ -172,7 +172,7 @@ func newNodeCreateCommand(st *runtimeState) *cobra.Command {
 					st.out.Warn("节点 %s 已创建，但第 %d 个 --left（%s）解析失败", node.ID, i+1, ref)
 					return err
 				}
-				e, err := cl.CreateEdge(cmd.Context(), pid, fromID, node.ID, st.idempotencyKey())
+				e, err := cl.CreateEdge(cmd.Context(), pid, fromID, node.ID, st.idempotencyKeyFor(fmt.Sprintf("edge-%d", i+1)))
 				if err != nil {
 					st.out.Warn("节点 %s 已创建，已建 %d 条边，第 %d 条失败", node.ID, len(edges), i+1)
 					return err
@@ -508,7 +508,7 @@ func addUpstreamEdges(ctx context.Context, st *runtimeState, cl *client.Client, 
 		if err != nil {
 			return out, fmt.Errorf("第 %d 个 --left（%s）解析失败: %w", i+1, ref, err)
 		}
-		e, err := cl.CreateEdge(ctx, pid, fromID, toID, st.idempotencyKey())
+		e, err := cl.CreateEdge(ctx, pid, fromID, toID, st.idempotencyKeyFor(fmt.Sprintf("edge-%d", i+1)))
 		if err != nil {
 			return out, err
 		}

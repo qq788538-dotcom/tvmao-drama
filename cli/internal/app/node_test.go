@@ -227,6 +227,48 @@ func TestIdempotencyKeyFlagOverrides(t *testing.T) {
 	}
 }
 
+// 固定 --idempotency-key 时，--left 建的每条连线要用各自派生的 key：同一 scope 下复用同一个 key
+// 发不同请求体，服务端会报 IDEMPOTENCY_KEY_REUSED，第二条连线必然失败。重跑同一条命令 key 不变。
+func TestFixedIdempotencyKeyDerivesDistinctEdgeKeys(t *testing.T) {
+	rc := &recorder{responses: map[string]string{
+		"/models/": `{"modelId":"m1","kind":"image"}`,
+		"/resolve": `{"nodeId":"resolved"}`,
+		"/nodes":   `{"id":"n-new"}`,
+		"/edges":   `{"id":"e-1"}`,
+	}}
+	h := nodeHarness(t, rc)
+
+	edgeKeys := func() []string {
+		var keys []string
+		for _, r := range rc.reqs {
+			if r.Method == http.MethodPost && strings.HasSuffix(r.Path, "/edges") {
+				keys = append(keys, r.IdemKey)
+			}
+		}
+		return keys
+	}
+	for _, args := range [][]string{
+		{"node", "create", "--type", "image-generator", "--model", "m1", "--left", "n-a", "--left", "n-b", "--idempotency-key", "K"},
+		{"node", "update", "n-new", "--left", "n-a", "--left", "n-b", "--idempotency-key", "K"},
+	} {
+		rc.reqs = nil
+		if code := h.run(args...); code != exitcode.OK {
+			t.Fatalf("%v: code = %d stderr=%s", args[:2], code, h.stderr.String())
+		}
+		if got := edgeKeys(); len(got) != 2 || got[0] != "K:edge-1" || got[1] != "K:edge-2" {
+			t.Fatalf("%v: 连线幂等键 = %q", args[:2], got)
+		}
+	}
+	if req := rc.find(http.MethodPost, "/nodes"); req != nil {
+		t.Fatalf("update 不应建节点: %+v", req)
+	}
+	rc.reqs = nil
+	h.run("node", "create", "--type", "image-generator", "--model", "m1", "--left", "n-a", "--idempotency-key", "K")
+	if req := rc.find(http.MethodPost, "/nodes"); req == nil || req.IdemKey != "K" {
+		t.Fatalf("建节点仍用用户给的 key: %+v", req)
+	}
+}
+
 // ---- run --wait ----
 
 func TestNodeRunWithoutWaitReturnsImmediately(t *testing.T) {
