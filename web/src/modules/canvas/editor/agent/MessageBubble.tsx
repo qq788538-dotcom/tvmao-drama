@@ -6,7 +6,7 @@
 // text / tool_use / tool_event（artifact 缩略图）/ tool_result，再加上下方的
 // WorkflowProgress 折叠面板。
 
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Check, Copy, FileText, Link2, Pencil, Plus, Trash2, Unlink, Zap, type LucideIcon } from 'lucide-react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -325,7 +325,9 @@ export function UserTextBlock({ text }: { text: string }) {
   );
 }
 
-export function MessageBubble({
+// memo：流式回复每个 delta 帧都会更新消息表，未变的消息对象引用不变——不 memo
+// 的话整条会话的所有气泡（含 markdown 块、chip）每个 token 都重渲染一遍。
+export const MessageBubble = memo(function MessageBubble({
   msg,
   dedupeUrls,
 }: {
@@ -641,4 +643,4 @@ export function MessageBubble({
       </div>
     </div>
   );
-}
+});
