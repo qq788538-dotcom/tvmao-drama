@@ -38,6 +38,10 @@ func (h *CLIAssetHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := userIDFromContext(r.Context())
+	// 与网页上传同一上限：readUploadForm 会把整个文件读进内存，不封顶就是任意大小。
+	if h.assets.maxUploadBytes > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, h.assets.maxUploadBytes)
+	}
 
 	filename, contentType, body, err := readUploadForm(r)
 	if err != nil {
@@ -121,7 +125,8 @@ func mapUploadError(err error) error {
 		return cliapi.New(cliapi.CodeInternal, err.Error())
 	}
 	switch ue.Status {
-	case http.StatusBadRequest:
+	case http.StatusBadRequest, http.StatusRequestEntityTooLarge:
+		// 413 文件超限同属调用方问题：落 INTERNAL 会被 CLI 当成可重试，反复重传同一个大文件。
 		return cliapi.New(cliapi.CodeInvalidArgument, ue.Message)
 	case http.StatusBadGateway:
 		return cliapi.New(cliapi.CodeUpstreamUnavailable, ue.Message)
