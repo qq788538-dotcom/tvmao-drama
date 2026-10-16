@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 )
 
@@ -91,6 +92,8 @@ func mvhdDurationMs(moov []byte) (int64, error) {
 	}
 	var timescale uint32
 	var duration uint64
+	// unknown 是“时长未知”的取值（ISO/IEC 14496-12：全 1），分片 MP4 常见。
+	var unknown uint64
 	switch mvhd[0] {
 	case 0:
 		if len(mvhd) < 20 {
@@ -98,19 +101,34 @@ func mvhdDurationMs(moov []byte) (int64, error) {
 		}
 		timescale = binary.BigEndian.Uint32(mvhd[12:16])
 		duration = uint64(binary.BigEndian.Uint32(mvhd[16:20]))
+		unknown = math.MaxUint32
 	case 1:
 		if len(mvhd) < 32 {
 			return 0, ErrNotMP4
 		}
 		timescale = binary.BigEndian.Uint32(mvhd[20:24])
 		duration = binary.BigEndian.Uint64(mvhd[24:32])
+		unknown = math.MaxUint64
 	default:
 		return 0, ErrNotMP4
+	}
+	if duration == unknown {
+		return 0, errors.New("MP4 未声明时长")
 	}
 	if timescale == 0 || duration == 0 {
 		return 0, errors.New("MP4 声明的时长为 0")
 	}
-	return int64((duration*1000 + uint64(timescale)/2) / uint64(timescale)), nil
+	// 先拆整秒再换算毫秒：duration*1000 在 v1 的 64 位时长上会溢出。
+	ts := uint64(timescale)
+	sec, rem := duration/ts, duration%ts
+	if sec > math.MaxInt64/1000-1 {
+		return 0, fmt.Errorf("MP4 声明的时长异常（%d/%d）", duration, ts)
+	}
+	ms := int64(sec*1000 + (rem*1000+ts/2)/ts)
+	if ms <= 0 {
+		return 0, errors.New("MP4 声明的时长为 0")
+	}
+	return ms, nil
 }
 
 // findBox 在一层 box 序列里找第一个指定类型的 box，返回其负载（不含头）。

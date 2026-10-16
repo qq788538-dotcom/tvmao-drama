@@ -106,3 +106,18 @@ func TestPortableFallsBackWithoutFFprobe(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// ISO/IEC 14496-12：duration 全 1 表示“时长未知”（分片 MP4 常见），不能当成 49 天/几亿年；
+// 超大 v1 duration 换算毫秒时也不能溢出成负数或乱值。
+func TestProbeMP4UnknownOrOverflowDuration(t *testing.T) {
+	cases := map[string][]byte{
+		"v0 全 1":  concat(ftyp, box("moov", mvhdV0(1000, 0xFFFFFFFF))),
+		"v1 全 1":  concat(ftyp, box("moov", mvhdV1(1000, 0xFFFFFFFFFFFFFFFF))),
+		"v1 毫秒溢出": concat(ftyp, box("moov", mvhdV1(1, 1<<62))),
+	}
+	for name, data := range cases {
+		if ms, err := ProbeMP4DurationMs(data); err == nil {
+			t.Errorf("%s: ms=%d，want error", name, ms)
+		}
+	}
+}
