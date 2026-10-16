@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/james/huabu_studio/apps/cli/internal/client"
 	"github.com/james/huabu_studio/apps/cli/internal/exitcode"
 	"github.com/james/huabu_studio/apps/cli/internal/workspace"
 )
@@ -679,5 +681,27 @@ func TestRunWaitCancelledContextExits7(t *testing.T) {
 	}
 	if !strings.Contains(h.stderr.String(), "仍在服务端运行") {
 		t.Fatalf("应提示任务仍在服务端运行: %s", h.stderr.String())
+	}
+}
+
+// 确认提示里 Ctrl+C（context 取消）要立刻返回「用户取消」，不能卡在读 stdin 上等第二次 Ctrl+C。
+func TestReadLineReturnsOnCancel(t *testing.T) {
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	st := &runtimeState{deps: Dependencies{Stdin: pr}}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(100*time.Millisecond, cancel)
+	var answer string
+	_, err := readLine(ctx, st, &answer)
+	var ne *client.NetworkError
+	if !errors.As(err, &ne) {
+		t.Fatalf("err = %T %v", err, err)
+	}
+
+	pr2, pw2 := io.Pipe()
+	go func() { _, _ = pw2.Write([]byte("y\n")) }()
+	st.deps.Stdin = pr2
+	if _, err := readLine(context.Background(), st, &answer); err != nil || answer != "y\n" {
+		t.Fatalf("answer=%q err=%v", answer, err)
 	}
 }

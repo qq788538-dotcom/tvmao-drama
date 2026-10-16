@@ -421,7 +421,7 @@ func newNodeDeleteCommand(st *runtimeState) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := confirmDestructive(st, yes, "删除节点 %s 及其全部连线", id); err != nil {
+			if err := confirmDestructive(cmd.Context(), st, yes, "删除节点 %s 及其全部连线", id); err != nil {
 				return err
 			}
 			if err := cl.DeleteNode(cmd.Context(), pid, id, version); err != nil {
