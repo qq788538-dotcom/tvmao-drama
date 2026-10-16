@@ -111,3 +111,31 @@ describe('WaveformPlayer', () => {
     expect(screen.queryByTestId('trim-overlay')).toBeNull();
   });
 });
+
+describe('WaveformPlayer 卸载竞态', () => {
+  // 回归：点播放后全量 fetch 还在路上时节点被删/换音频（key 重挂载），卸载清理
+  // 先跑，fetch 回来后才 createObjectURL——这个 blob 永远没人 revoke，整段音频
+  // 常驻内存。
+  it('fetch 在卸载后返回时不再创建 blob URL', async () => {
+    let resolveFetch!: (r: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((r) => (resolveFetch = r)));
+    const origFetch = globalThis.fetch;
+    const origCreate = URL.createObjectURL;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const createMock = vi.fn(() => 'blob:leak');
+    URL.createObjectURL = createMock;
+    try {
+      const { unmount } = render(<WaveformPlayer url="https://x/race.mp3" />);
+      fireEvent.click(screen.getByLabelText('播放'));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      unmount();
+      resolveFetch(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(createMock).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = origFetch;
+      URL.createObjectURL = origCreate;
+    }
+  });
+});

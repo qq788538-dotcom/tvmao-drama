@@ -90,6 +90,8 @@ export function WaveformPlayer({
   const draggingRef = useRef(false);
   const blobUrlRef = useRef<string | null>(null);
   const loadPromiseRef = useRef<Promise<void> | null>(null);
+  // 卸载标记：全量 fetch 可能在卸载后才返回，这时再 createObjectURL 就没人回收了。
+  const unmountedRef = useRef(false);
 
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -131,12 +133,14 @@ export function WaveformPlayer({
 
   // url 变化（更换音频 / 切 history 版本）由调用方 key={url} 重挂载解决——
   // 这里只需管好卸载时回收 blob。
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
-    },
-    [],
-  );
+      blobUrlRef.current = null;
+    };
+  }, []);
 
   // 播放中的红线/已播柱子用 rAF 驱动——timeupdate 只有 ~4Hz，播放头会一顿一顿。
   useEffect(() => {
@@ -159,6 +163,9 @@ export function WaveformPlayer({
           const res = await fetch(url);
           if (!res.ok) throw new Error(`audio fetch ${res.status}`);
           const buf = await res.arrayBuffer();
+          // 下载期间节点已删 / 换了音频（key 重挂载）：卸载清理已经跑过，此处
+          // 再造 blob 会整段音频常驻内存，解码也是白烧。
+          if (unmountedRef.current) return;
           // blob 必须用 slice 副本——decodeAudioData 会 detach 传入的 ArrayBuffer。
           const blobUrl = URL.createObjectURL(
             new Blob([buf.slice(0)], { type: res.headers.get('content-type') || 'audio/mpeg' }),
