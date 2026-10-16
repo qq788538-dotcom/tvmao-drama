@@ -612,3 +612,52 @@ func TestNodeMoveRejectsMalformedLocally(t *testing.T) {
 		t.Fatalf("坏参数不该发请求: %+v", rc.reqs)
 	}
 }
+
+// ---- asset download ----
+
+// 下载失败不能动用户已有的同名文件，也不能留下半截临时文件；成功才整体替换。
+func TestAssetDownloadKeepsExistingFileOnFailure(t *testing.T) {
+	var fail atomic.Bool
+	var srvURL string
+	rc := &recorder{}
+	h := newHarness(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/assets/7"):
+			_, _ = w.Write([]byte(`{"id":7,"url":"` + srvURL + `/blob"}`))
+		case r.URL.Path == "/blob":
+			if fail.Load() {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			_, _ = w.Write([]byte("NEW-CONTENT"))
+		default:
+			rc.handler()(w, r)
+		}
+	})
+	srvURL = h.server.URL
+	dir := t.TempDir()
+	out := dir + "/out.png"
+	if err := os.WriteFile(out, []byte("USER-FILE"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fail.Store(true)
+	if code := h.run("asset", "download", "--asset", "7", "--out", out); code == exitcode.OK {
+		t.Fatal("下载失败应返回非 0")
+	}
+	if b, _ := os.ReadFile(out); string(b) != "USER-FILE" {
+		t.Fatalf("下载失败不能截断 / 删除已有文件，现在是 %q", b)
+	}
+
+	fail.Store(false)
+	if code := h.run("asset", "download", "--asset", "7", "--out", out); code != exitcode.OK {
+		t.Fatalf("code = %d stderr=%s", code, h.stderr.String())
+	}
+	if b, _ := os.ReadFile(out); string(b) != "NEW-CONTENT" {
+		t.Fatalf("内容 = %q", b)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Fatalf("不应留下临时文件: %v", entries)
+	}
+}
