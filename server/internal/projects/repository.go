@@ -228,16 +228,20 @@ func (r *SQLiteRepository) HardDelete(projectID int64) error {
 // SaveAuthoritative 给后端权威写路径用（agent、workflow clone 初始化等）。
 // 这些写入代表「系统最新真相」，绝不能因为某个网页用户手里的旧 baseVersion
 // 而失败；相反，它们每次成功都必须把 version 顶高，迫使旧网页保存随后收到 409。
+//
+// 写入后的 version 用 RETURNING 在同一条语句里取回：曾经写完再单独 SELECT 一次，
+// 两条语句之间别的写者（网页保存、生成回写）推高的版本会被当成本次写入的版本返回。
 func (r *SQLiteRepository) SaveAuthoritative(projectID int64, payload json.RawMessage) (int64, error) {
-	_, err := r.db.Exec(
-		`INSERT INTO workflow_snapshots (project_id, payload, version) VALUES (?, ?, 1) ON CONFLICT (project_id) DO UPDATE SET payload = excluded.payload, version = workflow_snapshots.version + 1`,
+	var version int64
+	err := r.db.QueryRow(
+		`INSERT INTO workflow_snapshots (project_id, payload, version) VALUES (?, ?, 1) ON CONFLICT (project_id) DO UPDATE SET payload = excluded.payload, version = workflow_snapshots.version + 1 RETURNING version`,
 		projectID,
 		string(payload),
-	)
+	).Scan(&version)
 	if err != nil {
 		return 0, err
 	}
-	return r.getSnapshotVersion(projectID)
+	return version, nil
 }
 
 // MutateSnapshot 事务内读-改-写画布快照:拿当前 payload,交给 fn 改,
@@ -414,18 +418,6 @@ func (r *SQLiteRepository) GetLatestSnapshot(projectID int64) (json.RawMessage, 
 		return nil, err
 	}
 	return snapshot.Payload, nil
-}
-
-func (r *SQLiteRepository) getSnapshotVersion(projectID int64) (int64, error) {
-	row := r.db.QueryRow(`SELECT version FROM workflow_snapshots WHERE project_id = ?`, projectID)
-	var version int64
-	if err := row.Scan(&version); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, nil
-		}
-		return 0, err
-	}
-	return version, nil
 }
 
 // SnapshotProjectsContaining 找快照 JSON 里含某个子串的项目——补搬 worker 用它定位
