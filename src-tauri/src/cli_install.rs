@@ -207,8 +207,29 @@ fn skill_statuses(
 
 const SANDBOX_NOTE: &str = "如果被沙箱拦截，请向我申请权限后重试，不要跳过。";
 
+/// POSIX shell 字面量：单引号包住，内部的 ' 写成 '\''。双引号里 $ ` \ 仍会展开，
+/// 安装目录名里带 $ 或反引号（Windows zip 解压到任意文件夹、改名后的 .app）就会被当成命令或变量。
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// PowerShell 字面量：单引号包住，内部的引号（含 PowerShell 同样视为单引号的 ‘ ’ ‚ ‛）重复一次。
+/// 双引号字符串会展开 $var / $(...)，反引号是转义符。
+fn ps_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for c in s.chars() {
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+        out.push(c);
+    }
+    out.push('\'');
+    out
+}
+
 /// "让 AI 助手安装"页签里的提示词：AI 助手照着执行即可完成与安装按钮等价的步骤。
-/// 路径一律加双引号（可能含空格和中文，如 /Applications/喵剧.app/...）。
+/// 安装包里的路径一律按字面量加引号（可能含空格、中文，甚至 $ 或引号，如 /Applications/喵剧.app/...）。
 /// skill 一步带着与按钮安装相同的判断：已有用户自己的同名目录（或指向别处的链接）就不覆盖。
 /// `version` 为应用版本，Windows 复制件的标记文件写它，与按钮安装一致（否则会被判为过期）。
 pub fn agent_install_prompt(
@@ -218,14 +239,16 @@ pub fn agent_install_prompt(
     version: &str,
 ) -> String {
     if windows {
+        let (cli_q, skill_q) = (ps_quote(bundled_cli), ps_quote(skill_dir));
+        let skill_md = ps_quote(&format!(r"{skill_dir}\SKILL.md"));
         let skill_cmd = |dir: &str| {
             format!(
-                r#"$d = "$env:USERPROFILE\{dir}\skills\{SKILL_NAME}"; if ((Test-Path -LiteralPath $d) -and -not (Test-Path -LiteralPath "$d\{MANAGED_MARK}")) {{ Write-Error "已存在同名目录，未覆盖：$d" }} else {{ if (Test-Path -LiteralPath $d) {{ Remove-Item -LiteralPath $d -Recurse -Force }}; New-Item -ItemType Directory -Force "$env:USERPROFILE\{dir}\skills" | Out-Null; Copy-Item -LiteralPath "{skill_dir}" -Destination $d -Recurse -Force; Set-Content -LiteralPath "$d\{MANAGED_MARK}" -Value "{version}" }}"#
+                r#"$d = "$env:USERPROFILE\{dir}\skills\{SKILL_NAME}"; if ((Test-Path -LiteralPath $d) -and -not (Test-Path -LiteralPath "$d\{MANAGED_MARK}")) {{ Write-Error "已存在同名目录，未覆盖：$d" }} else {{ if (Test-Path -LiteralPath $d) {{ Remove-Item -LiteralPath $d -Recurse -Force }}; New-Item -ItemType Directory -Force "$env:USERPROFILE\{dir}\skills" | Out-Null; Copy-Item -LiteralPath {skill_q} -Destination $d -Recurse -Force; Set-Content -LiteralPath "$d\{MANAGED_MARK}" -Value "{version}" }}"#
             )
         };
         format!(
             r#"请帮我安装喵剧命令行工具 miaoju，并学会使用它。在 PowerShell 里依次执行：
-1. New-Item -ItemType Directory -Force "$env:USERPROFILE\.miaoju\bin" | Out-Null; Copy-Item "{bundled_cli}" "$env:USERPROFILE\.miaoju\bin\miaoju.exe" -Force
+1. New-Item -ItemType Directory -Force "$env:USERPROFILE\.miaoju\bin" | Out-Null; Copy-Item -LiteralPath {cli_q} "$env:USERPROFILE\.miaoju\bin\miaoju.exe" -Force
 2. 把该目录加入用户 Path（已有就跳过；直接读写注册表，保留原值类型和其中未展开的 %USERPROFILE%）：
    $bin = "$env:USERPROFILE\.miaoju\bin"; $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); $p = $k.GetValue('Path','','DoNotExpandEnvironmentNames'); $kind = if ($p) {{ $k.GetValueKind('Path') }} else {{ 'ExpandString' }}; if (-not ($p -split ';' | Where-Object {{ $_.TrimEnd('\') -eq $bin }})) {{ $k.SetValue('Path', $(if ($p) {{ "$p;$bin" }} else {{ $bin }}), $kind) }}; $k.Close()
    然后执行下面这行，让新开的终端读到新的 Path（设置再清除一个临时用户变量，会广播环境变量变更）：
@@ -233,20 +256,22 @@ pub fn agent_install_prompt(
 3. 安装你自己的 skill（已存在用户自己的同名目录时不覆盖，会报"已存在同名目录，未覆盖"，请把这句话转告我）：
    - 如果你是 Claude Code：{claude}
    - 如果你是 Codex：{codex}
-4. 运行 & "$env:USERPROFILE\.miaoju\bin\miaoju.exe" version 确认安装成功（新开的终端里可以直接运行 miaoju version），再阅读 "{skill_dir}\SKILL.md" 学会用法。
+4. 运行 & "$env:USERPROFILE\.miaoju\bin\miaoju.exe" version 确认安装成功（新开的终端里可以直接运行 miaoju version），再阅读 {skill_md} 学会用法。
 注意：以上命令会写入工作区以外的位置（%USERPROFILE%\.miaoju、用户 Path 环境变量、%USERPROFILE%\.claude 或 %USERPROFILE%\.codex）。{SANDBOX_NOTE}"#,
             claude = skill_cmd(".claude"),
             codex = skill_cmd(".codex"),
         )
     } else {
+        let (cli_q, skill_q) = (sh_quote(bundled_cli), sh_quote(skill_dir));
+        let skill_md = sh_quote(&format!("{skill_dir}/SKILL.md"));
         let skill_cmd = |dir: &str| {
             format!(
-                r#"d=~/{dir}/skills/{SKILL_NAME}; if {{ [ -L "$d" ] && [ "$(readlink "$d")" != "{skill_dir}" ] && [ "$(basename "$(readlink "$d")")" != {SKILL_SRC_NAME} ]; }} || {{ [ -e "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/{MANAGED_MARK}" ]; }}; then echo "已存在同名目录，未覆盖：$d"; else mkdir -p ~/{dir}/skills && rm -rf "$d" && ln -sfn "{skill_dir}" "$d"; fi"#
+                r#"d=~/{dir}/skills/{SKILL_NAME}; if {{ [ -L "$d" ] && [ "$(readlink "$d")" != {skill_q} ] && [ "$(basename "$(readlink "$d")")" != {SKILL_SRC_NAME} ]; }} || {{ [ -e "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/{MANAGED_MARK}" ]; }}; then echo "已存在同名目录，未覆盖：$d"; else mkdir -p ~/{dir}/skills && rm -rf "$d" && ln -sfn {skill_q} "$d"; fi"#
             )
         };
         format!(
             r#"请帮我安装喵剧命令行工具 miaoju，并学会使用它。依次执行：
-1. mkdir -p ~/.miaoju/bin && ln -sf "{bundled_cli}" ~/.miaoju/bin/miaoju
+1. mkdir -p ~/.miaoju/bin && ln -sf {cli_q} ~/.miaoju/bin/miaoju
 2. 如果 ~/.zshrc 里没有 "{MARK_BEGIN}" 这一行，就在文件末尾原样追加下面三行（不带前导空格）：
 {MARK_BEGIN}
 {PATH_LINE}
@@ -254,7 +279,7 @@ pub fn agent_install_prompt(
 3. 安装你自己的 skill（已存在用户自己的同名目录时不覆盖，会输出"已存在同名目录，未覆盖"，请把这句话转告我）：
    - 如果你是 Claude Code：{claude}
    - 如果你是 Codex：{codex}
-4. 运行 ~/.miaoju/bin/miaoju version 确认安装成功，再阅读 "{skill_dir}/SKILL.md" 学会用法。
+4. 运行 ~/.miaoju/bin/miaoju version 确认安装成功，再阅读 {skill_md} 学会用法。
 注意：以上命令会写入工作区以外的目录（~/.miaoju、~/.zshrc、~/.claude 或 ~/.codex）。{SANDBOX_NOTE}"#,
             claude = skill_cmd(".claude"),
             codex = skill_cmd(".codex"),
@@ -963,18 +988,18 @@ mod tests {
         let skill = "/Applications/喵剧 Beta.app/Contents/Resources/cli-skill";
         let p = agent_install_prompt(false, cli, skill, "1.2.0");
         assert!(
-            p.contains(&format!(r#"ln -sf "{cli}" ~/.miaoju/bin/miaoju"#)),
+            p.contains(&format!(r#"ln -sf '{cli}' ~/.miaoju/bin/miaoju"#)),
             "{p}"
         );
         for agent in [".claude", ".codex"] {
             assert!(
                 p.contains(&format!(
-                    r#"d=~/{agent}/skills/miaoju-cli; if {{ [ -L "$d" ] && [ "$(readlink "$d")" != "{skill}" ] && [ "$(basename "$(readlink "$d")")" != cli-skill ]; }} || {{ [ -e "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/{MANAGED_MARK}" ]; }}; then echo "已存在同名目录，未覆盖：$d"; else mkdir -p ~/{agent}/skills && rm -rf "$d" && ln -sfn "{skill}" "$d"; fi"#
+                    r#"d=~/{agent}/skills/miaoju-cli; if {{ [ -L "$d" ] && [ "$(readlink "$d")" != '{skill}' ] && [ "$(basename "$(readlink "$d")")" != cli-skill ]; }} || {{ [ -e "$d" ] && [ ! -L "$d" ] && [ ! -e "$d/{MANAGED_MARK}" ]; }}; then echo "已存在同名目录，未覆盖：$d"; else mkdir -p ~/{agent}/skills && rm -rf "$d" && ln -sfn '{skill}' "$d"; fi"#
                 )),
                 "缺少 {agent} 的同名目录判断：{p}"
             );
         }
-        assert!(p.contains(&format!(r#""{skill}/SKILL.md""#)), "{p}");
+        assert!(p.contains(&format!(r#"'{skill}/SKILL.md'"#)), "{p}");
         assert!(p.contains(&format!(r#""{MARK_BEGIN}""#)), "{p}");
         for line in [MARK_BEGIN, PATH_LINE, MARK_END] {
             assert!(
@@ -1016,7 +1041,7 @@ mod tests {
         let p = agent_install_prompt(true, cli, skill, "1.2.0");
         assert!(
             p.contains(&format!(
-                r#"Copy-Item "{cli}" "$env:USERPROFILE\.miaoju\bin\miaoju.exe" -Force"#
+                r#"Copy-Item -LiteralPath '{cli}' "$env:USERPROFILE\.miaoju\bin\miaoju.exe" -Force"#
             )),
             "{p}"
         );
@@ -1048,15 +1073,48 @@ mod tests {
         for agent in [".claude", ".codex"] {
             assert!(
                 p.contains(&format!(
-                    r#"$d = "$env:USERPROFILE\{agent}\skills\miaoju-cli"; if ((Test-Path -LiteralPath $d) -and -not (Test-Path -LiteralPath "$d\{MANAGED_MARK}")) {{ Write-Error "已存在同名目录，未覆盖：$d" }} else {{ if (Test-Path -LiteralPath $d) {{ Remove-Item -LiteralPath $d -Recurse -Force }}; New-Item -ItemType Directory -Force "$env:USERPROFILE\{agent}\skills" | Out-Null; Copy-Item -LiteralPath "{skill}" -Destination $d -Recurse -Force; Set-Content -LiteralPath "$d\{MANAGED_MARK}" -Value "1.2.0" }}"#
+                    r#"$d = "$env:USERPROFILE\{agent}\skills\miaoju-cli"; if ((Test-Path -LiteralPath $d) -and -not (Test-Path -LiteralPath "$d\{MANAGED_MARK}")) {{ Write-Error "已存在同名目录，未覆盖：$d" }} else {{ if (Test-Path -LiteralPath $d) {{ Remove-Item -LiteralPath $d -Recurse -Force }}; New-Item -ItemType Directory -Force "$env:USERPROFILE\{agent}\skills" | Out-Null; Copy-Item -LiteralPath '{skill}' -Destination $d -Recurse -Force; Set-Content -LiteralPath "$d\{MANAGED_MARK}" -Value "1.2.0" }}"#
                 )),
                 "缺少 {agent} 的同名目录判断：{p}"
             );
         }
-        assert!(p.contains(&format!(r#""{skill}\SKILL.md""#)), "{p}");
+        assert!(p.contains(&format!(r#"'{skill}\SKILL.md'"#)), "{p}");
         assert!(p.contains("miaoju version"), "{p}");
         assert!(p.contains(SANDBOX_NOTE), "{p}");
         assert!(!p.contains("zshrc") && !p.contains("ln -s"), "{p}");
+    }
+
+    #[test]
+    fn quote_helpers_make_literals() {
+        assert_eq!(sh_quote("/a b/喵剧.app"), "'/a b/喵剧.app'");
+        assert_eq!(sh_quote("it's"), r"'it'\''s'");
+        assert_eq!(ps_quote(r"C:\x$y\`z"), r"'C:\x$y\`z'");
+        assert_eq!(ps_quote("O'Brien\u{2019}s"), "'O''Brien\u{2019}\u{2019}s'");
+    }
+
+    /// 端到端：按提示词里 Claude Code 那一步真的跑一遍 sh，路径里的 $、反引号、单引号都按字面落地，
+    /// 不会被展开成变量或命令。
+    #[cfg(unix)]
+    #[test]
+    fn agent_prompt_macos_skill_step_runs_with_hostile_path() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        let src = t.path().join("喵剧 $HOME `id` it's").join("cli-skill");
+        std::fs::create_dir_all(&src).unwrap();
+        let skill = src.to_str().unwrap();
+        let p = agent_install_prompt(false, "/x/miaoju-cli", skill, "1.2.0");
+        let line = p.lines().find_map(|l| l.split_once("如果你是 Claude Code：")).unwrap().1;
+        let st = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(line)
+            .env("HOME", &home)
+            .status()
+            .unwrap();
+        assert!(st.success());
+        let dest = home.join(".claude/skills/miaoju-cli");
+        assert_eq!(std::fs::read_link(&dest).unwrap(), src);
+        assert!(p.contains(&format!("ln -sf {} ~/.miaoju/bin/miaoju", sh_quote("/x/miaoju-cli"))), "{p}");
     }
 
     #[cfg(unix)]
