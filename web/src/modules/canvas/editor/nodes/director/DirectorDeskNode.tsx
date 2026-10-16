@@ -197,28 +197,47 @@ function createHostAdapter(nodeId: string, assetIdByUrl: Map<string, number>): D
       const second = await deleteDirectorModel(modelId, true);
       return second.deleted;
     },
-    async resolveAssetUrl(url) {
-      // 签名 URL 的 query 每次变、路径含 object_key 恒定——去 query 即稳定缓存
-      // 键，前端无需真提取 object_key。任何一步失败（无 Cache API、跨域 fetch
-      // 被拒、配额满）都原样回落直连 URL：缓存只是加速，不是功能。
-      try {
-        if (typeof caches === 'undefined') return url;
-        if (url.startsWith('data:') || url.startsWith('blob:')) return url;
-        const cacheKey = url.split('?')[0];
-        const cache = await caches.open(ASSET_CACHE_NAME);
-        let resp = await cache.match(cacheKey);
-        if (!resp) {
-          const fetched = await fetch(url);
-          if (!fetched.ok) return url;
-          await cache.put(cacheKey, fetched.clone());
-          resp = fetched;
-        }
-        return URL.createObjectURL(await resp.blob());
-      } catch {
-        return url;
-      }
-    },
+    resolveAssetUrl: resolveCachedAssetUrl,
   };
+}
+
+// 去 query 后的稳定缓存键 → blob URL。同一资产整个会话只造一个 blob URL：
+// R3F 的 useLoader 按 URL 字符串缓存解析结果（suspend-react，永不过期），每次
+// 打开导演台都 createObjectURL 一个新地址的话，既命中不了 useLoader 缓存（每次
+// 重新解析整只模型），旧 blob 与旧解析结果又永远留在内存里——开关几次面板就是
+// 几份 30MB 级模型泄漏。失败不入表，下次重试。
+const resolvedAssetUrls = new Map<string, Promise<string>>();
+
+async function fetchCachedAssetBlobUrl(url: string, cacheKey: string): Promise<string> {
+  const cache = await caches.open(ASSET_CACHE_NAME);
+  let resp = await cache.match(cacheKey);
+  if (!resp) {
+    const fetched = await fetch(url);
+    if (!fetched.ok) throw new Error(`asset fetch ${fetched.status}`);
+    await cache.put(cacheKey, fetched.clone());
+    resp = fetched;
+  }
+  return URL.createObjectURL(await resp.blob());
+}
+
+// 签名 URL 的 query 每次变、路径含 object_key 恒定——去 query 即稳定缓存
+// 键，前端无需真提取 object_key。任何一步失败（无 Cache API、跨域 fetch
+// 被拒、配额满）都原样回落直连 URL：缓存只是加速，不是功能。export 仅为测试。
+export async function resolveCachedAssetUrl(url: string): Promise<string> {
+  if (typeof caches === 'undefined') return url;
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  const cacheKey = url.split('?')[0];
+  let pending = resolvedAssetUrls.get(cacheKey);
+  if (!pending) {
+    pending = fetchCachedAssetBlobUrl(url, cacheKey);
+    resolvedAssetUrls.set(cacheKey, pending);
+    pending.catch(() => resolvedAssetUrls.delete(cacheKey));
+  }
+  try {
+    return await pending;
+  } catch {
+    return url;
+  }
 }
 
 export function DirectorDeskNode({ id }: { id: string }) {
