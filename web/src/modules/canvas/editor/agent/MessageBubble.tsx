@@ -21,6 +21,7 @@ import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 import { sectionPreview, splitBubbleText, type InlineSection } from './chatInlineSections';
 import { ChatTextSectionDialog } from './ChatTextSectionDialog';
 import { TextExpandDialog } from '../nodes/text/TextExpandDialog';
+import { interceptMarkdownLink } from '../utils/markdownLinks';
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -180,6 +181,7 @@ export function MarkdownBlock({ text }: { text: string }) {
     <div
       className="markdown-body"
       onClick={(e) => {
+        if (interceptMarkdownLink(e)) return;
         // 点击内联图片 / 视频打开 lightbox。图片 src 是缩略图，放大必须
         // 用 data-original 里的原图。
         const t = e.target as HTMLElement;

@@ -22,6 +22,7 @@ import { TextGenPanel } from './text/TextGenPanel';
 import { CharCount } from './text/CharCount';
 import { commitTextDraft, flushTextDraft } from './text/textNodeDraft';
 import { renderTextMarkdown } from './text/renderTextMarkdown';
+import { interceptMarkdownLink } from '../utils/markdownLinks';
 
 // LibTV 空态那组「横线」示意图形。用 div 画而不是找图标：lucide 没有对应形状。
 function LinesGlyph() {
@@ -261,6 +262,8 @@ export function TextNode({ id }: { id: string }) {
             className={`markdown-body flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-3 text-sm ${readOnly ? '' : 'cursor-text'}`}
             onMouseDown={trackPress}
             onClick={(e) => {
+              // 链接只拦默认导航（否则整个应用窗口被带走），点击语义仍是进编辑。
+              interceptMarkdownLink(e);
               if (!clickWasDrag(e)) startEdit();
             }}
             // renderTextMarkdown 里已过 DOMPurify，见该函数注释。
