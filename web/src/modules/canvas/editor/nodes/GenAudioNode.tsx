@@ -57,7 +57,6 @@ export function GenAudioNode({ id }: { id: string }) {
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
   const linked = useConnectedInputs(id);
   const addNode = useCanvasStore((s) => s.addNode);
-  const allNodes = useCanvasStore((s) => s.nodes);
   const isSelected = useCanvasStore((s) => s.selectedIds.has(id));
   // 截取/变速模式条挂节点正下方（对标 liblib 的位置），与提示词面板抢同一块
   // 空间——编辑会话期间面板让位隐藏，退出后随选中态自然回来。
@@ -270,7 +269,8 @@ export function GenAudioNode({ id }: { id: string }) {
 
   const handleSendToCanvas = () => {
     if (!currentUrl) return;
-    const existingCount = allNodes.filter(
+    // 点击时现取：订阅整个 nodes 数组会让本节点随画布上任意节点的每帧拖动重渲染。
+    const existingCount = useCanvasStore.getState().nodes.filter(
       (n) =>
         n.type === 'input-audio' &&
         (n.settings?.sourceGenAudioId as string | undefined) === id,

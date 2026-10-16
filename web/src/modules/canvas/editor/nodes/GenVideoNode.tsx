@@ -73,7 +73,6 @@ export function GenVideoNode({ id }: { id: string }) {
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
   const linked = useConnectedInputs(id);
   const addNode = useCanvasStore((s) => s.addNode);
-  const allNodes = useCanvasStore((s) => s.nodes);
   // 只读画布（分享查看器等）下 store.addNode 直接 no-op 返回 ''——「高级编辑」
   // 保存链路拿着这个空 id 去 updateNode/addConnection 会产出一堆挂不上任何节点
   // 的脏 token，禁用按钮比让保存链路半途失败更直接。
@@ -459,7 +458,8 @@ export function GenVideoNode({ id }: { id: string }) {
 
   const handleSendToCanvas = () => {
     if (!currentUrl) return;
-    const existingCount = allNodes.filter(
+    // 点击时现取：订阅整个 nodes 数组会让本节点随画布上任意节点的每帧拖动重渲染。
+    const existingCount = useCanvasStore.getState().nodes.filter(
       (n) =>
         n.type === 'preview' &&
         (n.settings?.sourceGenVideoId as string | undefined) === id,

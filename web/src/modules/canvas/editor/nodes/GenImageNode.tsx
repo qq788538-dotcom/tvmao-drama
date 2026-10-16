@@ -72,7 +72,6 @@ export function GenImageNode({ id }: { id: string }) {
   const linked = useConnectedInputs(id);
   const addNode = useCanvasStore((s) => s.addNode);
   const setLightbox = useCanvasStore((s) => s.setLightbox);
-  const allNodes = useCanvasStore((s) => s.nodes);
   // 选中状态驱动浮动上传 chip 和 prompt 面板的显示/隐藏动画——用户选中节点
   // 之前一直隐藏，对标参考站点的「聚焦时展开」行为。
   const isSelected = useCanvasStore((s) => s.selectedIds.has(id));
@@ -535,7 +534,8 @@ export function GenImageNode({ id }: { id: string }) {
 
   const handleSendToCanvas = () => {
     if (!currentUrl) return;
-    const existingCount = allNodes.filter(
+    // 点击时现取：订阅整个 nodes 数组会让本节点随画布上任意节点的每帧拖动重渲染。
+    const existingCount = useCanvasStore.getState().nodes.filter(
       (n) =>
         n.type === 'preview' &&
         (n.settings?.sourceGenImageId as string | undefined) === id,
