@@ -131,6 +131,19 @@ it('打开面板注册 adapter，writeState 走 scheduleNodePatch 写 settings.d
   });
 });
 
+// 回归：writeState 只发 patch、不改内存节点时，关掉再打开导演台 readState 读到的
+// 是快照加载时的旧场景（openScopedScene 随即把旧场景回写服务端），编辑整体丢失。
+it('writeState 同步更新内存节点，重开时 readState 读到最新场景', async () => {
+  const { getDirectorHostAdapter } = await import('./desk/editor/io/hostAdapter');
+  render(<DirectorDeskNode id="dd1" />);
+  fireEvent.click(screen.getByTestId('director-desk-open-panel'));
+  await screen.findByTestId('mock-desk-app');
+
+  const scene = { version: 1, objects: [{ id: 'o1' }] };
+  getDirectorHostAdapter()!.writeState(scene);
+  expect(getDirectorHostAdapter()!.readState()).toEqual(scene);
+});
+
 // 回归：每次打开导演台都 createObjectURL 一个新地址，R3F useLoader 按 URL 缓存
 // 永远命不中（整只模型重新解析），旧 blob 也永不回收。同一资产（去 query 后）
 // 整个会话只能造一个 blob URL；失败回落直连 URL 且不缓存失败结果。

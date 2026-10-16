@@ -120,6 +120,11 @@ function createHostAdapter(nodeId: string, assetIdByUrl: Map<string, number>): D
       } catch {
         // 尺寸测量失败不阻塞落库。
       }
+      // 内存里的画布节点必须同步更新：readState 读的就是它（desk 每次打开
+      // openScopedScene 都从这里重读，并立刻 writeState 回写）。只发 patch 不改
+      // store 的话，同一会话里关掉再打开，读到的是快照加载时的旧场景，紧接着又把
+      // 旧场景回写服务端——刚才的编辑整体丢失。
+      useCanvasStore.getState().updateNodeSettings(nodeId, { directorProject: state });
       // debounce 1.5s / 前后端深合并 / 签名 URL 落库自动收敛 media:// 全部由
       // 画布现有 mutation 链路提供。DirectorState 的集合全是数组（深合并对数组
       // 整体覆盖），无动态键嵌套对象，深合并语义安全（阶段二方案已核实）。
