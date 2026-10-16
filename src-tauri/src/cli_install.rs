@@ -370,8 +370,17 @@ pub fn output_with_timeout(
     Some(String::from_utf8_lossy(&buf).into_owned())
 }
 
+/// `miaoju version` 输出 `{"version":"x.y.z"}`（-o table 等也退回 JSON）。按字段精确比较：
+/// 子串匹配会把 1.2.10 当成 1.2.1 的最新版（应用降级后不再提示重新安装）。
 pub fn version_matches(output: &str, app_version: &str) -> bool {
-    !app_version.is_empty() && output.contains(app_version)
+    if app_version.is_empty() {
+        return false;
+    }
+    let got = serde_json::from_str::<serde_json::Value>(output.trim())
+        .ok()
+        .and_then(|v| v.get("version")?.as_str().map(str::to_string))
+        .unwrap_or_else(|| output.trim().to_string());
+    got == app_version
 }
 
 fn command_file() -> &'static str {
@@ -680,8 +689,13 @@ mod tests {
     #[test]
     fn version_match_requires_app_version_in_output() {
         assert!(version_matches("1.2.0\n", "1.2.0"));
+        assert!(version_matches("{\n  \"version\": \"1.2.0\"\n}\n", "1.2.0"));
         assert!(!version_matches("1.1.9", "1.2.0"));
         assert!(!version_matches("", "1.2.0"));
+        assert!(!version_matches("{\"version\":\"1.2.0\"}", ""));
+        // 子串不算：1.2.10 不是 1.2.1，11.2.0 也不是 1.2.0
+        assert!(!version_matches("{\"version\":\"1.2.10\"}", "1.2.1"));
+        assert!(!version_matches("{\"version\":\"11.2.0\"}", "1.2.0"));
     }
 
     #[test]
