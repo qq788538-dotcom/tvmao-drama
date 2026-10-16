@@ -281,3 +281,30 @@ func TestNoOriginStillVaryOrigin(t *testing.T) {
 		t.Fatalf("Vary = %v, want contains Origin", got)
 	}
 }
+
+// DNS 重绑定：攻击者域名解析到 127.0.0.1 后的同源请求不带 Origin，Host 却是攻击者域名，
+// 哪怕带着（可能已泄露的）媒体 token 也要挡掉。
+func TestHostAllowlistBlocksDNSRebinding(t *testing.T) {
+	cfg := mediaCfg()
+	cfg.AllowedHosts = []string{"127.0.0.1:5000", "localhost:5000"}
+	h := Middleware(cfg)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	cases := []struct {
+		host string
+		want int
+	}{
+		{"127.0.0.1:5000", http.StatusOK},
+		{"LOCALHOST:5000", http.StatusOK},
+		{"evil.example:5000", http.StatusForbidden},
+		{"127.0.0.1:5001", http.StatusForbidden},
+		{"", http.StatusForbidden},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest("GET", "/media/u1/a.png?token="+testMediaToken, nil)
+		req.Host = c.host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != c.want {
+			t.Errorf("Host %q: code = %d, want %d", c.host, rec.Code, c.want)
+		}
+	}
+}

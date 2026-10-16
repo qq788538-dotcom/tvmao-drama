@@ -22,6 +22,10 @@ type Config struct {
 	CLIToken string
 	// AllowedOrigins 是允许的 Origin 全量白名单（完整匹配）。
 	AllowedOrigins []string
+	// AllowedHosts 是允许的 Host 请求头白名单（不区分大小写的完整匹配，含端口），挡 DNS 重绑定：
+	// 恶意网页把自己的域名解析到 127.0.0.1 后，同源 GET 不带 Origin，只有 Host 还是它的域名。
+	// 媒体 token 会出现在日志和交给 Agent 的提示词里，不能只靠它挡这种读取。为空时不检查（单测）。
+	AllowedHosts []string
 }
 
 // CLIPathPrefix 是 CLI 契约的路由前缀（spec 3.3）。
@@ -43,8 +47,16 @@ func Middleware(cfg Config) func(http.Handler) http.Handler {
 	for _, o := range cfg.AllowedOrigins {
 		allowed[o] = true
 	}
+	hosts := make(map[string]bool, len(cfg.AllowedHosts))
+	for _, h := range cfg.AllowedHosts {
+		hosts[strings.ToLower(h)] = true
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if len(hosts) > 0 && !hosts[strings.ToLower(r.Host)] {
+				http.Error(w, "host not allowed", http.StatusForbidden)
+				return
+			}
 			// 无论请求带不带 Origin 都回 Vary: Origin：响应是否带 ACAO 取决于 Origin，
 			// 否则不带 Origin 的 <img> 会让缓存存下无 ACAO 的响应，复用给之后的 CORS 请求。
 			w.Header().Add("Vary", "Origin")

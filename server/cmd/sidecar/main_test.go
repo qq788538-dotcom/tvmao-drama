@@ -121,6 +121,18 @@ func TestHandshakeAndPing(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("无 token code = %d, want 401", resp.StatusCode)
 	}
+
+	// DNS 重绑定：Host 不是本机地址时，token 对也要 403。
+	req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+port+"/api/v1/ping?token="+testToken, nil)
+	req.Host = "evil.example:" + port
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("外部 Host code = %d, want 403", resp.StatusCode)
+	}
 }
 
 // Tauri 进程崩溃时 stdin 管道会被关闭；sidecar 必须跟着退出，不能变成孤儿。

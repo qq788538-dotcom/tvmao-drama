@@ -150,6 +150,7 @@ func run() error {
 		CLIToken:       cliToken,
 		MediaToken:     mediaToken,
 		AllowedOrigins: splitOrigins(*origins),
+		AllowedHosts:   localHosts(port),
 	}, *dataDir, version)
 	if err != nil {
 		ln.Close()
@@ -367,6 +368,11 @@ func randomHex(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// localHosts 是本机客户端访问 sidecar 时合法的 Host 头（网页、CLI、媒体 URL 都用 127.0.0.1:<端口>）。
+func localHosts(port int) []string {
+	return []string{fmt.Sprintf("127.0.0.1:%d", port), fmt.Sprintf("localhost:%d", port)}
 }
 
 func splitOrigins(s string) []string {
