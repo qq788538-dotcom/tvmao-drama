@@ -86,16 +86,22 @@ function requestThumb(url: string): void {
  */
 export function useThumbUrl(url: string | undefined | null): string | undefined {
   const [, force] = useReducer((x: number) => x + 1, 0);
+  const shown = eligible(url) ? cache.get(url) : (url ?? undefined);
   useEffect(() => {
-    if (!eligible(url) || cache.has(url)) return;
+    if (!eligible(url)) return;
+    if (cache.has(url)) {
+      // 渲染时还没换到、effect 跑之前那批换取恰好落地：notify 已经发过且本组件
+      // 当时没挂监听，不补一次渲染就一直停在「无 src」，直到别的原因重渲染。
+      if (shown === undefined) force();
+      return;
+    }
     requestThumb(url);
     listeners.add(force);
     return () => {
       listeners.delete(force);
     };
-  }, [url]);
-  if (!eligible(url)) return url ?? undefined;
-  return cache.get(url);
+  }, [url, shown]);
+  return shown;
 }
 
 /**
@@ -107,8 +113,15 @@ export function useThumbUrls(urls: string[]): Record<string, string | undefined>
   const [, force] = useReducer((x: number) => x + 1, 0);
   // urls 每次 render 都是新数组，用内容串做 effect 依赖避免死循环。
   const key = urls.join('\n');
+  const out: Record<string, string | undefined> = {};
+  for (const u of urls) {
+    out[u] = eligible(u) ? cache.get(u) : u;
+  }
+  // 本次渲染里还没换到的条数：effect 前恰好落地的批次不会再 notify（同 useThumbUrl）。
+  const pendingShown = urls.filter((u) => eligible(u) && out[u] === undefined).length;
   useEffect(() => {
     const missing = urls.filter((u) => eligible(u) && !cache.has(u));
+    if (missing.length < pendingShown) force();
     if (missing.length === 0) return;
     missing.forEach(requestThumb);
     listeners.add(force);
@@ -116,11 +129,7 @@ export function useThumbUrls(urls: string[]): Record<string, string | undefined>
       listeners.delete(force);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  const out: Record<string, string | undefined> = {};
-  for (const u of urls) {
-    out[u] = eligible(u) ? cache.get(u) : u;
-  }
+  }, [key, pendingShown]);
   return out;
 }
 
