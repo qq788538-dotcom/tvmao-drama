@@ -91,17 +91,23 @@ function canvasToDataURL(source: HTMLCanvasElement | OffscreenCanvas): string {
 export async function extractFilmstrip(url: string, count: number): Promise<FilmstripResult> {
   const { Input, UrlSource, ALL_FORMATS, CanvasSink } = await import('mediabunny');
   const input = new Input({ formats: ALL_FORMATS, source: new UrlSource(url) });
-  const track = await input.getPrimaryVideoTrack();
-  if (!track) throw new Error('视频里没有可用的视频轨');
-  const duration = await input.computeDuration();
-  // fit:'cover' 裁满格子,竖屏视频不留黑边(缩略图只要认得出画面,无需完整构图)。
-  const sink = new CanvasSink(track, { width: 96, height: 56, fit: 'cover' });
-  const timestamps = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * duration);
-  const frames: string[] = [];
-  for await (const wrapped of sink.canvasesAtTimestamps(timestamps)) {
-    frames.push(wrapped ? canvasToDataURL(wrapped.canvas) : '');
+  // 无论成败都 dispose:出错路径上不关的话,打开的 VideoDecoder(硬件解码槽位
+  // 有限)和 UrlSource 的在途请求要等 GC 才释放。下同。
+  try {
+    const track = await input.getPrimaryVideoTrack();
+    if (!track) throw new Error('视频里没有可用的视频轨');
+    const duration = await input.computeDuration();
+    // fit:'cover' 裁满格子,竖屏视频不留黑边(缩略图只要认得出画面,无需完整构图)。
+    const sink = new CanvasSink(track, { width: 96, height: 56, fit: 'cover' });
+    const timestamps = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * duration);
+    const frames: string[] = [];
+    for await (const wrapped of sink.canvasesAtTimestamps(timestamps)) {
+      frames.push(wrapped ? canvasToDataURL(wrapped.canvas) : '');
+    }
+    return { duration, frames };
+  } finally {
+    input.dispose();
   }
-  return { duration, frames };
 }
 
 // 截取 [start, end] 转码出 mp4 Blob。mediabunny 的 Conversion 在容器/编码
@@ -116,20 +122,24 @@ export async function trimVideo(
   const { Input, Output, Conversion, UrlSource, ALL_FORMATS, BufferTarget, Mp4OutputFormat } =
     await import('mediabunny');
   const input = new Input({ formats: ALL_FORMATS, source: new UrlSource(url) });
-  const target = new BufferTarget();
-  const output = new Output({
-    // fastStart:'in-memory' 把 moov 放文件头,产物上传后可边下边播。
-    format: new Mp4OutputFormat({ fastStart: 'in-memory' }),
-    target,
-  });
-  const conversion = await Conversion.init({
-    input,
-    output,
-    trim: { start, end },
-    showWarnings: false,
-  });
-  if (onProgress) conversion.onProgress = (p) => onProgress(p);
-  await conversion.execute();
-  if (!target.buffer) throw new Error('转码未产出数据');
-  return new Blob([target.buffer], { type: 'video/mp4' });
+  try {
+    const target = new BufferTarget();
+    const output = new Output({
+      // fastStart:'in-memory' 把 moov 放文件头,产物上传后可边下边播。
+      format: new Mp4OutputFormat({ fastStart: 'in-memory' }),
+      target,
+    });
+    const conversion = await Conversion.init({
+      input,
+      output,
+      trim: { start, end },
+      showWarnings: false,
+    });
+    if (onProgress) conversion.onProgress = (p) => onProgress(p);
+    await conversion.execute();
+    if (!target.buffer) throw new Error('转码未产出数据');
+    return new Blob([target.buffer], { type: 'video/mp4' });
+  } finally {
+    input.dispose();
+  }
 }

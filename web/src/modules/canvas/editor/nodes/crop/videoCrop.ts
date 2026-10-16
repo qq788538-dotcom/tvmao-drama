@@ -124,20 +124,25 @@ export async function cropVideo(
   const { Input, Output, Conversion, UrlSource, ALL_FORMATS, BufferTarget, Mp4OutputFormat } =
     await import('mediabunny');
   const input = new Input({ formats: ALL_FORMATS, source: new UrlSource(url) });
-  const target = new BufferTarget();
-  const output = new Output({
-    // fastStart:'in-memory' 把 moov 放文件头,产物上传后可边下边播(同 trim)。
-    format: new Mp4OutputFormat({ fastStart: 'in-memory' }),
-    target,
-  });
-  const conversion = await Conversion.init({
-    input,
-    output,
-    video: { crop: rect },
-    showWarnings: false,
-  });
-  if (onProgress) conversion.onProgress = (p) => onProgress(p);
-  await conversion.execute();
-  if (!target.buffer) throw new Error('转码未产出数据');
-  return new Blob([target.buffer], { type: 'video/mp4' });
+  // 无论成败都 dispose(同 trimVideo)。
+  try {
+    const target = new BufferTarget();
+    const output = new Output({
+      // fastStart:'in-memory' 把 moov 放文件头,产物上传后可边下边播(同 trim)。
+      format: new Mp4OutputFormat({ fastStart: 'in-memory' }),
+      target,
+    });
+    const conversion = await Conversion.init({
+      input,
+      output,
+      video: { crop: rect },
+      showWarnings: false,
+    });
+    if (onProgress) conversion.onProgress = (p) => onProgress(p);
+    await conversion.execute();
+    if (!target.buffer) throw new Error('转码未产出数据');
+    return new Blob([target.buffer], { type: 'video/mp4' });
+  } finally {
+    input.dispose();
+  }
 }

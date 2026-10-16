@@ -25,18 +25,23 @@ export async function trimAudio(
   const { Input, Output, Conversion, UrlSource, ALL_FORMATS, BufferTarget, WavOutputFormat } =
     await import('mediabunny');
   const input = new Input({ formats: ALL_FORMATS, source: new UrlSource(url) });
-  const target = new BufferTarget();
-  const output = new Output({ format: new WavOutputFormat(), target });
-  const conversion = await Conversion.init({
-    input,
-    output,
-    trim: { start, end },
-    showWarnings: false,
-  });
-  if (onProgress) conversion.onProgress = (p) => onProgress(p);
-  await conversion.execute();
-  if (!target.buffer) throw new Error('转码未产出数据');
-  return new Blob([target.buffer], { type: 'audio/wav' });
+  // 无论成败都 dispose(同 trimVideo)。
+  try {
+    const target = new BufferTarget();
+    const output = new Output({ format: new WavOutputFormat(), target });
+    const conversion = await Conversion.init({
+      input,
+      output,
+      trim: { start, end },
+      showWarnings: false,
+    });
+    if (onProgress) conversion.onProgress = (p) => onProgress(p);
+    await conversion.execute();
+    if (!target.buffer) throw new Error('转码未产出数据');
+    return new Blob([target.buffer], { type: 'audio/wav' });
+  } finally {
+    input.dispose();
+  }
 }
 
 // WebAudioBufferSource 只需要这四样,单测里用普通对象即可,不依赖真 AudioBuffer。

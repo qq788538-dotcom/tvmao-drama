@@ -14,9 +14,13 @@ import {
 // 测的是我们封装层的行为:参数传递、结果组装、错误路径。
 const conversionInit = vi.fn();
 const executeMock = vi.fn();
+const disposeMock = vi.fn();
 
 vi.mock('mediabunny', () => {
   class Input {
+    dispose() {
+      disposeMock();
+    }
     async getPrimaryVideoTrack() {
       return { id: 1 };
     }
@@ -88,6 +92,7 @@ afterEach(() => {
   createElementSpy.mockRestore();
   conversionInit.mockClear();
   executeMock.mockClear();
+  disposeMock.mockClear();
 });
 
 describe('clampSelection', () => {
@@ -162,6 +167,7 @@ describe('extractFilmstrip', () => {
     expect(frames[4]).toBe('');
     expect(frames[5]).toBe('');
     expect(frames[0]).toBe('data:image/jpeg;base64,FAKE');
+    expect(disposeMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -176,6 +182,16 @@ describe('trimVideo', () => {
     expect(blob.type).toBe('video/mp4');
     expect(blob.size).toBe(8);
     expect(progress).toEqual([0.5, 1]);
+    expect(disposeMock).toHaveBeenCalledTimes(1);
+  });
+
+  // 出错路径同样要释放 Input(解码器/在途请求不能等 GC)。
+  it('转码失败时也 dispose Input', async () => {
+    executeMock.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+    await expect(trimVideo('http://x.mp4', 0, 1)).rejects.toThrow('boom');
+    expect(disposeMock).toHaveBeenCalledTimes(1);
   });
 });
 
