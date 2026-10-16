@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -529,5 +532,31 @@ func TestDecodeAPIErrorTruncatesOnRuneBoundary(t *testing.T) {
 	}
 	if !utf8.ValidString(ae.Message) || !strings.HasSuffix(ae.Message, "…") || len(ae.Message) > 200+len("…") {
 		t.Fatalf("截断结果 = %q", ae.Message)
+	}
+}
+
+// 上传的 multipart 里是文件原样内容与文件名（文件流式写进缓冲区，不再先整份读进内存）。
+func TestUploadAssetSendsFileAsMultipart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "参考 图.png")
+	content := strings.Repeat("\x89PNG-data-", 1000)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var gotName, gotBody string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		f, fh, err := r.FormFile("file")
+		if err != nil {
+			t.Errorf("FormFile: %v", err)
+			return
+		}
+		b, _ := io.ReadAll(f)
+		gotName, gotBody = fh.Filename, string(b)
+		_, _ = w.Write([]byte(`{"id":1}`))
+	})
+	if _, err := c.UploadAsset(context.Background(), 3, path); err != nil {
+		t.Fatal(err)
+	}
+	if gotName != "参考 图.png" || gotBody != content {
+		t.Fatalf("name=%q bodyLen=%d", gotName, len(gotBody))
 	}
 }
