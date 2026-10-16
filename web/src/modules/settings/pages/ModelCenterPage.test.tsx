@@ -213,6 +213,37 @@ describe('ModelCenterPage 独立上游', () => {
   });
 });
 
+describe('ModelCenterPage 编辑框换模型', () => {
+  beforeEach(() => {
+    mocks.patch.mockReset();
+  });
+
+  it('保存 A 后再编辑 B：A 的参数默认值不会串到 B 的表单和补丁里', async () => {
+    const opts = [{ value: '16:9' }, { value: '1:1' }];
+    const a = model({ id: 1, name: 'Model A', uiSchema: { ratio: { label: '比例', default: '16:9', options: opts } } });
+    const b = model({ id: 2, name: 'Model B', modelId: 'model-b', uiSchema: { ratio: { label: '比例', options: opts } } });
+    mocks.models = [a, b];
+    mocks.patch.mockImplementation(async (id: number, p: { name?: string }) => ({ ...(id === 1 ? a : b), ...p }));
+    renderPage();
+    await screen.findByText('Model B');
+    // 编辑 A：只改名，保存成功后编辑框自动关闭（不走 closeEditor）
+    fireEvent.click(screen.getAllByRole('button', { name: /编\s*辑/ })[0]);
+    await screen.findByText('独立上游', { selector: 'h5' });
+    fireEvent.change(screen.getByDisplayValue('Model A'), { target: { value: 'Model A2' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /保\s*存/ }).at(-1)!);
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledTimes(1));
+    expect(mocks.patch.mock.calls[0]).toEqual([1, { name: 'Model A2' }]);
+    await waitFor(() => expect(screen.queryByText('独立上游', { selector: 'h5' })).toBeNull());
+    // 编辑 B：B 的 ratio 没有默认值，不改任何东西直接保存 → 不应发补丁
+    fireEvent.click(screen.getAllByRole('button', { name: /编\s*辑/ })[1]);
+    await screen.findByText('编辑：Model B');
+    expect(screen.queryByTitle('16:9')).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: /保\s*存/ }).at(-1)!);
+    await waitFor(() => expect(screen.queryByText('独立上游', { selector: 'h5' })).toBeNull());
+    expect(mocks.patch).toHaveBeenCalledTimes(1);
+  }, 20_000);
+});
+
 describe('ModelCenterPage 测试连接', () => {
   beforeEach(() => {
     mocks.testConn.mockReset();
