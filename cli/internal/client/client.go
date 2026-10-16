@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/james/huabu_studio/apps/cli/internal/endpoint"
 )
@@ -385,7 +386,12 @@ func decodeAPIError(resp *http.Response, body []byte) error {
 	// 非 CLI 契约的错误体（如 nginx 502 的 HTML）：保留状态码，消息截断。
 	e.Message = strings.TrimSpace(string(body))
 	if len(e.Message) > 200 {
-		e.Message = e.Message[:200] + "…"
+		// 按字节截断会把中文切成半个字符（非法 UTF-8），退到字符边界。
+		cut := 200
+		for cut > 0 && !utf8.RuneStart(e.Message[cut]) {
+			cut--
+		}
+		e.Message = e.Message[:cut] + "…"
 	}
 	if e.Message == "" {
 		e.Message = resp.Status

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/james/huabu_studio/apps/cli/internal/endpoint"
 )
@@ -515,5 +516,18 @@ func TestConnRefusedReconnectsAtMostOncePerCommand(t *testing.T) {
 	var anr *AppNotRunningError
 	if !errors.As(err, &anr) {
 		t.Fatalf("同一条命令只重连一次，第二次端口变化应直接报错，err=%T %v", err, err)
+	}
+}
+
+// 非契约错误体（如网关的中文 HTML）截断时不能切出半个 UTF-8 字符。
+func TestDecodeAPIErrorTruncatesOnRuneBoundary(t *testing.T) {
+	body := []byte("x" + strings.Repeat("错", 100))
+	err := decodeAPIError(&http.Response{StatusCode: 502, Status: "502 Bad Gateway", Header: http.Header{}}, body)
+	var ae *APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("got %T", err)
+	}
+	if !utf8.ValidString(ae.Message) || !strings.HasSuffix(ae.Message, "…") || len(ae.Message) > 200+len("…") {
+		t.Fatalf("截断结果 = %q", ae.Message)
 	}
 }
