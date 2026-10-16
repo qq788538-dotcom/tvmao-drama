@@ -388,13 +388,21 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	if err != nil {
 		return nil, fmt.Errorf("prepare image inputs: %w", err)
 	}
+	// 参考图临时文件从这里起归本函数所有，直到交给 callAndComplete（它自己 defer 删）。
+	// 之间任何一条错误出口（模板渲染、建行、冻结、提交）都必须删掉，否则文件一直留到
+	// 下次启动才被按时效清理。
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			removePreparedFiles(preparedImages)
+		}
+	}()
 
 	payload, err := upstream.InterpolateTemplate(model.RequestTemplate, normalizedInputs)
 	if err != nil {
 		return nil, fmt.Errorf("interpolate template: %w", err)
 	}
 	if err := s.ensureNoLocalMediaForRequest(model, payload, preparedImages); err != nil {
-		removePreparedFiles(preparedImages)
 		return nil, err
 	}
 
@@ -466,6 +474,7 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	// (余额不足上面已同步返回)，这里把"调上游+落库"整段丢后台 goroutine，handler 立刻返回
 	// processing，前端靠轮询 task 状态拿结果。用独立 ctx：HTTP 一返回，请求的 ctx 就被取消，
 	// 后台不能跟着断。
+	handedOff = true // 以下两条路径都经 callAndComplete，由它负责删参考图临时文件
 	if input.ForceAsync {
 		s.tracker().Go(func() {
 			bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
