@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { App as AntApp } from 'antd';
 import { DEFAULT_SIZES, useCanvasStore } from './store';
 import { nodeComponents } from './registry';
@@ -38,6 +38,16 @@ function nodeTypeForKind(kind: 'image' | 'video' | 'audio'): NodeType {
   if (kind === 'video') return 'video-input';
   return 'input-audio';
 }
+
+// 节点组件只吃 id、按 id 自己订阅 store。不 memo 的话 CanvasEditor 每次重渲染
+// （平移/缩放每帧改 view、拖动每帧改 nodes、连线拖拽每帧改 connecting）都会把
+// 画布上全部节点组件（GenImageNode 等千行级）整棵重跑一遍；memo 之后只有自身
+// 订阅的数据变了的节点才重渲染。跨节点数据必须走订阅（如 useConnectedInputs），
+// 不能在渲染期 getState() 读。
+const CanvasNodeView = memo(function CanvasNodeView({ type, id }: { type: NodeType; id: string }) {
+  const Component = nodeComponents[type];
+  return Component ? <Component id={id} /> : null;
+});
 
 interface ContextMenuState {
   screenX: number;
@@ -795,11 +805,9 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
         }}
       >
         <ConnectionLayer nodes={nodes} />
-        {nodes.map((node) => {
-          const Component = nodeComponents[node.type];
-          if (!Component) return null;
-          return <Component key={node.id} id={node.id} />;
-        })}
+        {nodes.map((node) => (
+          <CanvasNodeView key={node.id} type={node.type} id={node.id} />
+        ))}
       </div>
 
       {nodes.length === 0 && (
