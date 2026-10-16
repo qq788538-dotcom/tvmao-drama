@@ -202,6 +202,18 @@ func newAssetDownloadCommand(st *runtimeState) *cobra.Command {
 // 直接 os.Create(target) 会先截断用户已有的同名文件，下载失败再删掉它就等于把原文件弄丢了；
 // 而且 Windows 上文件还开着时 os.Remove 会失败，半截文件删不掉。
 func downloadTo(target string, fetch func(io.Writer) (int64, error)) (int64, error) {
+	if fi, err := os.Stat(target); err == nil && !fi.Mode().IsRegular() {
+		// 设备 / 命名管道（如 /dev/null）没法改名替换，直接写，与原来一样。
+		f, err := os.OpenFile(target, os.O_WRONLY, 0)
+		if err != nil {
+			return 0, err
+		}
+		n, err := fetch(f)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		return n, err
+	}
 	var (
 		f   *os.File
 		tmp string

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -663,6 +664,12 @@ func TestAssetDownloadKeepsExistingFileOnFailure(t *testing.T) {
 	entries, _ := os.ReadDir(dir)
 	if len(entries) != 1 {
 		t.Fatalf("不应留下临时文件: %v", entries)
+	}
+	// 非普通文件（设备）照常直接写，不去它所在目录建临时文件、也不改名替换它
+	if runtime.GOOS != "windows" {
+		if code := h.run("asset", "download", "--asset", "7", "--out", os.DevNull); code != exitcode.OK {
+			t.Fatalf("写 %s: code = %d stderr=%s", os.DevNull, code, h.stderr.String())
+		}
 	}
 }
 
