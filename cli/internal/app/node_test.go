@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/james/huabu_studio/apps/cli/internal/exitcode"
 	"github.com/james/huabu_studio/apps/cli/internal/workspace"
@@ -659,5 +661,23 @@ func TestAssetDownloadKeepsExistingFileOnFailure(t *testing.T) {
 	entries, _ := os.ReadDir(dir)
 	if len(entries) != 1 {
 		t.Fatalf("不应留下临时文件: %v", entries)
+	}
+}
+
+// Ctrl+C（main 把 SIGINT 转成 context 取消）：run wait 停止等待、提示任务仍在跑，退出码 7（用户取消）。
+func TestRunWaitCancelledContextExits7(t *testing.T) {
+	h := newHarness(t, jsonHandler(`{"taskId":42,"status":"processing"}`))
+	ctx, cancel := context.WithCancel(context.Background())
+	h.ctx = ctx
+	time.AfterFunc(200*time.Millisecond, cancel)
+	start := time.Now()
+	if code := h.run("run", "wait", "42"); code != exitcode.Network {
+		t.Fatalf("code = %d, want %d stderr=%s", code, exitcode.Network, h.stderr.String())
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("取消后应立即返回，用了 %v", time.Since(start))
+	}
+	if !strings.Contains(h.stderr.String(), "仍在服务端运行") {
+		t.Fatalf("应提示任务仍在服务端运行: %s", h.stderr.String())
 	}
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -38,6 +39,8 @@ type harness struct {
 	// endpointDir 存放 cli-endpoint.json；run 时按 server 端口与 h.version 写入。
 	endpointDir string
 	version     string
+	// ctx 非空时作为根命令的 context（模拟 main 里 Ctrl+C 取消）。
+	ctx context.Context
 }
 
 // harnessCLIToken 是 harness 写进地址文件的 token，ping 校验它。
@@ -99,6 +102,9 @@ func (h *harness) run(args ...string) int {
 		WorkDir:     h.workDir,
 		EndpointDir: h.endpointDir,
 	})
+	if h.ctx != nil {
+		root.SetContext(h.ctx)
+	}
 	return Execute(root, args, &h.stderr)
 }
 
