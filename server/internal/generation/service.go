@@ -525,6 +525,16 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 	// 生命周期结束才释放——inline 出图在本函数返回时释放;task-id 轮询模型(视频)把释放转交给
 	// completeAsync,在其收尾时释放。这样"同一模型同时在途的生成数"被真实限住,全平台共用一把闸。
 	// 各入口都是 ForceAsync(在后台 goroutine 里跑本函数),故 acquire 阻塞等名额不会卡住 HTTP。
+	//
+	// lease 由领取/建行的 CAS 取得并传入——本函数绝不重新 claim(v5 §5.3:正常链路只用执行链
+	// 传下来的 lease)。心跳必须在等名额**之前**起:直连任务建行即 running,名额被占满(视频模型
+	// 整段轮询都持有名额)超过 staleSec 时,没有心跳的行会被接管器当直连孤儿判失败退款。
+	// 失租时心跳会 cancel 本 ctx，尽早中止上游调用；心跳在本函数返回时停，轮询类模型由
+	// completeAsync 自己续。
+	ctx, cancelOnLost := context.WithCancel(ctx)
+	defer cancelOnLost()
+	stopHeartbeat := s.startHeartbeat(taskID, lease, cancelOnLost)
+	defer stopHeartbeat()
 	release := s.concurrency.Acquire(model.ModelID, model.GenConcurrency())
 	releasedToAsync := false
 	defer func() {
@@ -534,14 +544,6 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 	}()
 	// 参考图临时文件的兜底删除点：无论上游成功/失败/失租,本函数返回即清。
 	defer removePreparedFiles(preparedImages)
-
-	// 拿到名额 = 开工。lease 由领取/建行的 CAS 取得并传入——本函数绝不重新 claim
-	// (v5 §5.3:正常链路只用执行链传下来的 lease)。失租时心跳会 cancel 本 ctx，
-	// 尽早中止上游调用；心跳在本函数返回时停，轮询类模型由 completeAsync 自己续。
-	ctx, cancelOnLost := context.WithCancel(ctx)
-	defer cancelOnLost()
-	stopHeartbeat := s.startHeartbeat(taskID, lease, cancelOnLost)
-	defer stopHeartbeat()
 
 	// 在真正发出请求之前，先把"已调过上游"这个事实落库。
 	//
