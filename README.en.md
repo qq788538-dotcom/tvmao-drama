@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="https://www.tvmao.net/">Try online</a> ·
+  <a href="#community">Community</a> ·
   <a href="README.md">中文</a> ·
   <a href="docs/user-guide.md">User guide (Chinese)</a> ·
   <a href="docs/development.md">Development (Chinese)</a>
@@ -108,6 +109,14 @@ pnpm test:server && pnpm test:web && pnpm test:tauri && pnpm test:scripts
 ```
 
 See [docs/development.md](docs/development.md) for details.
+
+## Community
+
+Questions, tips or want to help build it? Scan the QR code with WeChat to join the 喵剧AI open-source group (Chinese):
+
+<p align="center">
+  <img src="docs/images/wechat-group.png" alt="WeChat group QR code for the 喵剧AI open-source group" width="240" />
+</p>
 
 ## Contributing
 
