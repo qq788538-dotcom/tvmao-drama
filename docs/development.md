@@ -140,6 +140,8 @@ pnpm release        # 两者都打
 
 不要直接运行 `cargo tauri build`，那样得不到带《首次打开说明》的 dmg 和 Windows zip。发版前的完整检查项见 [发版检查清单](release-checklist.md)。
 
+应用图标的源图是 `packaging/icon-1024.png`，替换后运行 `bash scripts/gen-icons.sh` 重新生成 `src-tauri/icons/`。
+
 安装包使用 ad-hoc 签名，没有经过苹果公证，也没有 Windows 代码签名证书，用户首次打开需要手动放行。
 
 ## 持续集成

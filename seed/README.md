@@ -1,13 +1,13 @@
 # 内置种子数据
 
 首次安装时导入 SQLite 的内置模型、配置与 Skill。
-格式：每张表一个 JSONL 文件，每行一条记录，字段名与生产库列名一致。
+格式：每张表一个 JSONL 文件，每行一条记录，字段名与数据库列名一致。
 
 | 文件 | 行数 | 说明 |
 |---|---|---|
-| `model_configs.jsonl` | 27 | 模型中心（text 2 / image 7 / video 16 / audio 2；2026-10-06 删除 19 个：gpt-image-2.1（id 29）、工作流专用与停用的 id 2、3、5、6、7、8、14、40、45，以及 cm-seedance 系列 id 21–26、32–34）。合并 gpt-5.5 三合一：删除 id 36、41；`sd-2.0-mini-yd` 去掉价格。保留原始 `id`，`agent_tools.source_model_id` 引用它。2026-10-07：除 gpt-image-2（edits）与 gemini（base64）外，`image_input_format` 统一为 `data_uri`（对象存储设计 D1）。2026-10-07：新增隐藏模型 seedance-asset（id 51），合规校验专用。2026-10-08：gpt-5.5 的名称、model_id 与模板 model 统一改为 gpt-latest（newapi 侧别名，升级 GPT 版本不再改客户端） |
+| `model_configs.jsonl` | 27 | 模型中心的内置模型（text 2 / image 7 / video 16 / audio 2）。`id` 被 `agent_tools.source_model_id` 引用，不要改动。`seedance-asset` 是隐藏模型，只用于合规校验 |
 | `settings.jsonl` | 6 | 只含 `base_domain`、`canvas_light_control`、`canvas_multi_angle`、`canvas_postprocess_config`、`canvas_script_config`、`gen_image_prompt_presets` |
-| `agent_backbone_models.jsonl` | 4 | Agent 使用的大模型（planner / utility / subagent_audio / subagent_video）；planner、utility 的 model_name 已由 canvas-agent-gpt-5.5 改为 gpt-5.5，`canvas_script_config` 候选同理（canvas-gpt-5.5 → gpt-5.5）。副本由 `scripts/sync-seed.sh` 同步到 `server/internal/agent/agentseed/data/` |
+| `agent_backbone_models.jsonl` | 4 | Agent 使用的大模型（planner / utility / subagent_audio / subagent_video）。副本由 `scripts/sync-seed.sh` 同步到 `server/internal/agent/agentseed/data/` |
 | `agent_tools.jsonl` | 4 | Agent 工具目录 |
 | `skills.jsonl` | 10 | 官方 Skill（全部 `is_official=1`，其中 2 个 `is_published=0`） |
 | `skill_categories.jsonl` | 4 | Skill 分类 |
@@ -15,7 +15,6 @@
 未导出（有意排除）：
 - 密钥类 settings：`upstream_api_key`、`upstream_access_token`、`drama_seedance_sd_key`
 - 与画布无关的 settings：`drama_*`、`team_*`、`cli_release`、`flow_cli_release`、余额和配额类
-- `director_library_categories`、`director_library_models`：生产库为空
 - 所有用户数据表
 
 重新导出时沿用同一范围；导出后须再次扫描确认不含密钥。
