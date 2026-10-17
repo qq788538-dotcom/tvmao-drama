@@ -216,3 +216,21 @@ func TestWebAssetUploadDedupBranchStillReturns200(t *testing.T) {
 		t.Fatalf("去重响应 = %v", m)
 	}
 }
+
+// CLI 的 multipart 只带 application/octet-stream：要按内容嗅探成真实类型，
+// 否则视频不会探测时长，图片也会以下载类型落库。
+func TestUpload_OctetStreamIsSniffed(t *testing.T) {
+	var gotMime string
+	probed := false
+	h := newTestAssetHandler(t)
+	h.probe = func(ctx context.Context, b []byte) (int64, error) { probed = true; return 1000, nil }
+	h.repo.(*fakeAssetRepo).onInsert = func(rec assets.AssetRecord) { gotMime = rec.MimeType }
+	mp4 := append([]byte{0, 0, 0, 0x18}, []byte("ftypmp42\x00\x00\x00\x00mp42isom")...)
+	rec := doUpload(t, h, "clip.mp4", "application/octet-stream", mp4)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if gotMime != "video/mp4" || !probed {
+		t.Errorf("mime = %q, probed = %v；期望 video/mp4 且探测时长", gotMime, probed)
+	}
+}

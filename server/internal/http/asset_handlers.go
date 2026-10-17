@@ -72,8 +72,10 @@ func (e *uploadError) Error() string { return e.Message }
 // 不变量（探测必须在 PutObject 之前、去重必须在探测之前），复制第二份迟早会漂。
 // 网页 handler 的响应体逐字未变。
 func (h *AssetHandler) storeUpload(ctx context.Context, userID, projectID int64, filename, contentType string, body []byte) (uploadResult, error) {
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	// CLI 等非浏览器客户端的 multipart 默认只给 application/octet-stream，
+	// 按内容嗅探一次，否则图片/视频会以下载类型落库和上传对象存储。
+	if contentType == "" || contentType == "application/octet-stream" {
+		contentType = http.DetectContentType(body)
 	}
 
 	// 按 (user, project) 维度去重。同一用户在同一项目里重新丢同一个文件
