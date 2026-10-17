@@ -112,7 +112,7 @@ describe('agentStore', () => {
       type: 'content_block_delta', thread_id: 'thr_1', action_id: 'act_1',
       index: 0, delta: { type: 'text_delta', text: '第一轮' },
     });
-    // 第二轮：index 全局递增（后端 018a35bf），从 3 起跳——1、2 两个序号
+    // 第二轮：index 全局递增，从 3 起跳——1、2 两个序号
     // 从未以 content_block_start 送达本气泡（属于不入流的内部块/丢帧窗口）。
     s.handleFrame({
       type: 'content_block_start', thread_id: 'thr_1', action_id: 'act_1',
@@ -194,7 +194,6 @@ describe('agentStore', () => {
 });
 
 // ===== 懒加载：hydrateTail / prependOlderMessages =====
-// 设计文档 docs/2026-08-13-agent-chat-cursor-lazy-load-design.md 的 R1/R5/R9。
 describe('agentStore 懒加载', () => {
   const srv = (id: string, at: string): AgentMessage => ({
     id, thread_id: 'thr_1', action_id: 'a', role: 'assistant', blocks: [], createdAt: at,

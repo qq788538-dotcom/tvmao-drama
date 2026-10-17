@@ -1,4 +1,4 @@
-// Package datadir 实现设置页的“修改数据目录”（spec S2）。
+// Package datadir 实现设置页的“修改数据目录”。
 //
 // 流程：设置页校验新目录（ValidateTarget）→ 壳记下待迁移路径并重启 → 下次启动时壳先调用
 // `sidecar migrate-data-dir`（Migrate：复制 + 校验，不删源）→ 壳把指针文件改成新目录 →
@@ -24,11 +24,11 @@ import (
 // PointerFileName 是壳记录迁移待办（待迁移 / 待清理目录）的文件名，放在系统默认数据目录里，永不复制、永不删除。
 const PointerFileName = "data-location.json"
 
-// LocationFileName 是壳（P8 data_dir.rs）记录“当前用哪个数据目录”的文件，同样在默认数据目录里，
+// LocationFileName 是壳（data_dir.rs）记录“当前用哪个数据目录”的文件，同样在默认数据目录里，
 // 同样永不复制、永不删除：Cleanup 会删掉旧目录里“新目录也有”的条目，复制过去就会把它删掉。
 const LocationFileName = "location.json"
 
-// CLIEndpointFileName 是壳写在默认数据目录里的 CLI 地址文件（CLI spec 3.2）。和 location.json 一样
+// CLIEndpointFileName 是壳写在默认数据目录里的 CLI 地址文件。和 location.json 一样
 // 属于"默认目录的附属文件"：迁移不复制，清理不删除，也不让目录被判为非空。
 const CLIEndpointFileName = "cli-endpoint.json"
 
@@ -37,7 +37,7 @@ const (
 	dbName     = "data.db"
 	dbTmpName  = "data.db.migrating"
 	// migratedFromName 记录“这份副本是从哪个目录迁来的”，在去掉迁移标记之前写入。下次启动重跑同一迁移时
-	// （壳在迁移子进程跑完之前退出），据此认出“副本已完整”并视为成功（I2）。它不随后续迁移复制。
+	// （壳在迁移子进程跑完之前退出），据此认出“副本已完整”并视为成功。它不随后续迁移复制。
 	migratedFromName = ".miaoju-migrated-from"
 )
 
@@ -62,7 +62,7 @@ var notCopied = map[string]bool{markerName: true, migratedFromName: true, dbName
 // （不动用户所选文件夹本身的权限）。
 const DedicatedSubdir = "MiaojuData"
 
-// TargetState 是所选数据目录的状态（I1）：空（可迁移过去）/ 已有喵剧数据（可直接使用，不迁移）。
+// TargetState 是所选数据目录的状态：空（可迁移过去）/ 已有喵剧数据（可直接使用，不迁移）。
 // 非空且不是喵剧数据目录的情况直接报错。
 type TargetState string
 

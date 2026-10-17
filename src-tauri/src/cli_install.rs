@@ -1,4 +1,4 @@
-//! 设置 → 命令行工具（CLI spec 7.2）：把安装包里的 miaoju-cli 装成终端里的 `miaoju`。
+//! 设置 → 命令行工具：把安装包里的 miaoju-cli 装成终端里的 `miaoju`。
 //! macOS：~/.miaoju/bin/miaoju 符号链接到包内文件，~/.zshrc（及已存在的 ~/.bash_profile）追加带标记的 PATH 行。
 //! Windows：复制到 %USERPROFILE%\.miaoju\bin\miaoju.exe（普通用户建不了符号链接），写用户级 Path。
 //! 同时把包内 skill 装进已存在的 ~/.claude、~/.codex（macOS 符号链接，Windows 复制并写标记文件）；

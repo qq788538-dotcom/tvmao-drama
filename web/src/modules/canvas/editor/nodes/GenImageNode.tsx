@@ -73,7 +73,7 @@ export function GenImageNode({ id }: { id: string }) {
   const addNode = useCanvasStore((s) => s.addNode);
   const setLightbox = useCanvasStore((s) => s.setLightbox);
   // 选中状态驱动浮动上传 chip 和 prompt 面板的显示/隐藏动画——用户选中节点
-  // 之前一直隐藏，对标参考站点的「聚焦时展开」行为。
+  // 之前一直隐藏，聚焦时展开。
   const isSelected = useCanvasStore((s) => s.selectedIds.has(id));
   // 宫格切分模式里选中态浮层（prompt 面板、上传 chip）整体让位：网格叠在节点
   // 上时面板还展开着会盖住格子（用户点名要隐藏）。退出切分即恢复。
@@ -89,12 +89,12 @@ export function GenImageNode({ id }: { id: string }) {
   // 画布上相反——节点只有两三百像素宽，必须用缩略图（一张画布可能挂上百个
   // 节点，全换原图流量翻好几倍），也必须留着双击预览，不然看不清。
   const storyboardMode = useStoryboardMode();
-  // 故事板里参考区支持连线编辑（用户拍板推翻了 spec 的「不做连线编辑」）：
+  // 故事板里参考区支持连线编辑：
   // 缩略图 hover 出 × 断开、左侧列表卡片拖进参数面板即连上。两个动作都直接
   // 走 store（removeConnection/addConnection 自带 commit 可撤销、去重、落库）。
   const [refDragOver, setRefDragOver] = useState(false);
   // 拖拽全程（不只是悬停到面板上）都要给反馈：灰虚线=拖起来了、这里能放；
-  // 紫虚线=已经悬停在面板上。对标产品同款三态。
+  // 紫虚线=已经悬停在面板上。
   const nodeDragActive = useNodeDragActive();
   const disconnectRef = (upstreamId: string) => {
     const st = useCanvasStore.getState();
@@ -177,7 +177,7 @@ export function GenImageNode({ id }: { id: string }) {
 
   // ── 提示词预设 ────────────────────────────────────────────────────────────
   // 整套功能绑模型：当前选中模型命中配置的 models 列表才显示菜单入口。
-  // settings.promptPreset 只存 key（落库用 key、展示用 name，用户拍板）；
+  // settings.promptPreset 只存 key（落库用 key、展示用 name）；
   // key 在配置里查不到（被后台删了）时 chip 不渲染、提交时视为未选——与服务端
   // 「查不到就静默忽略」的规则两侧一致。
   const presetsConfig = presetsQuery.data;
@@ -191,7 +191,7 @@ export function GenImageNode({ id }: { id: string }) {
       ? presetsConfig?.presets.find((p) => p.key === promptPresetKey)
       : undefined;
   // 当前预设的可调参数维度。非空时 chip 的 ⚙ 分叉成「打开参数面板」——换预设
-  // 只走底部入口按钮（用户拍板）；无参数的预设 ⚙ 维持原样打开换预设菜单。
+  // 只走底部入口按钮；无参数的预设 ⚙ 维持原样打开换预设菜单。
   const presetParamDims = activePreset?.value.params ?? [];
   const hasPresetParams = presetParamDims.length > 0;
   // settings.presetParams 只存用户显式点选过的维度（维度 key → 选项 key）；
@@ -924,11 +924,11 @@ export function GenImageNode({ id }: { id: string }) {
               <Plus size={14} />
             </button>
             {/* 已连接的上游图片缩略图——渲染在『添加』占位钮和尾部控件之间，
-                对标参考站点的「[⬚] [ref] [ref] [+]」模式。图片连线本身仍然
+                即「[⬚] [ref] [ref] [+]」模式。图片连线本身仍然
                 承载权威状态；这里只是个「参考图已挂上」的视觉确认。 */}
             {mediaRefs.slice(0, 4).map((ref, i) => (
-              // 外层不做 overflow-hidden：× 是骑在右上角、半出边框的圆徽章
-              // （对标产品同款），裁剪层挂外层会把它裁掉半个。圆角裁剪由内层
+              // 外层不做 overflow-hidden：× 是骑在右上角、半出边框的圆徽章，
+              // 裁剪层挂外层会把它裁掉半个。圆角裁剪由内层
               // 这个只包媒体的 div 负责。
               <div
                 key={`${ref.nodeId}-${i}`}
@@ -979,7 +979,7 @@ export function GenImageNode({ id }: { id: string }) {
             </button>
           </div>
 
-          {/* 单选预设 chip——「视觉内嵌」进输入框首行（对标参考产品）：chip 是
+          {/* 单选预设 chip——「视觉内嵌」进输入框首行：chip 是
               编辑器外的独立元素，绝对定位叠在 contenteditable 首行行首，编辑器
               用 firstLineIndent 给它让位——不进 mention 文档流（进了会被序列化
               进提示词，而预设正文本来就不该出现在 prompt 里，前端也拿不到）。
@@ -992,7 +992,7 @@ export function GenImageNode({ id }: { id: string }) {
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 {/* 左侧：静默态是彩色图标底座，hover 整个 chip 时原位变 × 删除
-                    （对标参考产品：删除在左侧、图标位复用，不另占宽度）。 */}
+                    （删除在左侧、图标位复用，不另占宽度）。 */}
                 <button
                   type="button"
                   aria-label="移除预设"
@@ -1007,7 +1007,7 @@ export function GenImageNode({ id }: { id: string }) {
                 </button>
                 <span className="truncate">{activePreset.value.name}</span>
                 {/* 右侧 ⚙：行为按预设是否带 params 分叉——带参数的预设打开参数
-                    面板（换预设只走底部入口按钮，用户拍板）；无参数的预设维持
+                    面板（换预设只走底部入口按钮）；无参数的预设维持
                     原样就地打开换预设菜单（chip 在输入框顶部，上方放不下时
                     弹层向下弹，见各自弹层定位处）。 */}
                 <button
@@ -1182,7 +1182,7 @@ export function GenImageNode({ id }: { id: string }) {
               );
             })}
 
-            {/* 预设菜单入口——位置对标参考产品：底部参数行，参数 pill 之后、
+            {/* 预设菜单入口——位置在底部参数行，参数 pill 之后、
                 竖分隔线隔开（「… 1张 | ✨」）。整套功能绑模型：当前模型不在配置的
                 models 里就完全不渲染（不是禁用），语义上此模型根本没有这个功能。 */}
             {presetModelMatched && (
@@ -1211,7 +1211,7 @@ export function GenImageNode({ id }: { id: string }) {
                       );
                     }}
                   >
-                    {/* Grid2x2Plus 对标参考产品的预设入口图标（方块组+加号）。 */}
+                    {/* Grid2x2Plus：预设入口图标（方块组+加号）。 */}
                     <Grid2x2Plus size={14} />
                   </button>
                   <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/pbtn:block px-2 py-1 rounded-md bg-popover text-foreground text-[11px] border border-white/10 shadow-lg whitespace-nowrap pointer-events-none select-none">
@@ -1223,8 +1223,8 @@ export function GenImageNode({ id }: { id: string }) {
 
             <div className="flex-1" />
 
-            {/* 装饰性麦克风——语音 prompt 不在本次范围内，所以这是个虚位，
-                对标参考站点的右侧栏，但不凭空造功能。从 tab 顺序里隐藏。 */}
+            {/* 装饰性麦克风——语音 prompt 尚未支持，所以这是个虚位，
+                占住右侧栏的位置，但不凭空造功能。从 tab 顺序里隐藏。 */}
             <button
               type="button"
               tabIndex={-1}
@@ -1291,13 +1291,13 @@ export function GenImageNode({ id }: { id: string }) {
           fixed 弹层在画布 zoom≠1 时会随祖先 transform 错位，先例 NodeContextMenu）。
           遮罩 mousedown stopPropagation：不拦的话会穿透到画布触发框选/取消选中。 */}
       {presetMenuRect && presetsConfig && (() => {
-        // 多列排布（对标参考产品）：一列按高度估算放不下就把整组流到下一列，
+        // 多列排布：一列按高度估算放不下就把整组流到下一列，
         // 不出滚动条；列数封顶后才由 overflow-auto 兜底（splitPresetColumns 注释）。
         const columns = splitPresetColumns(groupPresets(presetsConfig.presets));
         const colCount = Math.max(1, columns.length);
         const panelW = colCount * PRESET_COL_W + (colCount - 1) * 6 + 12;
         const left = Math.max(8, Math.min(presetMenuRect.left, window.innerWidth - panelW - 8));
-        // 默认开在锚点上方（底部入口按钮：菜单向上展开，对标参考产品）。
+        // 默认开在锚点上方（底部入口按钮：菜单向上展开）。
         // 用 bottom 锚定而不是算 top：面板高度随条目数变化，bottom 锚定天然
         // 贴着按钮往上长，不用预知实际高度。
         // 从 chip 的 ⚙ 打开时锚点在输入框顶部，上方放不下就翻到锚点下方。
@@ -1347,7 +1347,7 @@ export function GenImageNode({ id }: { id: string }) {
                           : 'bg-transparent hover:bg-accent/60 text-sidebar-foreground'
                       }`}
                     >
-                      {/* 深色圆角方块底座 + 线性图标——对标参考产品的条目图标形态。 */}
+                      {/* 深色圆角方块底座 + 线性图标——条目图标形态。 */}
                       <span className="w-8 h-8 rounded-[10px] bg-white/[0.07] border border-white/10 flex items-center justify-center shrink-0 text-foreground">
                         <PresetIcon icon={p.value.icon} size={16} />
                       </span>
@@ -1605,7 +1605,7 @@ function RatioTile({
   );
 }
 
-// 参考站点风格的 ratio 网格：1:1 占据左侧一个高方块，其余的在它右边填满一个
+// ratio 网格：1:1 占据左侧一个高方块，其余的在它右边填满一个
 // 4 列网格。当模型的选项里不含 1:1 时，回退到一个普通的 4 列网格。
 function RatioGrid({
   options,

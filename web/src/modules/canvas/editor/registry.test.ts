@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { nodeComponents, nodeMenuItems } from './registry';
 
-// spec F2（2026-09-30 决策）：「保存到本地」放回右键菜单，「图片对比」「预览」继续隐藏。
+// 「保存到本地」在右键菜单里，「图片对比」「预览」隐藏。
 describe('添加节点菜单（F2）', () => {
   it('「保存到本地」在菜单里，归「输出」组', () => {
     expect(nodeMenuItems.find((m) => m.type === 'local-save')).toMatchObject({

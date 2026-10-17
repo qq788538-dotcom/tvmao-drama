@@ -1,5 +1,5 @@
 // Package cliapi 是自由画布 CLI 的服务端适配层：稳定 DTO、语义节点映射、
-// 幂等与领域编排。它与网页 HTTP 层完全独立（spec §1.1），但 service 层及以下
+// 幂等与领域编排。它与网页 HTTP 层完全独立，但 service 层及以下
 // 全部复用现有 projects/canvasstate/canvasgen/models。
 //
 // 错误码是公共契约。CLI 按 code 分支决定退出码，**不解析中文 message**，
@@ -8,7 +8,7 @@ package cliapi
 
 import "fmt"
 
-// CLI 稳定错误码。分组见 spec §12。
+// CLI 稳定错误码。
 const (
 	// 鉴权
 	CodeAuthRequired   = "AUTH_REQUIRED"

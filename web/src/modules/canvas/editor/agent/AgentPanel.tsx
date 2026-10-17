@@ -1,7 +1,5 @@
-// apps/web/src/canvas/agent/AgentPanel.tsx
-//
 // 承载 agent 对话的右侧抽屉（抽屉外壳、会话下拉、消息区、附件预览、输入栏）。
-// 视觉结构源自参考仓已删除的 ChatPanel（桌面端不迁移，spec X7），数据层的区别：
+// 视觉结构源自 ChatPanel，数据层的区别：
 //   - REST 聊天补全 → 经 AgentClient 走 WebSocket
 //   - ChatMessageRecord[]   → AgentMessage[]（来自 useAgentStore）
 //   - 模型下拉            → skill chip + skill 选择按钮
@@ -68,7 +66,7 @@ export interface AgentPanelProps {
   onArtifact?: (ctx: { thread_id: string; action_id: string; artifact: Artifact }) => void;
 }
 
-// 文本附件拒收上限（spec 2026-08-31），与服务端 read_attachment 的 10MB cap 一致。
+// 文本附件拒收上限，与服务端 read_attachment 的 10MB cap 一致。
 const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
 
 const PANEL_WIDTH_MIN = 380;
@@ -94,8 +92,7 @@ export function saveAgentPanelWidth(w: number): void {
 }
 
 // 懒加载页大小。一"轮"对话落 DB 2~3 行（user+assistant+tool），30 条 ≈ 10~15 轮
-// ≈ 6 屏以上缓冲；更小则常态进面板要连拉两页。设计依据见
-// docs/2026-08-13-agent-chat-cursor-lazy-load-design.md（D1，用户拍板 30）。
+// ≈ 6 屏以上缓冲；更小则常态进面板要连拉两页。
 const PAGE_SIZE = 30;
 
 export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onArtifact }: AgentPanelProps) {
@@ -135,14 +132,14 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
   const [mentionActive, setMentionActive] = useState<{ query: string } | null>(null);
   const [threadMenuOpen, setThreadMenuOpen] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
-  // 【L7】sending 与 thread 绑定（记「哪个 thread 在等回复」而不是布尔值）：
+  // sending 与 thread 绑定（记「哪个 thread 在等回复」而不是布尔值）：
   // 布尔版本下，sending 中切到另一个末条为已完成 assistant 的线程，完成检测
   // effect 会拿错线程的消息误翻 sending=false，原线程完成后也不再 hydrate。
   const [sendingThreadId, setSendingThreadId] = useState<string | null>(null);
   // 运行中的 actionId——停止按钮发 abort 帧要按 (thread, action) 精确匹配。
   // 用 ref 不用 state：它只在点停止那一刻被读，不驱动渲染。
   const sendingActionIdRef = useRef<string | null>(null);
-  // 【M2】WS 未连通时发送失败的可见报错（内联在输入框上方）。
+  // WS 未连通时发送失败的可见报错（内联在输入框上方）。
   const [sendError, setSendError] = useState<string | null>(null);
   // 「threads 列表已为哪个 projectId 拉回」。新项目 threads 为空，靠
   // threads.length 分不清「还没拉」和「拉回是空」；交接单若在拉回前就 send() 建了
@@ -164,7 +161,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
   const setConnectionState = useAgentStore((s) => s.setConnectionState);
   const setArtifactListener = useAgentStore((s) => s.setArtifactListener);
   const messages = useAgentStore((s) => (currentThreadId ? s.messages[currentThreadId] ?? [] : []));
-  // 完成检测（L7）要看 sendingThreadId 自己的消息表——它未必是当前展示的 thread。
+  // 完成检测要看 sendingThreadId 自己的消息表——它未必是当前展示的 thread。
   const messagesByThread = useAgentStore((s) => s.messages);
   const connectionState = useAgentStore((s) => s.connectionState);
 
@@ -177,7 +174,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
   const inputRef = useRef<MentionInputHandle | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 【H4】REST re-hydrate 与实时帧的竞态防线：每个 thread 一个世代号。发起
+  // REST re-hydrate 与实时帧的竞态防线：每个 thread 一个世代号。发起
   // hydrate 时世代 +1 并记住快照；响应回来时世代若又前进了（期间用户发了新一轮
   // 消息，或发起了更新的 hydrate），说明本地已有比该响应更新的内容——整表覆盖
   // 会把新一轮的 user 气泡和 pending 占位一起抹掉，之后的 delta / action_end
@@ -204,12 +201,12 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
         // 必须复位翻页锁：本次 hydrate 已把世代推进，在途的 loadOlder 响应会被
         // 世代守卫丢弃且不自己复位（它以为 hydrateTail 会复位）；hydrate 又失败
         // 到不了 hydrateTail——两头都不复位的话 loadingOlder 永远卡 true，该
-        // thread 从此翻不了页（审查 F4，已被独立验证复现）。
+        // thread 从此翻不了页。
         setLoadingOlder(tid, false);
       });
   };
 
-  // ===== 向上滚动懒加载更早历史（设计文档 §5.3） =====
+  // ===== 向上滚动懒加载更早历史 =====
   const topSentinelRef = useRef<HTMLDivElement | null>(null);
   // prepend 前的滚动几何快照——落地后在 paint 前做 scrollTop 补偿用。
   const prependAdjustRef = useRef<{ height: number; top: number } | null>(null);
@@ -223,7 +220,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
     const list = useAgentStore.getState().messages[tid] ?? [];
     const oldest = list.find((m) => m.createdAt);
     if (!oldest) return;
-    // 【H4】的翻页变体：记录世代但**不推进**。期间发生过 tail hydrate（新轮次
+    // 世代守卫的翻页变体：记录世代但**不推进**。期间发生过 tail hydrate（新轮次
     // 完成/看门狗/切回本线程）说明窗口已被重排，旧页拼进去会错位——直接丢弃，
     // 代价只是用户再滚一下重新触发。
     const epoch = hydrateEpochRef.current[tid] ?? 0;
@@ -253,7 +250,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
     scroller.scrollTop = adjust.top + (scroller.scrollHeight - adjust.height);
   });
 
-  // 【M1】看门狗强退过（sending 被兜底翻掉）的 thread 集合。重连成功后后端续传
+  // 看门狗强退过（sending 被兜底翻掉）的 thread 集合。重连成功后后端续传
   // 的帧没有 pending 气泡可挂、会被整批丢弃，且不再有任何 re-hydrate 触发点——
   // 这里记下来，等连接恢复 / action_end 帧到达时补 hydrate，保证最终态最终对齐。
   const watchdogFiredThreadsRef = useRef<Set<string>>(new Set());
@@ -274,14 +271,14 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
           resolveEndpoint: () => resolveSidecarWsEndpoint('/api/v1/agent/ws'),
         });
         c = client;
-        // 【L6】状态回调只认「当前 client」：effect 重建 client 后，旧 socket 的
+        // 状态回调只认「当前 client」：effect 重建 client 后，旧 socket 的
         // close 事件是异步派发的、可能晚到，不加守卫会把新连接的 connectionState
         // 打回 closed，让 12s 看门狗对健康连接误开火。
         client.onOpen(() => { if (clientRef.current === client) setConnectionState('open'); });
         client.onClose(() => { if (clientRef.current === client) setConnectionState('closed'); });
         client.onFrame(handleFrame);
         client.onFrame(() => { lastFrameAtRef.current = Date.now(); }); // 看门狗心跳
-        // 【M1】被看门狗强退过的 thread：它的 pending 气泡已被抹掉，续传帧全部被
+        // 被看门狗强退过的 thread：它的 pending 气泡已被抹掉，续传帧全部被
         // store 丢弃。action_end 一到说明该轮真正结束、DB 已有完整消息，此刻补一次
         // hydrate 是把最终回复捞回来的确定时机。
         client.onFrame((f) => {
@@ -307,7 +304,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // 【M1】重连成功时，对看门狗强退过的 thread 补一次 hydrate：若该轮在断线期间
+  // 重连成功时，对看门狗强退过的 thread 补一次 hydrate：若该轮在断线期间
   // 已经结束（action_end 再也不会来了），这是唯一能把最终回复捞回来的时机。这里
   // 不清集合——后端此刻可能还在跑，真正的结束对齐交给上面的 action_end 兜底；
   // 已结束场景下集合残留只是让下次重连多一个幂等 GET，无害。
@@ -326,7 +323,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
   // ——那正是串台的根源。
   useEffect(() => {
     if (!projectId) return;
-    // 【M6】过期响应守卫：项目 A→B 快速切换时，A 的慢响应晚到会把 B 已就位的
+    // 过期响应守卫：项目 A→B 快速切换时，A 的慢响应晚到会把 B 已就位的
     // 线程列表覆盖回 A 的，并 selectThread 到 A 的 thread——之后发消息全落在 A，
     // 而本连接注册的是 B，帧被 project guard 丢弃、永久转圈。effect 已重跑
     //（cancelled=true）就整个丢弃旧响应。
@@ -369,8 +366,8 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
   // 在面板的整个生命周期里重新钉底 + 观察内容。**尾部**新内容（尾消息 id 变化
   // ——发送、流式开始、hydrate 对账、切换 thread）会重新启用钉底，无视当前滚动
   // 位置。依赖故意用尾消息 id 而不是 messages.length：向上懒加载 prepend 一页
-  // 也会让 length 增加，但那是用户正在往回看历史，绝不能把人强拽回底部
-  // （设计文档 R2）；prepend 不动尾部，尾 id 不变即不触发。
+  // 也会让 length 增加，但那是用户正在往回看历史，绝不能把人强拽回底部；
+  // prepend 不动尾部，尾 id 不变即不触发。
   const tailMessageId = messages.length > 0 ? messages[messages.length - 1].id : '';
   useEffect(() => {
     const scroller = messagesScrollerRef.current;
@@ -432,9 +429,9 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
   // 持久化的对齐：流式 frame 会把多轮的一次对话塌缩成单条消息（index 碰撞会丢掉
   // 最后的文本回复），而 DB 每轮各保留一行。重新拉取能得到干净的视图。
   //
-  // 【L7】只看 sendingThreadId 自己的消息表：用户可能已经切去看别的 thread，
+  // 只看 sendingThreadId 自己的消息表：用户可能已经切去看别的 thread，
   // 按「当前展示的 thread」判断会误翻状态、漏掉原线程的完成 hydrate。
-  // 【H4】hydrate 走 hydrateThread（世代守卫）：用户在响应在途时发下一条消息会
+  // hydrate 走 hydrateThread（世代守卫）：用户在响应在途时发下一条消息会
   // 把世代推进，晚到的旧响应被丢弃，不会抹掉新一轮的 user 气泡和 pending 占位。
   useEffect(() => {
     const tid = sendingThreadId;
@@ -470,7 +467,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
       const silent = Date.now() - lastFrameAtRef.current;
       const dead = connectionState === 'closed' || connectionState === 'error';
       if ((dead && silent > STALL_CLOSED_MS) || silent > STALL_OPEN_MS) {
-        // 【M1】记下被强退的 thread：此刻的 hydrate 只是半成品兜底，后端 Run 很
+        // 记下被强退的 thread：此刻的 hydrate 只是半成品兜底，后端 Run 很
         // 可能还活着；重连成功 / action_end 到达时会对这些 thread 再补 hydrate。
         watchdogFiredThreadsRef.current.add(tid);
         void hydrateThread(tid);
@@ -574,7 +571,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
       let text: string | undefined;
       let charCount: number | undefined;
       if (kind === 'file') {
-        // 分流（spec 2026-08-31）：≤100KB 全文内联进消息（不截断——本就在
+        // 分流：≤100KB 全文内联进消息（不截断——本就在
         // 阈值内）；>100KB 不内联，chip 只留字数，发送时走 mentions[]，由
         // agent 用 read_attachment 按 artifact_id 分段读。>10MB 直接拒收。
         if (file.size > ATTACH_MAX_BYTES) {
@@ -655,7 +652,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
         const fresh = (node?.settings as { text?: unknown } | undefined)?.text;
         return typeof fresh === 'string' && fresh ? { ...m, text: fresh } : m;
       });
-    // 分流（spec 2026-08-31）：≤100KB 的正文内联；超阈值（含上传时就没带
+    // 分流：≤100KB 的正文内联；超阈值（含上传时就没带
     // text 的大文件 chip）改走 mentions[]，agent 用 read_attachment 分段读。
     // 文字节点的正文是上面从画布现读的，所以阈值判断必须放在现读之后。
     const { inline: inlineChips, oversize: oversizeChips } = splitTextChips(textChips);
@@ -700,10 +697,10 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
       selectThread(t.id);
     }
     const actionId = nanoid();
-    // 【M2】先确认真的发出去，再做清输入框 / append 气泡这些副作用。WS 非 OPEN
+    // 先确认真的发出去，再做清输入框 / append 气泡这些副作用。WS 非 OPEN
     // 时 sendUserMessage 返回 false——消息根本没上网，此时若照旧清空输入，用户
     // 输入就进了黑洞（本地气泡随后还会被看门狗 hydrate 抹掉、零报错）。失败时
-    // 原样保留输入并给出可见提示，等连接恢复（M3 慢速重连兜底）再重试。
+    // 原样保留输入并给出可见提示，等连接恢复（慢速重连兜底）再重试。
     const sent = clientRef.current?.sendUserMessage({
       thread_id: threadId,
       action_id: actionId,
@@ -722,7 +719,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
     setSendingThreadId(threadId);
     sendingActionIdRef.current = actionId;
     lastFrameAtRef.current = Date.now(); // 看门狗从发送时刻起计静默
-    // 【H4】新一轮已经开始：推进世代，作废所有在途的旧 hydrate 响应——它们晚到
+    // 新一轮已经开始：推进世代，作废所有在途的旧 hydrate 响应——它们晚到
     // 时不能整表覆盖，否则会抹掉下面这条 user 气泡和服务端即将建立的 pending 占位。
     bumpHydrateEpoch(threadId);
     const userBlocks: ContentBlock[] = [];
@@ -857,7 +854,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
         className="flex-1 overflow-auto p-3 flex flex-col gap-3 custom-scrollbar"
       >
         {/* 懒加载哨兵：还有更早历史时挂在列表最顶。滚近它就自动拉上一页；
-            没有更早的（含到顶）时整个卸载，安静停止（设计拍板 D3：不加
+            没有更早的（含到顶）时整个卸载，安静停止（不加
             「没有更早消息」提示）。 */}
         {hasMoreOlder && (
           <div ref={topSentinelRef} className="shrink-0 flex items-center justify-center py-1">
@@ -876,7 +873,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
           <MessageBubble key={m.id} msg={m} dedupeUrls={shownImageUrls} />
         ))}
         {/* 「思考中」只在 sending 的那个 thread 正被展示时出现——用户切去看别的
-            thread 时不该在无关会话里转圈（L7：sending 与 thread 绑定）。 */}
+            thread 时不该在无关会话里转圈（sending 与 thread 绑定）。 */}
         {sendingThreadId === currentThreadId && sendingThreadId !== null && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 size={12} className="animate-spin" />
@@ -910,7 +907,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
       {/* 输入 + 控件（Lovart 风格的堆叠布局——输入在上、操作栏在下，
           都放在同一个圆角卡片里）。 */}
       <div className="border-t border-border px-3 py-2 shrink-0 relative">
-        {/* 【M2】发送失败（WS 未连通）的内联报错。连接恢复或下次发送成功时清除。 */}
+        {/* 发送失败（WS 未连通）的内联报错。连接恢复或下次发送成功时清除。 */}
         {sendError && (
           <div className="px-1 pb-1.5 text-[11px] text-red-400">{sendError}</div>
         )}
@@ -960,7 +957,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
                 className="w-9 h-9 flex items-center justify-center text-white bg-zinc-600 hover:bg-red-600 rounded-full border-none cursor-pointer transition-colors"
                 onClick={() => {
                   // 停止 = 掐掉本轮 agent 的思考循环。已消耗的 LLM 轮次照常结算、
-                  // 已提交的生成任务继续跑完照常扣费（用户拍板的计费边界）。
+                  // 已提交的生成任务继续跑完照常扣费。
                   if (sendingThreadId && sendingActionIdRef.current) {
                     clientRef.current?.abort(sendingThreadId, sendingActionIdRef.current);
                   }

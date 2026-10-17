@@ -10,13 +10,13 @@ import (
 )
 
 // MediaURLExpiry 是传给 storage.SignedURL 的有效期参数。本地 URL 不过期（有效性由每次启动的
-// 媒体 token 决定），保留这个常量只为与参考仓的调用点一致。
+// 媒体 token 决定），保留这个常量只为满足 SignedURL 的参数。
 const MediaURLExpiry = 24 * time.Hour
 
 // MediaSigner 在 API 边界上，于 `media://<key>`（canonical 的 DB 形式）和 sidecar 本地媒体 URL
 // （出口形式 http://127.0.0.1:<端口>/media/<key>?token=…）之间互转。
 //
-// 与参考仓的差异：去掉了 LRU 缓存。参考仓缓存是为了让预签名 URL 在 20 小时内保持稳定、浏览器
+// 不做 LRU 缓存。预签名 URL 才需要缓存来在 20 小时内保持稳定、让浏览器
 // 磁盘缓存能命中；本地 URL 本身就是确定的（同一次启动内同一 key 永远同一 URL），换一次启动端口和
 // token 都变，缓存跨不了进程，签名也只是字符串拼接。
 type MediaSigner struct {
@@ -45,7 +45,7 @@ func (m *MediaSigner) Sign(s string) string {
 	return url
 }
 
-// SignThumb 与 Sign 同理，出缩略图 URL；本地存储不生成缩略图，返回的就是原图 URL（spec S8）。
+// SignThumb 与 Sign 同理，出缩略图 URL；本地存储不生成缩略图，返回的就是原图 URL。
 func (m *MediaSigner) SignThumb(s string, maxWidth int) string {
 	if m == nil || m.storage == nil || s == "" {
 		return s

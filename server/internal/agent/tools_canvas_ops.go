@@ -195,8 +195,8 @@ func emitCanvasOp(ctx context.Context, artifactType, name string, payload any) {
 // snapshotNodeName 在操作执行那一刻从服务端快照取节点显示名（settings.name，
 // trim 后非空才算数）。为什么必须在执行时取：删除类 chip 渲染时节点已经不在
 // 画布上，前端「渲染时 id→名称」查无可查——名字只能趁节点还活着时定格进
-// artifact payload 随消息落库。所有引用节点的操作统一走这里（用户拍板的
-// 规则：有名称显示名称，没名称才显示 id，且以后新增操作自动继承）。
+// artifact payload 随消息落库。所有引用节点的操作统一走这里（规则：
+// 有名称显示名称，没名称才显示 id，且以后新增操作自动继承）。
 // 查不到（无 Reader / 快照缺失 / 节点不存在 / 没起名）返回 ""，前端按
 // 「画布现查 → 定格名 → id」链条兜底。
 func snapshotNodeName(ctx context.Context, reader CanvasSnapshotReader, nodeID string) string {

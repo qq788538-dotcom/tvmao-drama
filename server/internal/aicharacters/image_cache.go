@@ -30,7 +30,7 @@ func EmbeddedImages() fs.FS {
 	return sub
 }
 
-// ObjectStore 是本地媒体存储里缓存要用的两个动作。Task 8 用 P1b 的 assets.Storage 适配。
+// ObjectStore 是本地媒体存储里缓存要用的两个动作，由 assets.Storage 适配。
 type ObjectStore interface {
 	Exists(ctx context.Context, key string) bool
 	Put(ctx context.Context, key, contentType string, body []byte) error
@@ -74,7 +74,7 @@ func (c *ImageCache) Ensure(ctx context.Context, key string) (bool, error) {
 	return true, c.store.Put(ctx, key, contentType, body)
 }
 
-// Middleware 包在 P1b 的 GET/HEAD /media/* 外面：请求的是角色形象图且本地还没有时，
+// Middleware 包在 GET/HEAD /media/* 外面：请求的是角色形象图且本地还没有时，
 // 先下载缓存再交给原 handler。下载失败只记日志，原 handler 照常返回 404。
 func (c *ImageCache) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
--- P1d：3D 导演台模型库（参考仓迁移 0092、0093）。
+-- 3D 导演台模型库。
 -- 用户级云端模型库：用户上传的 FBX/OBJ/GLB；画布快照里以 media://<object_key> 引用，
 -- 删除前扫 workflow_snapshots.payload 做引用检查，删行后进 orphan_objects 走 7 天宽限回收。
 CREATE TABLE director_user_models (
@@ -15,7 +15,7 @@ CREATE TABLE director_user_models (
 );
 CREATE INDEX idx_director_user_models_user ON director_user_models (user_id);
 
--- 全局模型库：平台资产，用户端只读。桌面端内置库为空（生产库为空，见 spec 附录 P2 记录）。
+-- 全局模型库：平台资产，用户端只读。桌面端内置库为空。
 CREATE TABLE director_library_categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,

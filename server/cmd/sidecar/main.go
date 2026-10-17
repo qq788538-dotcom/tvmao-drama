@@ -94,7 +94,7 @@ func run() error {
 		return errors.New("CLI token 不得与网页 token 相同")
 	}
 
-	// I4：打开 data.db 前锁住数据目录，同一目录不会有两个 sidecar（退出码 exitDataDirBusy，见 exit.go）。
+	// 打开 data.db 前锁住数据目录，同一目录不会有两个 sidecar（退出码 exitDataDirBusy，见 exit.go）。
 	unlock, err := lockDataDir(*dataDir)
 	if err != nil {
 		return err

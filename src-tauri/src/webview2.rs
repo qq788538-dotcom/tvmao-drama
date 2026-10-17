@@ -1,4 +1,4 @@
-//! Windows：建窗口前检测系统 WebView2 运行时（spec E8）。检测不到就弹窗给出微软官方下载链接，然后退出。
+//! Windows：建窗口前检测系统 WebView2 运行时。检测不到就弹窗给出微软官方下载链接，然后退出。
 //! 检测用微软推荐的 GetAvailableCoreWebView2BrowserVersionString，常青版和固定版都能识别。
 
 /// 微软官方“常青版引导程序”下载链接。

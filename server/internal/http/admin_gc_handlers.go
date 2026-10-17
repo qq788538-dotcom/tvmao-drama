@@ -7,7 +7,7 @@ import (
 )
 
 // AdminGCHandler 是 POST /api/v1/admin/gc：手动触发一次孤儿清扫。清扫逻辑在 library.OrphanSweeper，
-// sidecar 也用它在启动时和每天自动清扫（spec S9）；这个入口留着便于排查，响应字段与参考仓一致。
+// sidecar 也用它在启动时和每天自动清扫；这个入口留着便于排查。
 type AdminGCHandler struct {
 	sweeper *library.OrphanSweeper
 }

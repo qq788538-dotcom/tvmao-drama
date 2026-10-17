@@ -60,7 +60,7 @@ func newLibraryEnv(t *testing.T) *libraryEnv {
 	bridge := NewLibraryBridgeHandler(items, folders, ar, signer, conn)
 	gc := NewAdminGCHandler(library.NewOrphanSweeper(orphans, storage, conn))
 
-	// 注册方式与 Task 12 的 router.go 一致（参考仓 router.go 素材库段）。
+	// 注册方式与 router.go 的素材库段一致。
 	r := chi.NewRouter()
 	r.Use(LocalIdentity)
 	r.Route("/library", func(r chi.Router) {
@@ -208,7 +208,7 @@ func TestLibraryUploadRejectsUnsupportedMime(t *testing.T) {
 	}
 }
 
-// I2：sidecar 前面没有 nginx，素材库上传必须有 body 上限，超限 413，且不落盘、不记账。
+// sidecar 前面没有 nginx，素材库上传必须有 body 上限，超限 413，且不落盘、不记账。
 func TestLibraryUploadTooLargeReturns413(t *testing.T) {
 	e := newLibraryEnv(t)
 	if e.itemH.maxUploadBytes != assetMaxUploadBytes {
@@ -228,7 +228,7 @@ func TestLibraryUploadTooLargeReturns413(t *testing.T) {
 	}
 }
 
-// M3：扩展名直接拼进 key，"clip.mp4 "、"photo."、"a.b:c" 这类名字会让 ValidKey 失败、回 502。
+// 扩展名直接拼进 key，"clip.mp4 "、"photo."、"a.b:c" 这类名字会让 ValidKey 失败、回 502。
 func TestLibraryUploadSanitizesExtension(t *testing.T) {
 	e := newLibraryEnv(t)
 	fid := e.mkFolder(t, "f", nil)
@@ -376,7 +376,7 @@ func TestLibrarySaveToLibraryChecksProject(t *testing.T) {
 	}
 }
 
-// M7：已软删的项目不能再写引用行，否则 HardDelete 后这些行留下来，对应 key 永远算作被引用。
+// 已软删的项目不能再写引用行，否则 HardDelete 后这些行留下来，对应 key 永远算作被引用。
 func TestLibraryApplyToCanvasRejectsDeletedProject(t *testing.T) {
 	e := newLibraryEnv(t)
 	fid := e.mkFolder(t, "f", nil)

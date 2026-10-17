@@ -20,8 +20,8 @@ const maxMoovBytes = 64 << 20
 
 // ProbeMP4DurationMs 从 ISO BMFF 的 moov/mvhd 读容器声明的时长（毫秒）。
 //
-// 参考仓坚持数真实帧（ProbeDurationMs）是为了防止篡改容器时长薅按秒计费；桌面端不计费
-// （spec X3），而用户机器上通常没有 ffprobe，这是唯一可用的纯 Go 路径。
+// 数真实帧（ProbeDurationMs）能防止篡改容器时长薅按秒计费；桌面端不计费，
+// 而用户机器上通常没有 ffprobe，这是唯一可用的纯 Go 路径。
 func ProbeMP4DurationMs(data []byte) (int64, error) {
 	return ProbeMP4DurationMsReaderAt(bytes.NewReader(data), int64(len(data)))
 }

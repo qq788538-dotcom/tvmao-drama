@@ -41,7 +41,7 @@ func IsLocalMediaURL(u string) bool {
 	return ip != nil && (ip.IsLoopback() || ip.IsUnspecified())
 }
 
-// LocalMediaResolver 是 S12 未定期间的实现：
+// LocalMediaResolver 是本机媒体地址的改写实现：
 //   - 外链 / data URI：原样放行（上游自己能拿到）；
 //   - 本机图片：读出字节转 data URI（多数视觉模型接受）；
 //   - 本机视频 / 音频：经对象存储发布；未配置时返回 ErrMediaNeedsPublicURL。

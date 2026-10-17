@@ -2,9 +2,9 @@
 // 数"真实存在的帧末包时间戳"而非容器声明的 duration 字段——后者可被工具单独篡改,
 // 用于按秒计费时会被薅;数真实帧则改元数据无效。仅用于上传视频(用户可篡改的来源)。
 //
-// 桌面端不打包 ffprobe（spec 未包含 ffmpeg）：找不到 ffprobe 时 ProbeDurationMs 返回
-// ErrProbeUnavailable，调用方（P1b 的上传接口）按「时长未知」处理，不得因此拒绝上传。
-// generation 的 inputDuration 已不再调用本包（见 generation/input_duration.go）。
+// 桌面端不打包 ffprobe：找不到 ffprobe 时 ProbeDurationMs 返回
+// ErrProbeUnavailable，调用方（上传接口）按「时长未知」处理，不得因此拒绝上传。
+// generation 的 inputDuration 不调用本包（见 generation/input_duration.go）。
 package mediaprobe
 
 import (

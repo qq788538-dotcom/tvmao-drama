@@ -86,9 +86,8 @@ function useMediaDuration(url: string | undefined, kind: Kind): number | null {
 }
 
 // spawnPostprocessNode 在源视频节点正右方新建一个后处理节点并连线。
-// 「智能去字幕」「高清」「白模」共用（入口在 VideoActionsBar 工具条，2026-08-14 从
-// 本文件的右键菜单迁走）——两者落位规则完全相同，且这段坐标计算曾因
-// 「偏上 + 压住节点」修过一次（2ca59f9），复制两份必然漂移。
+// 「智能去字幕」「高清」「白模」共用（入口在 VideoActionsBar 工具条）
+// ——两者落位规则完全相同，且这段坐标计算要避开「偏上 + 压住节点」，复制两份必然漂移。
 //
 // addNode 把坐标当**中心点**（内部减半尺寸落位），三种产物节点默认同宽 320：
 // 右侧留 80 间距后再加半宽 160，y 取源节点垂直中心 —— 落在正右方、垂直居中对齐。
@@ -159,7 +158,7 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
     }
   }, [url, kind, message, queryClient]);
 
-  // 桌面端（spec S3）：本机文件在系统文件管理器里定位出来。内容还是上游外链（生成结果
+  // 桌面端：本机文件在系统文件管理器里定位出来。内容还是上游外链（生成结果
   // 没保存到本地）时没有本机文件可定位，直接置灰。
   const canReveal = isLocalMediaUrl(url);
   const reveal = async () => {
@@ -188,7 +187,7 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
   };
 
   const items: NodeMenuItem[] = [
-    // 合规校验固定放首位（用户拍板 2026-08-13）：它是 seedance 生成的前置动作，
+    // 合规校验固定放首位：它是 seedance 生成的前置动作，
     // 排最前让「先校验再生成」的路径最短。
     {
       key: 'seedance',
@@ -277,7 +276,7 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
     </span>
   );
 
-  // 「未保存到本地」（spec S5）和合规角标互不相干，同时出现时并排显示，未保存排前面。
+  // 「未保存到本地」和合规角标互不相干，同时出现时并排显示，未保存排前面。
   const badge = unsavedBadge || seedanceBadge ? (
     <>
       {unsavedBadge}

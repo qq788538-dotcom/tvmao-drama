@@ -8,7 +8,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/generation"
 )
 
-// isUnsavedOutput：产物没能落本地（spec S5：重试 3 次仍失败，保留了上游地址）。
+// isUnsavedOutput：产物没能落本地（重试 3 次仍失败，保留了上游地址）。
 func isUnsavedOutput(url string, assetIDs []int64) bool {
 	remote := strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
 	return remote && (len(assetIDs) == 0 || assetIDs[0] == 0)

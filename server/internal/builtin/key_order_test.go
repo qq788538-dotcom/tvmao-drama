@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// P2a M8：只改了一个参数的 default，ui_schema 整列重新编码时键序必须跟种子原文一致，
+// 只改了一个参数的 default，ui_schema 整列重新编码时键序必须跟种子原文一致，
 // 前端按对象键序渲染的 pill 顺序不能变成字母序。
 func TestPartsFromDocKeepsSeedKeyOrder(t *testing.T) {
 	ui := `{"ratio":{"label":"比例","default":"1:1","options":[{"value":"1:1","label":"方"},{"value":"16:9","label":"宽"}]},"duration":{"label":"时长","default":"5","options":[{"value":"5"},{"value":"10"}]}}`

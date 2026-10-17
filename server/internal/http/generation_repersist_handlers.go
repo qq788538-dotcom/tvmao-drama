@@ -22,12 +22,12 @@ type repersistCanvas interface {
 	RewriteMediaRef(ctx context.Context, userID int64, oldURL, newURL string) error
 }
 
-// repersistSigner 是 P1b *MediaSigner 的最小子集（只用 Sign）。
+// repersistSigner 是 *MediaSigner 的最小子集（只用 Sign）。
 type repersistSigner interface {
 	Sign(s string) string
 }
 
-// GenerationRepersistHandler：节点「未保存到本地」的重试按钮（spec S5）。
+// GenerationRepersistHandler：节点「未保存到本地」的重试按钮。
 type GenerationRepersistHandler struct {
 	gen    repersistGen
 	canvas repersistCanvas

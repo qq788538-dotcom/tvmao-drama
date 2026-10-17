@@ -225,9 +225,10 @@ func readLine(ctx context.Context, st *runtimeState, out *string) (int, error) {
 		err error
 	}
 	ch := make(chan result, 1)
+	in := st.deps.Stdin // 先取出来：取消返回后 goroutine 还挂在 Read 上，不能再读 st
 	go func() {
 		buf := make([]byte, 256)
-		n, err := st.deps.Stdin.Read(buf)
+		n, err := in.Read(buf)
 		ch <- result{string(buf[:n]), n, err}
 	}()
 	select {

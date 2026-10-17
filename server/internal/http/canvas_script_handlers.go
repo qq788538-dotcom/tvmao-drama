@@ -13,7 +13,7 @@ import (
 )
 
 // CanvasScriptHandler 脚本节点“剧本生成分镜”的用户侧接口：风格列表、提交、轮询。
-// 后台“脚本设置”（读写 canvas_script_config）归 P4，直接调用 Service.LoadConfig / SaveConfig。
+// 后台“脚本设置”（读写 canvas_script_config）归设置页，直接调用 Service.LoadConfig / SaveConfig。
 type CanvasScriptHandler struct {
 	svc *canvasscript.Service
 }

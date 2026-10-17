@@ -281,7 +281,7 @@ func TestModelUpstreamColumnsMustBePaired(t *testing.T) {
 	}
 }
 
-// M-6：种子删掉带独立上游的模型时打一条日志，方便排查"升级后独立上游标签消失"。Key 不进日志。
+// 种子删掉带独立上游的模型时打一条日志，方便排查"升级后独立上游标签消失"。Key 不进日志。
 func TestApplyRemovedModelWithUpstreamLogs(t *testing.T) {
 	conn := dbtest.Open(t)
 	mustApply(t, conn, mustSeed(t, []string{seedModelLine(t, 1, "img-a", "image", nil), seedModelLine(t, 2, "img-b", "image", nil)}, nil))

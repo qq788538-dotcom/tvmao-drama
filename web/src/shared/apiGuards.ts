@@ -5,8 +5,8 @@
 // 调这里的 `setApiWritesBlocked`。api.ts 和 canvas/store.ts 都依赖这个
 // lib 模块——绝不会反过来。
 //
-// 与参考仓的差异：参考仓为分享克隆、团队观看「接管编辑」、团队身份自愈开了放行名单；
-// 桌面端没有这些功能（spec X2、X4），只读态下写请求一律拦住。
+// 没有放行名单：桌面端没有分享克隆、团队观看「接管编辑」、团队身份自愈这些功能，
+// 只读态下写请求一律拦住。
 let writesBlocked = false;
 
 const WRITE_METHODS = new Set(['post', 'put', 'patch', 'delete']);

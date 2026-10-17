@@ -69,7 +69,7 @@ interface AgentStoreState {
 /**
  * 把 RFC3339 时间戳规范成可字典序比较的排序键。裸字符串比较是错的：Go 的
  * time.Time JSON（RFC3339Nano）会裁掉小数部分的尾零，于是 "…05Z" 与
- * "…05.123Z" 比较时 'Z' > '.'，时间上更早的反而排后（审查 F3，已复现证实）。
+ * "…05.123Z" 比较时 'Z' > '.'，时间上更早的反而排后。
  * 这里拆成「Date.parse 的毫秒（15 位零填充，跨时区偏移格式也对齐）+ 补齐到
  * 9 位的小数串（保住微秒）」。解析失败原样返回（测试里的合成短串走这条，
  * 退化为普通字典序）。
@@ -130,9 +130,9 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   // hydrateTail 把 thread 对齐到服务器最新一页，同时**保留**用户已上拉加载的
   // 更早窗口：新列表 = [现有列表中严格早于 tail[0] 的消息] ++ tail。
   //  - 已加载的旧页落在保留前缀里——每轮对话完成后的对账 hydrate 不再把它们
-  //    抹掉（设计文档 R1，滚动跳变的根源）；
+  //    抹掉（否则会造成滚动跳变）；
   //  - 本地乐观消息（无 createdAt）不早于任何服务端消息 → 不落前缀 → 被 tail
-  //    覆盖丢弃，与旧整表覆盖对它们的处置一致（【H4】保证不会误伤在途新轮次）；
+  //    覆盖丢弃，与旧整表覆盖对它们的处置一致（世代守卫保证不会误伤在途新轮次）；
   //  - tail 为空（空 thread）→ 整表清空，与旧行为一致。
   // hasMore 语义是「tail[0] 之前是否还有」；若保留了前缀，我们窗口的最早端比
   // tail[0] 更早，此时沿用已有的 hasMore——翻页游标始终取自窗口最早那条，
@@ -147,7 +147,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       } else {
         const head = tail[0];
         const tailIds = new Set(tail.map((m) => m.id));
-        // 邻接性判定（审查 F2，已被独立验证构造出反例）：只有当 tail 与现有
+        // 邻接性判定：只有当 tail 与现有
         // 窗口按 id 有交集时，才能证明两段之间没有缺行——一次 Run 最多落
         // 1+2×20=41 行（超过一页 30），看门狗/断线/另一标签页推进都可能让
         // 服务端多出整页以上的新行；此时 tail 与旧窗口中间隔着一段谁也没
@@ -323,8 +323,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
 }));
 
 // padBlocksTo 把 blocks 补齐到能安全写入 idx 的长度，洞位填空 text block。
-// 流式帧的 index 现在是整个 action 内全局递增（后端 018a35bf 起，多轮不再从 0
-// 重算），而同一 action 的所有轮共用一条 pending 气泡——若某些序号从未以
+// 流式帧的 index 是整个 action 内全局递增（多轮不从 0 重算），
+// 而同一 action 的所有轮共用一条 pending 气泡——若某些序号从未以
 // content_block_start 送达本气泡（断线窗口丢帧、或该序号属于不入流的内部块），
 // 直接 `blocks[idx]=…` 会产出 sparse array，MessageBubble 的 blocks.map 遇到
 // undefined 就崩。空 text block 渲染为空、hasVisible 判 false，语义上等于

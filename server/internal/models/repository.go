@@ -83,7 +83,7 @@ type InputLimit struct {
 
 // InputLimits 返回该模型的输入数量约束（key: video/image/audio）。nil = 未配置 =
 // 无任何约束，存量模型全走这条。对象内不认识的键随宽松 Unmarshal 静默丢弃——
-// 后续加新约束键（maxDurationSec 之类）不需要动这里，见 spec 2026-08-12 扩展性语义。
+// 后续加新约束键（maxDurationSec 之类）不需要动这里。
 func (m ModelConfig) InputLimits() map[string]InputLimit {
 	return m.genControl().InputLimits
 }

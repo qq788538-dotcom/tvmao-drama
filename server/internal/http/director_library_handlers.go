@@ -6,7 +6,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/directorlibrary"
 )
 
-// directorSigner 是 *MediaSigner 在导演台两个 handler 里用到的方法（P1b 提供实现）。
+// directorSigner 是 *MediaSigner 在导演台两个 handler 里用到的方法。
 type directorSigner interface {
 	Sign(string) string
 	SignThumb(string, int) string
@@ -16,8 +16,7 @@ type directorSigner interface {
 const directorMediaProtocol = "media://"
 
 // DirectorLibraryHandler 是「3D 导演台·后台全局模型库」的用户端 HTTP 层：
-// 只有一个只读目录接口。写路径（参考仓的 AdminDirectorLibraryHandler）桌面端不移植，
-// 内置库为空。
+// 只有一个只读目录接口。桌面端没有写路径，内置库为空。
 type DirectorLibraryHandler struct {
 	repo   directorlibrary.Repository
 	signer directorSigner

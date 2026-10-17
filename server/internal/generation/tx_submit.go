@@ -10,7 +10,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/billing"
 )
 
-// SubmitTx：在调用方的事务里建行 + 冻结（v5 §5.4，保证 1）。
+// SubmitTx：在调用方的事务里建行 + 冻结。
 //
 // 与 Submit 的关键差别：
 //   - 建行与 FreezeTx 同一个 tx——「建了行没冻结」「冻结了没建行」两种中间态
@@ -49,13 +49,13 @@ func (s *Service) SubmitTx(ctx context.Context, tx *sql.Tx, input SubmitInput) (
 		return nil, fmt.Errorf("输入校验失败: %w", err)
 	}
 
-	// 输入数量约束（gen_control.inputLimits，spec 2026-08-12）：与 uiSchema 白名单
+	// 输入数量约束（gen_control.inputLimits）：与 uiSchema 白名单
 	// 同一梯队，违约在建行/冻结之前拒绝。未配置的模型 len==0 直接放行。
 	if err := validateInputLimits(model.InputLimits(), input.Inputs); err != nil {
 		return nil, err
 	}
 
-	// 计费时长注入（gen_control.inputDuration，spec 2026-08-12）：与 Submit 同一段
+	// 计费时长注入（gen_control.inputDuration）：与 Submit 同一段
 	// 注入逻辑。sink 路径双跑覆盖为同值，幂等，随既有 normalize/validate 链先例，
 	// 不单独优化——注意快照在其后 marshal，注入值随任务持久化，worker 重建不再探测。
 	if err := s.resolveInputDuration(ctx, model.InputDuration(), input.Inputs); err != nil {

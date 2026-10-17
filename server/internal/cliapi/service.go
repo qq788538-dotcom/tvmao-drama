@@ -176,7 +176,7 @@ func (s *Service) ResolveNode(userID, projectID int64, ref string) (string, erro
 // GetNodeDetail 在节点详情上补出「运行前审计」需要的信息：
 // 按连线派生的实际输入、以及已产出的输出列表。
 //
-// spec §19.5：Agent 可以先完整搭建一集的节点图，再由用户确认是否产生费用——
+// Agent 可以先完整搭建一集的节点图，再由用户确认是否产生费用——
 // 前提是运行前能看清每个节点会拿到什么输入。
 func (s *Service) GetNodeDetail(userID, projectID int64, nodeID string) (NodeDetail, error) {
 	if _, err := s.project(userID, projectID); err != nil {

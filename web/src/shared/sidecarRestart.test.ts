@@ -1,4 +1,4 @@
-// sidecar 重启（P8 壳自动重启）后，REST 请求要用新的端口和 token：
+// sidecar 重启（壳自动重启）后，REST 请求要用新的端口和 token：
 // 拦截器每次现取 getServerInfo()，而 getServerInfo 的缓存会在壳广播状态事件时被清掉。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InternalAxiosRequestConfig } from 'axios';

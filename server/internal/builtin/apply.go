@@ -7,7 +7,7 @@ import (
 	"log"
 )
 
-// Apply 把编译进二进制的种子合并进库（spec M9、M11）。sidecar 每次启动在 db.Migrate 之后、
+// Apply 把编译进二进制的种子合并进库。sidecar 每次启动在 db.Migrate 之后、
 // 开始监听之前调用一次。
 //
 // builtin_seed_state 里记录的哈希与本次种子相同就直接返回，不拿写锁。否则在一个写事务里完成全部合并：
@@ -58,11 +58,11 @@ func applyModels(ctx context.Context, q querier, s *Seed) error {
 	if err != nil {
 		return err
 	}
-	// 1. 新版种子里没有的模型删除。M8 规定模型全部内置、用户不能新增，所以库里不存在需要保留的“用户模型”。
+	// 1. 新版种子里没有的模型删除。模型全部内置、用户不能新增，所以库里不存在需要保留的“用户模型”。
 	for id := range cur {
 		if _, ok := s.Model(id); !ok {
 			// 独立上游是本机用户数据，随行删除（契约）；打一条日志，升级后"独立上游"标签消失、
-			// 请求改走全局时有据可查（审查 M-6）。只记地址，不记 Key。
+			// 请求改走全局时有据可查。只记地址，不记 Key。
 			var upBase string
 			if err := q.QueryRowContext(ctx, `SELECT upstream_base_url FROM model_configs WHERE model_id = ?`, id).Scan(&upBase); err == nil && upBase != "" {
 				log.Printf("builtin: 新版种子移除了模型 %s，它单独配置的独立上游（%s）随之删除，之后改走全局上游", id, upBase)
@@ -74,7 +74,7 @@ func applyModels(ctx context.Context, q querier, s *Seed) error {
 		}
 	}
 	// 2. 主键与种子不一致的行先挪到负数临时主键，第 3 步再写成种子 id，避免逐行改主键时撞上别的行。
-	//    种子保留生产 id 是因为 P2b 的 agent_tools.source_model_id 引用它。
+	//    种子保留生产 id 是因为 agent_tools.source_model_id 引用它。
 	for _, m := range s.Models {
 		if r, ok := cur[m.ModelID]; ok && r.ID != m.ID {
 			if err := moveModelID(ctx, q, r.ID, -r.ID); err != nil {

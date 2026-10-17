@@ -1,6 +1,6 @@
 // Package directorlibrary 是「3D 导演台·后台全局模型库」的数据层：管理员配置的
 // 公共 3D 模型目录（director_library_categories / director_library_models 两张表，
-// schema 见桌面端迁移 0012_p1d_director.sql，源自参考仓 0093），用户端只读。
+// schema 见迁移 0012_p1d_director.sql），用户端只读。
 //
 // 与 directormodels（用户级模型库）平行不合并：那边是用户私有资产（计存储配额、
 // 归属校验、按 user 扫引用），这边是平台资产（不占任何用户配额、admin 维护、

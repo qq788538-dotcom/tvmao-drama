@@ -126,7 +126,7 @@ func (e *CallError) Error() string {
 	case e == nil:
 		return ""
 	case e.StatusCode > 0:
-		// Body 字段保留全文供分类判断；文本形态会进任务 error 和日志，折叠截断（I2）。
+		// Body 字段保留全文供分类判断；文本形态会进任务 error 和日志，折叠截断。
 		return fmt.Sprintf("upstream %d: %s", e.StatusCode, truncateUpstreamLog([]byte(e.Body)))
 	case e.Err != nil:
 		return fmt.Sprintf("upstream call: %v", e.Err)
@@ -188,7 +188,7 @@ func (c *Client) Call(ctx context.Context, apiKey, method, path string, payload 
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	// 请求只记方法、地址、字节数：请求体里有用户提示词、保密的绘图预设正文、参考图
-	// base64，一律不进日志（I2）。Authorization 头同样不打。
+	// base64，一律不进日志。Authorization 头同样不打。
 	log.Printf("[upstream →] %s %s bytes=%d", method, url, len(payload))
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -231,8 +231,8 @@ func (c *Client) Call(ctx context.Context, apiKey, method, path string, payload 
 	return result, nil
 }
 
-// spillKeys：第一期只抽 gpt-image 系列的 b64_json。gemini chat 格式的 data:/inline_data
-// 留第二期（spec §9）。
+// spillKeys：目前只抽 gpt-image 系列的 b64_json。gemini chat 格式的 data:/inline_data
+// 暂不处理。
 var spillKeys = map[string]bool{"b64_json": true}
 
 // readBody 读响应体。注入了 tempDir 的 client 走流式抽取；否则整份读——

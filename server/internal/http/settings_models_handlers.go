@@ -30,7 +30,7 @@ func registerModelSettings(r chi.Router, d SettingsCenterDeps) {
 
 type modelSettingsHandler struct{ d SettingsCenterDeps }
 
-// settingsModelView 是设置页看到的模型：可改字段 + 只读技术字段；计费相关字段不下发（spec X3）。
+// settingsModelView 是设置页看到的模型：可改字段 + 只读技术字段；计费相关字段不下发。
 type settingsModelView struct {
 	ID               int64             `json:"id"`
 	Type             string            `json:"type"`
@@ -254,7 +254,7 @@ func intInRange(field, label string, v *int, lo, hi int) error {
 	return nil
 }
 
-// validateModelPatch 本地校验取值范围；字段是否允许修改由严格解码和 P2a 编辑策略共同把关。
+// validateModelPatch 本地校验取值范围；字段是否允许修改由严格解码和 builtin 编辑策略共同把关。
 func validateModelPatch(m *models.ModelConfig, p *ModelPatch) error {
 	if p.Name != nil {
 		n := strings.TrimSpace(*p.Name)
@@ -328,7 +328,7 @@ const errUpstreamUnpairedMsg = "单独配置上游时，地址和 API Key 都必
 // upstreamWrite 是解析后要落库的独立上游；两项都为空表示清空。
 type upstreamWrite struct{ baseURL, apiKey string }
 
-// resolveUpstreamPatch 解析 PATCH 里的 upstream 字段（契约见 docs/specs 实施期裁定 2026-10-07）：
+// resolveUpstreamPatch 解析 PATCH 里的 upstream 字段：
 //   - 缺省：返回 nil，不改动；
 //   - null：清空，恢复走全局；
 //   - {baseUrl, apiKey?}：baseUrl 按全局地址规则校验；apiKey 缺省或空串时沿用原 Key；

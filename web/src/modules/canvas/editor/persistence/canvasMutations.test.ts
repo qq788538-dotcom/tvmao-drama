@@ -274,7 +274,7 @@ describe('canvasMutations', () => {
     expect(newOnError).not.toHaveBeenCalled();
   });
 
-  // final-review I-1：sidecar 自动重启 → SidecarGate 卸掉整棵树 → 画布页卸载。
+  // sidecar 自动重启 → SidecarGate 卸掉整棵树 → 画布页卸载。
   describe('页面卸载（sidecar 重启）时不丢修改', () => {
     it('retire 会把 debounce 中的 patch 立即入队，reset 之后照常发出', async () => {
       const patchNode = vi.fn(async () => ({ version: 2 }));

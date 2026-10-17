@@ -1,5 +1,5 @@
 // Package skillbundle 把脚本节点用到的 Skill 目录编进 sidecar，启动时释放到数据目录，
-// 供 skillruntime.Catalog 按普通目录读取。Skill 内容来自参考仓 skills/，用 scripts/sync-skills.sh 同步。
+// 供 skillruntime.Catalog 按普通目录读取。Skill 内容用 scripts/sync-skills.sh 同步。
 package skillbundle
 
 import (

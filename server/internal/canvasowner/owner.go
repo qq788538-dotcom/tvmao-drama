@@ -1,6 +1,6 @@
-// Package canvasowner 是画布「单人编辑锁」。参考仓用 Redis 实现，防止同一账号的多个标签页
-// 互相顶掉编辑；桌面端单用户、单窗口（spec S11），多人协作与编辑锁已删除（spec X2），没有可争的
-// 对手。这里保留参考仓的类型、错误与 SourceMark，给 CanvasMutationHandler 一个恒放行的实现，
+// Package canvasowner 是画布「单人编辑锁」，用于防止同一账号的多个标签页
+// 互相顶掉编辑；桌面端单用户、单窗口，多人协作与编辑锁已删除，没有可争的
+// 对手。这里保留锁的类型、错误与 SourceMark，给 CanvasMutationHandler 一个恒放行的实现，
 // 让 handler 代码和前端协议原样不动。
 package canvasowner
 
@@ -32,11 +32,11 @@ type ProbeResult struct {
 	StaleSeconds int64
 }
 
-// claimTTL 只用来填 ClaimResult.ExpiresAt（参考仓生产配置 24h），本地实现不会真的过期。
+// claimTTL 只用来填 ClaimResult.ExpiresAt（24h），本地实现不会真的过期。
 const claimTTL = 24 * time.Hour
 
 // Local 是桌面端的编辑锁：Claim 照常发放随机 ownerToken（前端用它末段前 8 位做广播回声识别），
-// Require / Heartbeat 对任何 token 都放行（包括空串——前端按 X2 删掉心跳后可能不再 Claim），
+// Require / Heartbeat 对任何 token 都放行（包括空串——前端删掉心跳后可能不再 Claim），
 // Probe 永远回答「无人持锁」。
 type Local struct{}
 
@@ -71,7 +71,7 @@ func SourceMark(ownerToken string) string {
 	return last
 }
 
-// newOwnerToken 生成 "<userID>:<actorID>:<32 位随机 hex>"，与参考仓锁值格式一致。
+// newOwnerToken 生成 "<userID>:<actorID>:<32 位随机 hex>"。
 func newOwnerToken(userID, actorUserID int64) (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {

@@ -61,14 +61,13 @@ type canvasPostprocessGeneration interface {
 	Get(ctx context.Context, userID, taskID int64) (*generation.Task, error)
 }
 
-// postprocessModelLookup 按 modelId 取模型配置（含隐藏）。参考仓定义在
-// drama_agent_task_handlers.go，桌面端不移植 drama，搬到这里。
+// postprocessModelLookup 按 modelId 取模型配置（含隐藏）。
 type postprocessModelLookup interface {
 	GetByModelID(modelID string) (*models.ModelConfig, error)
 }
 
-// postprocessSigner 是 *MediaSigner 在这里用到的两个方法（P1b 提供实现）。用窄接口而不是
-// *MediaSigner，本文件可以先于 P1b 合并编译，测试用替身。
+// postprocessSigner 是 *MediaSigner 在这里用到的两个方法。用窄接口而不是
+// *MediaSigner，测试可以用替身。
 type postprocessSigner interface {
 	ObjectKey(string) string
 	Sign(string) string
@@ -127,7 +126,7 @@ func (h *CanvasPostprocessHandler) WithObjectStore(objects postprocessObjects) *
 }
 
 // loadConfig 读后处理配置；读失败或存量数据损坏时记日志并按“未配置”降级——
-// 一份坏配置不能让所有后处理接口 500（同 T1 各 handler 的 load）。
+// 一份坏配置不能让所有后处理接口 500。
 func (h *CanvasPostprocessHandler) loadConfig() canvasgen.CanvasPostprocessConfig {
 	cfg, err := canvasgen.LoadCanvasPostprocessConfig(h.settings.Get)
 	if err != nil {
@@ -238,7 +237,7 @@ type canvasSourceNode struct {
 // 视频节点提交去字幕，产物落 nodeId 指向的擦除字幕节点。限时模型走 22h 内的上游直连地址(反查
 // generation_tasks.output.upstreamUrls，裸地址只在本函数内用于组 inputs，不写快照/不返回前端)；
 // 其余走本地对象存储签名地址。计费秒数服务端权威：优先读 assets.duration_ms，NULL 则懒下载探测
-// 并回填，仍拿不到直接拒绝(不估算，防篡改薅按秒计费——见 mediaprobe 包注释)。桌面端不计费（spec X3），服务端时长仍是上游请求里 `duration` 的唯一来源。
+// 并回填，仍拿不到直接拒绝(不估算，防篡改薅按秒计费——见 mediaprobe 包注释)。桌面端不计费，服务端时长仍是上游请求里 `duration` 的唯一来源。
 func (h *CanvasPostprocessHandler) Desub(w http.ResponseWriter, r *http.Request) {
 	userID := userIDFromContext(r.Context())
 	var body canvasDesubRequest
@@ -434,11 +433,10 @@ type canvasPostprocessEstimateRequest struct {
 // Estimate POST /canvas-tasks/postprocess-estimate {projectId,sourceNodeId,modelId,resolution?}
 // → {credits,durationMs}：后处理(去字幕/转高清)的预计积分，由后端权威计算。
 //
-// 为什么预估必须在后端算：上一轮实现让前端读 <video>.duration 去调 /models/estimate，
-// 那是浏览器解析出的**容器声明时长**，可被工具单独篡改——用户把一个两分多钟的视频
-// 声明成 1 秒，就看到「预计 1 积分」而实际按真实时长结算。旧 spec 早已规定「预估与
-// 结算统一读权威秒数」，但只落实了结算那一半，因为它没指明前端从哪拿到权威秒数。
-// 现在把「构造计费 req」整件事收进后端一处，结构上就不可能再分叉。
+// 为什么预估必须在后端算：前端读 <video>.duration 拿到的是浏览器解析出的**容器声明时长**，
+// 可被工具单独篡改——用户把一个两分多钟的视频声明成 1 秒，就会看到「预计 1 积分」而实际
+// 按真实时长结算。预估与结算必须统一读权威秒数，所以「构造计费 req」整件事收在后端一处，
+// 结构上就不可能分叉。
 //
 // 与提交路径共用 resolveDurationMs：预估看到的秒数与提交时实际计费的秒数是同一个来源，
 // 而不是两段各自实现的逻辑。拿不到权威时长一律 400，不估算兜底(无依据的预估等于骗人)。

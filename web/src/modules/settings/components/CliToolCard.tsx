@@ -31,7 +31,7 @@ function skillText(s: CliSkillStatus): string {
   return `${a.name}：${s.installed ? '已安装' : '未安装'}`;
 }
 
-/** 设置 → 命令行工具（CLI spec 7.2）。 */
+/** 设置 → 命令行工具。 */
 export function CliToolCard() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();

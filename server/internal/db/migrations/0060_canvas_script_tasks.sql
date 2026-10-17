@@ -1,5 +1,5 @@
--- 自由画布脚本节点“剧本生成分镜”任务表（P6）。列与参考仓 0088 + 0095 + 0105 的最终结构一致。
--- 桌面端没有积分（X3）：frozen_cents 恒写 0，actor_user_id 恒为 NULL，保留列只为与参考仓同构。
+-- 自由画布脚本节点“剧本生成分镜”任务表。
+-- 桌面端没有积分：frozen_cents 恒写 0，actor_user_id 恒为 NULL，保留列只为代码兼容。
 -- id 用 AUTOINCREMENT：前端节点长期持有 taskId，删除后复用 id 会让旧节点查到别的任务。
 CREATE TABLE canvas_script_tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

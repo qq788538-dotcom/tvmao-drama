@@ -1,6 +1,6 @@
 // Package localauth 是桌面端 sidecar 的本地鉴权：每次启动一个随机 token，
 // 外加 Origin 白名单。sidecar 只监听 127.0.0.1，但本机浏览器里任意网页都能
-// 向这个端口发请求，所以两道都不能省（spec SEC1、SEC2）。
+// 向这个端口发请求，所以两道都不能省。
 package localauth
 
 import (
@@ -28,7 +28,7 @@ type Config struct {
 	AllowedHosts []string
 }
 
-// CLIPathPrefix 是 CLI 契约的路由前缀（spec 3.3）。
+// CLIPathPrefix 是 CLI 契约的路由前缀。
 const CLIPathPrefix = "/api/v1/cli/"
 
 func cliTokenOK(cfg Config, r *http.Request) bool {

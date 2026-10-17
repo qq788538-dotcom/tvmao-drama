@@ -100,7 +100,7 @@ func TestSettingRowAndSeedHash(t *testing.T) {
 	}
 }
 
-// settings.Repository.Set（P1a）写入的行没有覆盖记录，读出来是 nil。
+// settings.Repository.Set 写入的行没有覆盖记录，读出来是 nil。
 func TestDecodeOverridesEmpty(t *testing.T) {
 	if o, err := decodeOverrides("[]"); err != nil || o != nil {
 		t.Fatalf("o=%v err=%v", o, err)

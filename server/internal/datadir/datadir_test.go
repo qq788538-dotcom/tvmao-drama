@@ -227,7 +227,7 @@ func lastIndexOf(evs []event, op, path string) int {
 	return -1
 }
 
-// I2：新副本的文件、目录项、数据库都要先 fsync，quick_check 在 fsync 之后，最后才去掉标记。
+// 新副本的文件、目录项、数据库都要先 fsync，quick_check 在 fsync 之后，最后才去掉标记。
 func TestMigrateDurabilityOrder(t *testing.T) {
 	from, base := t.TempDir(), t.TempDir()
 	newSourceDB(t, from)
@@ -283,7 +283,7 @@ func TestMigrateDurabilityOrder(t *testing.T) {
 	}
 }
 
-// I2：Cleanup 在删除任何旧数据之前先把新目录落盘。
+// Cleanup 在删除任何旧数据之前先把新目录落盘。
 func TestCleanupSyncsNewDirBeforeRemoving(t *testing.T) {
 	oldDir, newDir := t.TempDir(), t.TempDir()
 	for _, p := range []string{"data.db", "media/a.png"} {
@@ -319,7 +319,7 @@ func TestCleanupRefusesWhileMigrationMarkerPresent(t *testing.T) {
 	}
 }
 
-// M4：新旧目录互相包含时拒绝清理。
+// 新旧目录互相包含时拒绝清理。
 func TestCleanupRefusesNestedDirs(t *testing.T) {
 	outer := t.TempDir()
 	inner := filepath.Join(outer, "inner")
@@ -336,7 +336,7 @@ func TestCleanupRefusesNestedDirs(t *testing.T) {
 	}
 }
 
-// I3：默认目录有 diag 时，迁出 → 清理 → 还能迁回默认目录。
+// 默认目录有 diag 时，迁出 → 清理 → 还能迁回默认目录。
 func TestDiagDoesNotBlockMigratingBack(t *testing.T) {
 	def, d1 := t.TempDir(), filepath.Join(t.TempDir(), "d1")
 	newSourceDB(t, def)
@@ -362,7 +362,7 @@ func TestDiagDoesNotBlockMigratingBack(t *testing.T) {
 	}
 }
 
-// 整合：P8 壳的 location.json 与 P4 的待办文件一样放在默认数据目录里，既不能复制过去，
+// 整合：壳的 location.json 与设置页的待办文件一样放在默认数据目录里，既不能复制过去，
 // 也不能被 Cleanup 当成“新目录也有”的条目删掉（删掉就回到默认目录了）。
 func TestShellLocationFileIsNeverCopiedOrDeleted(t *testing.T) {
 	from, to := t.TempDir(), filepath.Join(t.TempDir(), "dest")
@@ -404,7 +404,7 @@ func TestValidateChosenFolderUsesDedicatedSubdir(t *testing.T) {
 	}
 }
 
-// 地址文件放在默认数据目录（spec D3）：迁移时不能把它当作数据复制走，也不能让默认目录被判为"非空"。
+// 地址文件放在默认数据目录：迁移时不能把它当作数据复制走，也不能让默认目录被判为"非空"。
 func TestIgnorableIncludesCLIEndpoint(t *testing.T) {
 	for _, n := range []string{datadir.CLIEndpointFileName, datadir.CLIEndpointFileName + ".tmp"} {
 		if !datadir.Ignorable(n) {

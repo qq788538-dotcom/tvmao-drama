@@ -1,5 +1,4 @@
-// Package http 装配 sidecar 的全部 HTTP 路由。包名和路径与参考仓
-// apps/api/internal/http 一致，业务 handler 直接落在这个包里。
+// Package http 装配 sidecar 的全部 HTTP 路由，业务 handler 直接落在这个包里。
 package http
 
 import (
@@ -34,41 +33,41 @@ type Deps struct {
 	LibraryBridge     *LibraryBridgeHandler
 	AdminGC           *AdminGCHandler
 
-	// Generation 是 P1c 生成链路的 HTTP 入口（nil 字段不注册对应路由）。
+	// Generation 是生成链路的 HTTP 入口（nil 字段不注册对应路由）。
 	Generation GenerationRoutes
-	// GenerationRepersist 是节点「未保存到本地」的重试接口（spec S5）。
+	// GenerationRepersist 是节点「未保存到本地」的重试接口。
 	GenerationRepersist *GenerationRepersistHandler
-	// ── P1d ──
+	// ── 后处理、AI 角色、Seedance、导演台 ──
 	CanvasPostprocess *CanvasPostprocessHandler
 	GenImagePreset    *GenImagePresetHandler
 	MultiAngle        *MultiAngleHandler
 	LightControl      *LightControlHandler
 	AICharacter       *AICharacterHandler
-	// AICharacterImages 包在 /media/* 外面：角色形象图本地没有时先下载缓存（spec F7）。nil = 不包。
+	// AICharacterImages 包在 /media/* 外面：角色形象图本地没有时先下载缓存。nil = 不包。
 	AICharacterImages *aicharacters.ImageCache
 	Seedance          *SeedanceHandler
 	DirectorModel     *DirectorModelHandler
 	DirectorLibrary   *DirectorLibraryHandler
 
-	// ── P5 Agent ── 为 nil 时不注册对应路由（P0 路由测试与 wire() 的 e2e 不装配 Agent）。
+	// ── Agent ── 为 nil 时不注册对应路由（路由测试与 wire() 的 e2e 不装配 Agent）。
 	// sidecar 的 main 总会装配（wireAgent 需要根 ctx，所以不在 wire() 里）。
 	Agent      *AgentHandler
 	Skills     *SkillsHandler
 	AdminAgent *AdminAgentHandler
 
-	// CanvasScript 脚本节点接口（P6）；nil 时不注册，便于只测其他路由。
+	// CanvasScript 脚本节点接口；nil 时不注册，便于只测其他路由。
 	CanvasScript *CanvasScriptHandler
-	// SettingsCenter 是设置页接口（P4，/api/v1/settings/*）的依赖；为 nil 的那部分接口不注册。
+	// SettingsCenter 是设置页接口（/api/v1/settings/*）的依赖；为 nil 的那部分接口不注册。
 	SettingsCenter SettingsCenterDeps
 
-	// CLI 契约（CLI spec 第 4 节）。鉴权在最外层 localauth 按 /api/v1/cli/ 前缀分流，
+	// CLI 契约。鉴权在最外层 localauth 按 /api/v1/cli/ 前缀分流，
 	// 这里不另挂鉴权；userID 由 LocalIdentity 固定为 1。
 	CLI      *CLIHandler
 	CLIModel *CLIModelHandler
 	CLIAsset *CLIAssetHandler
 }
 
-// MustWireCLI 在启动期校验 CLI 契约的依赖都接上了，缺一个就 panic（照搬参考仓）。
+// MustWireCLI 在启动期校验 CLI 契约的依赖都接上了，缺一个就 panic。
 func MustWireCLI(d Deps) {
 	var missing []string
 	if d.CLI == nil {
@@ -86,7 +85,7 @@ func MustWireCLI(d Deps) {
 }
 
 // MustWire 在启动期校验业务 handler 都已装配，缺一个就 panic。路由按字段注册，漏装配不会编译失败，
-// 直到有请求进来才 nil 解引用（参考仓 MustWireCLI 的同一思路）。不放进 NewRouter：P0 的路由测试
+// 直到有请求进来才 nil 解引用（与 MustWireCLI 同一思路）。不放进 NewRouter：路由测试
 // 只装配了 ping/diag，放进去会把它们打挂。
 func MustWire(d Deps) {
 	var missing []string
@@ -121,7 +120,7 @@ func NewRouter(d Deps) nethttp.Handler {
 	r.Use(localauth.Middleware(d.Auth))
 
 	// 本地媒体文件：<img>/<video> 直接请求，token 走 ?token=（媒体专用 token 只能访问这里）。
-	// 角色形象图本地没有时先下载缓存再交给 Media.Serve（spec F7）。
+	// 角色形象图本地没有时先下载缓存再交给 Media.Serve。
 	mediaMW := func(next nethttp.Handler) nethttp.Handler {
 		if d.AICharacterImages == nil {
 			return next
@@ -131,7 +130,7 @@ func NewRouter(d Deps) nethttp.Handler {
 	r.With(mediaMW).Get("/media/*", d.Media.Serve)
 	r.With(mediaMW).Head("/media/*", d.Media.Serve)
 
-	// P1c 生成链路：registerGenerationRoutes / registerRepersistRoute 注册的是 /api/v1/... 绝对路径，
+	// 生成链路：registerGenerationRoutes / registerRepersistRoute 注册的是 /api/v1/... 绝对路径，
 	// 所以挂在根路由的 Group 上（与下面 /api/v1 子路由里的业务路由同样套 LocalIdentity）。
 	// chi 先匹配静态段，这些路径不会被 /api/v1 子路由的通配吞掉。
 	r.Group(func(r chi.Router) {
@@ -140,7 +139,7 @@ func NewRouter(d Deps) nethttp.Handler {
 		registerRepersistRoute(r, d.GenerationRepersist)
 	})
 
-	// P4 设置页：mountSettingsCenter 注册的是 /api/v1/settings 绝对前缀，同样挂在根路由的 LocalIdentity 组上。
+	// 设置页：mountSettingsCenter 注册的是 /api/v1/settings 绝对前缀，同样挂在根路由的 LocalIdentity 组上。
 	// DataDir / Version 缺省时取 sidecar 自身的值。
 	sc := d.SettingsCenter
 	if sc.DataDir == "" {
@@ -158,9 +157,9 @@ func NewRouter(d Deps) nethttp.Handler {
 		r.Get("/ping", func(w nethttp.ResponseWriter, _ *nethttp.Request) {
 			writeJSON(w, nethttp.StatusOK, map[string]any{"ok": true, "version": d.Version})
 		})
-		// P0 的 WebSocket 回显诊断移到 /diag/ws，/api/v1/agent/ws 交给 P5 的 Agent（见下方 LocalIdentity 组）。
+		// WebSocket 回显诊断在 /diag/ws，/api/v1/agent/ws 归 Agent（见下方 LocalIdentity 组）。
 		r.Get("/diag/ws", wsEcho)
-		// 诊断页（P3 移进“设置 → 环境诊断”）。
+		// 诊断页（“设置 → 环境诊断”）。
 		diag := &diagHandler{dir: d.DataDir}
 		r.Post("/diag/upload", diag.upload)
 		r.Get("/diag/media/{name}", diag.media)
@@ -170,7 +169,7 @@ func NewRouter(d Deps) nethttp.Handler {
 		r.Route("/cli", func(r chi.Router) {
 			r.Use(CLIRequestID, LocalIdentity)
 			r.Get("/ping", cliPing(d.Version))
-			// 以下照抄参考仓：handler 为 nil 也照常注册（方法值不解引用），
+			// handler 为 nil 也照常注册（方法值不解引用），
 			// 漏装配由 MustWireCLI 在启动期兜住；单测只装自己关心的 handler。
 			r.Get("/projects", d.CLI.ListProjects)
 			r.Route("/projects/{projectID}", func(r chi.Router) {
@@ -229,7 +228,7 @@ func NewRouter(d Deps) nethttp.Handler {
 				r.Post("/duplicate", d.Project.Duplicate)
 				// 「复制节点」跨项目粘贴后的资产引用登记。
 				r.Post("/assets/import-refs", d.CanvasAssetImport.ImportRefs)
-				// 编辑锁三个端点保留（前端协议不变），本地实现恒放行（spec X2、S11）。
+				// 编辑锁三个端点保留（前端协议不变），本地实现恒放行。
 				r.Get("/canvas-owner/probe", d.CanvasMutation.ProbeOwner)
 				r.Post("/canvas/owner/claim", d.CanvasMutation.ClaimOwner)
 				r.Post("/canvas/owner/heartbeat", d.CanvasMutation.HeartbeatOwner)
@@ -244,9 +243,9 @@ func NewRouter(d Deps) nethttp.Handler {
 			r.Post("/assets", d.Asset.Upload)
 			r.Get("/assets", d.Asset.List)
 
-			// 画布展示层批量换缩略图 URL；本地不生成缩略图，返回原图 URL（spec S8）。
+			// 画布展示层批量换缩略图 URL；本地不生成缩略图，返回原图 URL。
 			r.Post("/media/thumbs", MediaThumbs(d.MediaSigner))
-			// 节点右键「在访达/资源管理器中显示」（spec S3）。
+			// 节点右键「在访达/资源管理器中显示」。
 			r.Post("/media/reveal", d.Media.Reveal)
 
 			r.Route("/library", func(r chi.Router) {
@@ -263,7 +262,7 @@ func NewRouter(d Deps) nethttp.Handler {
 			r.Post("/projects/{projectID}/assets/{assetID}/save-to-library", d.LibraryBridge.SaveToLibrary)
 			r.Post("/library/save-from-url", d.LibraryBridge.SaveFromURL)
 
-			// ── P1d：后处理、预设、多角度、打光 ──
+			// ── 后处理、预设、多角度、打光 ──
 			r.Get("/canvas/postprocess-config", d.CanvasPostprocess.GetConfig)
 			r.Get("/canvas/gen-image-presets", d.GenImagePreset.UserGet)
 			r.Get("/canvas/multi-angle", d.MultiAngle.UserGet)
@@ -272,22 +271,22 @@ func NewRouter(d Deps) nethttp.Handler {
 			r.Post("/canvas-tasks/postprocess-estimate", d.CanvasPostprocess.Estimate)
 			r.Post("/canvas-tasks/upscale", d.CanvasPostprocess.Upscale)
 			r.Post("/canvas-tasks/whitemodel", d.CanvasPostprocess.WhiteModel)
-			// ── P1d：AI 角色库、Seedance 合规 ──
+			// ── AI 角色库、Seedance 合规 ──
 			r.Get("/canvas/ai-characters", d.AICharacter.List)
 			r.Post("/seedance/verify", d.Seedance.Verify)
 			r.Post("/seedance/status", d.Seedance.Status)
 			r.Get("/seedance/config", d.Seedance.Config)
-			// ── P1d：3D 导演台 ──
+			// ── 3D 导演台 ──
 			r.Post("/director/models", d.DirectorModel.Upload)
 			r.Get("/director/models", d.DirectorModel.List)
 			r.Delete("/director/models/{modelID}", d.DirectorModel.Delete)
 			r.Get("/director/library", d.DirectorLibrary.List)
-			// /admin/canvas/* 不在这里注册（P4）。
+			// /admin/canvas/* 不在这里注册。
 
 			// 手动触发孤儿清扫（sidecar 也会在启动时和每天自动跑）。
 			r.Post("/admin/gc", d.AdminGC.Run)
 
-			// ── P5：Agent、Skill、backbone 管理 ──
+			// ── Agent、Skill、backbone 管理 ──
 			if d.Agent != nil {
 				r.Get("/agent/ws", d.Agent.WS)
 				r.With(ProjectFromURL).Get("/projects/{projectID}/agent/threads", d.Agent.ListThreads)
@@ -302,11 +301,11 @@ func NewRouter(d Deps) nethttp.Handler {
 				r.Get("/skills/featured", d.Skills.Featured)
 			}
 			if d.AdminAgent != nil {
-				// 只读列表。Agent 模型写死为内置值（2026-10-07），不注册任何写接口。
+				// 只读列表。Agent 模型写死为内置值，不注册任何写接口。
 				r.Get("/admin/agent/backbone-models", d.AdminAgent.List)
 			}
 
-			// ── P6：脚本节点 ──
+			// ── 脚本节点 ──
 			if d.CanvasScript != nil {
 				r.Get("/canvas-script/styles", d.CanvasScript.Styles)
 				r.Post("/canvas-script-tasks", d.CanvasScript.Submit)

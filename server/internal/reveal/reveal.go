@@ -1,4 +1,4 @@
-// Package reveal 在系统文件管理器里选中一个文件（spec S3「在访达/资源管理器中显示」）。
+// Package reveal 在系统文件管理器里选中一个文件（「在访达/资源管理器中显示」）。
 package reveal
 
 // InFileManager 打开 path 所在的文件夹并选中它。path 必须是已存在文件的绝对路径。

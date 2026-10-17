@@ -5,7 +5,7 @@
 // 成功后调 setSidecarSession() 存进这里，之后全局同步读取。
 //
 // 只存在内存里：端口和 token 每次启动都会变，**不要**把这里拼出来的地址写进画布
-// 或 localStorage（spec S3）。
+// 或 localStorage。
 import { buildHttpUrl, type ServerInfo } from './server';
 
 let session: ServerInfo | null = null;
@@ -24,7 +24,7 @@ export function sidecarToken(): string {
 }
 
 /**
- * REST 接口的 baseURL。会话未建立时退回参考仓的相对路径 `/api/v1`，
+ * REST 接口的 baseURL。会话未建立时退回相对路径 `/api/v1`，
  * 让不关心 sidecar 的单元测试保持原样。
  */
 export function sidecarApiBaseUrl(): string {
@@ -32,7 +32,7 @@ export function sidecarApiBaseUrl(): string {
 }
 
 // 会话来源：startApp 设成 server.ts 的 getServerInfo。它有缓存，壳广播 sidecar 状态
-// 事件（P8 自动重启）时缓存被清掉，下一次调用会拿到新的端口和 token。
+// 事件（自动重启）时缓存被清掉，下一次调用会拿到新的端口和 token。
 let loader: (() => Promise<ServerInfo>) | null = null;
 
 export function setSidecarSessionLoader(fn: (() => Promise<ServerInfo>) | null): void {

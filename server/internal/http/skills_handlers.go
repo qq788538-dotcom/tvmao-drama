@@ -8,7 +8,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/agent"
 )
 
-// SkillsHandler 服务 /api/v1/skills 端点——内置的官方 Skill 目录（只读，spec A4）。
+// SkillsHandler 服务 /api/v1/skills 端点——内置的官方 Skill 目录（只读）。
 type SkillsHandler struct {
 	// Categories 给 web SkillPopover 提供动态分类字典（顺序+颜色）——分类曾写死
 	// 在前端常量里，改成随接口下发。
@@ -19,7 +19,7 @@ type SkillsHandler struct {
 	signer skillIconSigner
 }
 
-// skillIconSigner 是 Skill 图标出口需要的两种签名（P1b 的 *MediaSigner 满足）。
+// skillIconSigner 是 Skill 图标出口需要的两种签名（*MediaSigner 满足）。
 type skillIconSigner interface {
 	Sign(s string) string
 	SignThumb(s string, maxWidth int) string

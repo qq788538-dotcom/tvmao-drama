@@ -87,7 +87,7 @@ vi.mock('@/modules/canvas/editor/store', () => {
 });
 
 vi.mock('@/modules/canvas/editor/persistence/canvasMutations', () => ({
-  // owner 失权提示的订阅（M2），本文件不关心；失权提示的测试在 CanvasEditorPage.errors.test.tsx。
+  // owner 失权提示的订阅，本文件不关心；失权提示的测试在 CanvasEditorPage.errors.test.tsx。
   onCanvasOwnerLost: () => () => undefined,
   configureCanvasPersistence: (...args: Parameters<typeof configureCanvasPersistence>) => configureCanvasPersistence(...args),
   setCanvasOwnerToken: (...args: Parameters<typeof setCanvasOwnerToken>) => setCanvasOwnerToken(...args),
@@ -220,7 +220,7 @@ describe('CanvasEditorPage access guard', () => {
     expect(loadMock).toHaveBeenCalledWith({ nodes: [], connections: [], view: { x: 7, y: 8, zoom: 1.2 } });
   });
 
-  // final-review I-1：sidecar 自动重启时 SidecarGate 卸掉整棵树再重挂。
+  // sidecar 自动重启时 SidecarGate 卸掉整棵树再重挂。
   it('卸载时走 retire（先 flush debounce 中的 patch 再 reset），而不是直接 reset 丢弃', async () => {
     getSnapshot.mockResolvedValue({ payload: { nodes: [], connections: [] }, version: 1 });
     retireCanvasPersistence.mockClear();

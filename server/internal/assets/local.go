@@ -17,7 +17,6 @@ import (
 )
 
 // MediaProtocol 是我们存进 DB 的伪 URL scheme，用来替代签名 URL：签名延后到 API 响应时再做。
-// （参考仓定义在 minio.go；桌面端不搬 minio.go，定义挪到这里。）
 const MediaProtocol = "media://"
 
 // ErrInvalidKey 表示 object key 不合法：可能逃出媒体根目录，或含当前平台不能做文件名的字符。
@@ -33,8 +32,8 @@ type LocalConfig struct {
 	Token string
 }
 
-// LocalStorage 把对象存成 <Root>/<key> 的本地文件，实现参考仓的 Storage 接口（spec S3、S4）。
-// key 布局沿用参考仓；DB 里只存 media://<key>，所以数据目录整体搬家（spec S2）后引用仍然有效。
+// LocalStorage 把对象存成 <Root>/<key> 的本地文件，实现 Storage 接口。
+// DB 里只存 media://<key>，所以数据目录整体搬家后引用仍然有效。
 type LocalStorage struct {
 	root    string
 	baseURL string
@@ -251,7 +250,7 @@ func (s *LocalStorage) SignedURL(_ context.Context, key string, _ time.Duration)
 	return s.baseURL + "/media/" + escapeKey(key) + "?token=" + url.QueryEscape(s.token), nil
 }
 
-// SignedThumbURL 返回原图 URL：桌面端不生成缩略图（spec S8，与参考仓 MinIO 模式一致）。
+// SignedThumbURL 返回原图 URL：桌面端不生成缩略图。
 func (s *LocalStorage) SignedThumbURL(ctx context.Context, key string, expiry time.Duration, _ int) (string, error) {
 	return s.SignedURL(ctx, key, expiry)
 }
@@ -265,7 +264,7 @@ func escapeKey(key string) string {
 }
 
 // localMediaURL 匹配任意端口的 sidecar 媒体 URL。端口不限：上一次启动发出的 URL
-// （P1c 生成任务入库时存的是签名后的 inputs）在重启后也要能认回 key。
+// （生成任务入库时存的是签名后的 inputs）在重启后也要能认回 key。
 var localMediaURL = regexp.MustCompile(`^http://127\.0\.0\.1:[0-9]{1,5}/media/([^?#]*)`)
 
 // ExtractKey 在输入是 media:// 伪 URL 或 sidecar 自己发出的本地媒体 URL 时返回 (key, true)。
@@ -305,7 +304,7 @@ func (s *LocalStorage) StaticKey(userID int64, filename string) string {
 	return fmt.Sprintf("u%d/%s", userID, sanitizeName(filename))
 }
 
-// NewKey 为一次新上传构造 key，布局 u<userID>/<年>/<月>/<文件名>（同参考仓）。
+// NewKey 为一次新上传构造 key，布局 u<userID>/<年>/<月>/<文件名>。
 func (s *LocalStorage) NewKey(userID int64, filename string) string {
 	now := time.Now()
 	return fmt.Sprintf("u%d/%d/%d/%s", userID, now.Year(), int(now.Month()), sanitizeName(filename))

@@ -1,12 +1,12 @@
-//! 数据目录迁移的待办记录与启动前执行（spec S2；P4 T7，整合时并入 P8 的异步启动）。
+//! 数据目录迁移的待办记录与启动前执行。
 //!
 //! 职责划分：
-//! - **当前用哪个数据目录**只由 data_dir.rs 的 location.json 决定（P8，get_data_dir / set_data_dir）。
+//! - **当前用哪个数据目录**只由 data_dir.rs 的 location.json 决定（get_data_dir / set_data_dir）。
 //! - 本文件的 data-location.json 只记迁移待办：待迁移目录、待清理的旧目录、上次的错误。
 //!   三个文件（含 cli-endpoint.json）都放在系统默认数据目录里；Go `datadir` 的 ignorable 认这些名字，迁移时不复制、清理时不删除。
 //!
 //! 流程：设置页校验目标（sidecar 的 /settings/data-dir/check，返回用户所选目录下的专用子目录）→
-//! apply_data_dir_change 记下 pendingDataDir、关掉 sidecar、重启应用 → 下次启动时，在 P8 的异步启动里、
+//! apply_data_dir_change 记下 pendingDataDir、关掉 sidecar、重启应用 → 下次启动时，在异步启动里、
 //! 拉起 sidecar 之前执行 run_pending：建 0700 的专用子目录 → `sidecar migrate-data-dir` →
 //! data_dir::write_location（与 set_data_dir 同一个函数）切到新目录 → `sidecar cleanup-data-dir` 清理旧目录。
 
@@ -164,7 +164,7 @@ pub fn check_target_shape(p: &str, default_dir: &Path) -> Result<PathBuf, String
     }
 }
 
-/// set_data_dir 的校验（I1、M2）：只接受默认目录，或一个可以直接使用的喵剧数据目录
+/// set_data_dir 的校验：只接受默认目录，或一个可以直接使用的喵剧数据目录
 /// （“所选文件夹/MiaojuData”，含有效的 data.db，且没有未完成的迁移标记）。不搬数据。
 pub fn check_existing_data_dir(p: &str, default_dir: &Path) -> Result<PathBuf, String> {
     let path = check_target_shape(p, default_dir)?;
@@ -283,7 +283,7 @@ pub fn after_migrate(loc: &Location, from: &Path, result: Result<(), String>) ->
     next
 }
 
-/// 等锁超时（I3）：保留待办，下次启动重试；lastError 写明这一点。
+/// 等锁超时：保留待办，下次启动重试；lastError 写明这一点。
 pub fn after_busy(loc: &Location, msg: &str) -> Location {
     Location { last_error: Some(msg.to_string()), ..loc.clone() }
 }
@@ -361,7 +361,7 @@ pub fn run_pending(
                         to.to_string_lossy().into_owned(),
                         "--lock".into(),
                         lock.clone(),
-                        // 壳退出（含崩溃）时 stdin 关闭，子进程随之结束，不会变成孤儿（I2）
+                        // 壳退出（含崩溃）时 stdin 关闭，子进程随之结束，不会变成孤儿
                         "--exit-on-stdin-eof".into(),
                     ])
                 });
@@ -400,7 +400,7 @@ pub fn run_pending(
                     r => after_cleanup(&loc, r.map_err(RunError::into_message)),
                 }
             }
-            // M4：没记下待清理目录，旧目录不会被自动清理，至少告诉用户。
+            // 没记下待清理目录，旧目录不会被自动清理，至少告诉用户。
             Step::DropPending => Location {
                 pending_data_dir: None,
                 last_error: if loc.cleanup_data_dir.is_none() { Some(DROP_PENDING_NOTE.into()) } else { loc.last_error.clone() },
@@ -438,9 +438,9 @@ impl ChildSlot {
 }
 
 /// 调一次 sidecar 子命令并等它结束。stdout 的每一行交给 on_line（等锁提示）；失败时返回 stderr 最后一行。
-/// - stdin 接成管道并一直开着：壳退出或崩溃时管道关闭，子命令（带 --exit-on-stdin-eof）随之中止（I2）。
+/// - stdin 接成管道并一直开着：壳退出或崩溃时管道关闭，子命令（带 --exit-on-stdin-eof）随之中止。
 /// - Windows 另把子进程放进 KILL_ON_JOB_CLOSE 的 Job Object：壳进程消失时系统直接结束它。
-/// - 退出码 75 / 76（数据目录被占用 / 等迁移锁超时）→ RunError::Busy，调用方保留待办（I3）。
+/// - 退出码 75 / 76（数据目录被占用 / 等迁移锁超时）→ RunError::Busy，调用方保留待办。
 pub fn run_sidecar_once(
     program: &Path,
     args: &[String],
@@ -510,7 +510,7 @@ pub fn run_sidecar_once(
 }
 
 /// Windows：所有迁移子进程放进同一个 KILL_ON_JOB_CLOSE 的 Job Object。句柄在壳进程里一直开着，
-/// 壳退出或被强杀时系统关闭句柄，Job 里的子进程随之结束（I2）。
+/// 壳退出或被强杀时系统关闭句柄，Job 里的子进程随之结束。
 #[cfg(windows)]
 mod job {
     use std::sync::OnceLock;
@@ -561,10 +561,10 @@ mod job {
 #[derive(Default)]
 pub struct DataDirState {
     pub migrating: AtomicBool,
-    /// 迁移子命令正在等上一次迁移的锁（I3），界面显示“正在等待上一次迁移结束”。
+    /// 迁移子命令正在等上一次迁移的锁，界面显示“正在等待上一次迁移结束”。
     pub waiting_lock: AtomicBool,
     pub startup_error: Mutex<Option<String>>,
-    /// 正在运行的迁移 / 清理子进程，应用退出时结束它（I2）。
+    /// 正在运行的迁移 / 清理子进程，应用退出时结束它。
     pub child: ChildSlot,
     /// 迁移中拦下退出时的提示框是否已经开着（避免连点关闭弹出一串）。
     pub exit_notice_open: AtomicBool,
@@ -795,7 +795,7 @@ mod tests {
         write_location(&pointer_path(def), &Location { pending_data_dir: Some(to.to_string_lossy().into_owned()), ..Default::default() }).unwrap();
     }
 
-    /// I2：子命令都带 --exit-on-stdin-eof，壳退出（stdin 关闭）时子进程随之结束。
+    /// 子命令都带 --exit-on-stdin-eof，壳退出（stdin 关闭）时子进程随之结束。
     #[test]
     fn run_pending_subcommands_exit_with_shell() {
         let def = tmp();
@@ -810,7 +810,7 @@ mod tests {
         assert_eq!(seen, vec!["migrate-data-dir", "cleanup-data-dir"]);
     }
 
-    /// I3：等锁超时 → 保留待办（下次启动重试），lastError 说明会自动重试，不再继续后面的步骤。
+    /// 等锁超时 → 保留待办（下次启动重试），lastError 说明会自动重试，不再继续后面的步骤。
     #[test]
     fn run_pending_lock_busy_keeps_pending_for_next_start() {
         let def = tmp();
@@ -846,7 +846,7 @@ mod tests {
         assert!(loc.last_error.unwrap().contains("下次启动"));
     }
 
-    /// M4：上次迁移已切换目录但没记下待清理目录就中断了 → 提醒用户旧目录可能还在。
+    /// 上次迁移已切换目录但没记下待清理目录就中断了 → 提醒用户旧目录可能还在。
     #[test]
     fn drop_pending_notes_possible_leftover() {
         let def = tmp();
@@ -867,7 +867,7 @@ mod tests {
         d
     }
 
-    /// I1 / M2：set_data_dir 只接受“已有喵剧数据的目录”（或默认目录）。
+    /// set_data_dir 只接受“已有喵剧数据的目录”（或默认目录）。
     #[test]
     fn check_existing_data_dir_rules() {
         let def = tmp();

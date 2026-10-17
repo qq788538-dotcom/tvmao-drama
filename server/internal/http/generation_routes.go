@@ -2,7 +2,7 @@ package http
 
 import "github.com/go-chi/chi/v5"
 
-// GenerationRoutes 是 P1c 生成链路的 HTTP 入口集合，由 cmd/sidecar 的 wireGeneration 构造。
+// GenerationRoutes 是生成链路的 HTTP 入口集合，由 cmd/sidecar 的 wireGeneration 构造。
 // nil 字段对应的路由不注册（测试、或依赖未装配时）。
 type GenerationRoutes struct {
 	CanvasGen  *CanvasGenHandler
@@ -12,7 +12,7 @@ type GenerationRoutes struct {
 }
 
 // registerGenerationRoutes 注册绝对路径，调用方负责把它挂在带本地身份中间件（userID=1）的路由上。
-// 路径与参考仓 router.go:255-259、638-647 一致；desub/upscale/whitemodel/postprocess-estimate 属 P1d。
+// desub/upscale/whitemodel/postprocess-estimate 由后处理路由另行注册。
 func registerGenerationRoutes(r chi.Router, h GenerationRoutes) {
 	if h.Models != nil {
 		r.Get("/api/v1/models", h.Models.List)

@@ -16,7 +16,7 @@ use tokio::process::{Child, ChildStderr, ChildStdin, Command};
 use tokio::sync::{oneshot, watch};
 use tokio::task::JoinHandle;
 
-/// sidecar 发现数据目录正被另一个 sidecar 使用时的退出码（Go `exitDataDirBusy`，I4）。
+/// sidecar 发现数据目录正被另一个 sidecar 使用时的退出码（Go `exitDataDirBusy`）。
 pub const DATA_DIR_BUSY_EXIT: i32 = 75;
 
 /// 退出码为 DATA_DIR_BUSY_EXIT 时给用户看的原因（失败页上有“重试”按钮）。
@@ -211,7 +211,7 @@ pub async fn launch(spec: &LaunchSpec, token: &str, cli_token: &str, ready_timeo
     tokio::spawn(wait_exit(child, kill_rx, stderr_task, tail, exited_tx));
     let mut handle = ProcessHandle { stdin: None, kill: Some(kill_tx), exited: exited_rx };
 
-    // token 只走 stdin（SEC3）：参数和环境变量同机其他进程读得到。
+    // token 只走 stdin：参数和环境变量同机其他进程读得到。
     let wrote = async {
         stdin.write_all(format!("{token}\n{cli_token}\n").as_bytes()).await?;
         stdin.flush().await?;
@@ -345,7 +345,7 @@ mod process_tests {
         l.handle.shutdown(Duration::from_secs(2)).await;
     }
 
-    /// I4：数据目录被上一个 sidecar 占着（Go 退出码 75）→ 明确提示“上一个窗口仍在关闭”，可重试。
+    /// 数据目录被上一个 sidecar 占着（Go 退出码 75）→ 明确提示“上一个窗口仍在关闭”，可重试。
     #[tokio::test]
     async fn data_dir_busy_exit_code_reports_retry_hint() {
         let spec = sh(r#"read t; echo "2026/01/01 sidecar 启动失败: busy" >&2; exit 75"#);

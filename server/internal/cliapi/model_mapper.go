@@ -16,7 +16,7 @@ import (
 //     adminNote 都不进公共 DTO——它们含上游路径与协议，CLI 拿到既无用又危险。
 //  2. **uiSchema 归一化成 JSON Schema**。uiSchema 是给网页渲染下拉框用的内部形状，
 //     直接暴露等于把前端渲染细节变成公共 API。Agent 能否稳定用 CLI，主要取决于
-//     这份 schema 是否完整（spec §9.5）。
+//     这份 schema 是否完整。
 
 // JSONSchemaProperty 是归一化后的单个输入参数描述。
 type JSONSchemaProperty struct {

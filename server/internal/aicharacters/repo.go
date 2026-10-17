@@ -1,5 +1,5 @@
 // Package aicharacters 是自由画布的「AI 角色库」：一批预制、已过 Seedance 合规
-// 校验的公共角色（seedance_characters 表，由内置种子数据导入，见 P2b）。
+// 校验的公共角色（seedance_characters 表，由内置种子数据导入）。
 //
 // 刻意保持独立：不建 service 层、不与素材库/assets 共享代码——这批图是平台公共
 // 资产，游离在用户配额、assets 引用计数和孤儿 GC 之外（绝不能为它插 assets 行，

@@ -1,5 +1,5 @@
--- P1d：画布素材的 Seedance 2.0 合规校验状态（参考仓迁移 0075 建表、0084 加 asset_type），
--- 按 object_key 归属；外加用户级素材组 id 与建组版本（0075、0083）。
+-- 画布素材的 Seedance 2.0 合规校验状态，
+-- 按 object_key 归属；外加用户级素材组 id 与建组版本。
 CREATE TABLE seedance_assets (
   -- 对象 key，素材的唯一身份；画布 assets 与素材库 library_items 共用同一个 key。
   object_key TEXT PRIMARY KEY,

@@ -73,7 +73,7 @@ export function validateUpstream(m: ModelView, v: Pick<ModelFormValues, 'upstrea
   return e.baseUrl ?? e.apiKey ?? null;
 }
 
-/** 只放进与原值不同的字段；服务端严格拒绝补丁之外的任何字段（spec M10）。清空的数字框（null）视为未改动。 */
+/** 只放进与原值不同的字段；服务端严格拒绝补丁之外的任何字段。清空的数字框（null）视为未改动。 */
 export function formToPatch(m: ModelView, v: ModelFormValues): ModelPatch {
   const before = modelToForm(m);
   const p: ModelPatch = {};

@@ -9,7 +9,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
 )
 
-// 2026-10-07 用户要求：五项画布配置写死为内置值，设置页不再提供编辑入口。
+// 五项画布配置写死为内置值，设置页不再提供编辑入口。
 var lockedKeys = []string{SettingCanvasPostprocess, SettingGenImagePresets, SettingCanvasMultiAngle, SettingCanvasLightControl, SettingCanvasScript}
 
 func TestLockedSettingsHaveNoEditableFields(t *testing.T) {

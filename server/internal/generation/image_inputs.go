@@ -261,15 +261,15 @@ func cloneInputs(inputs map[string]any) map[string]any {
 var seedanceAssetRefFields = []string{"images", "image", "videos", "video", "audios", "audio"}
 
 // ErrVerifiedAssetUpstreamMismatch：合规素材注册在内置模型 seedance-asset 解析出的上游账号下
-// （seedance-asset 设计 §2：模型可在模型中心单独配上游，否则回落全局）。生成模型解析出的上游
-// 与它不同时，上游里没有这个素材（审查 I-2 / 终审 I1）。
+// （模型可在模型中心单独配上游，否则回落全局）。生成模型解析出的上游
+// 与它不同时，上游里没有这个素材。
 var ErrVerifiedAssetUpstreamMismatch = errors.New("已校验素材注册在合规校验模型 seedance-asset 所用的上游账号下，当前模型使用的上游与之不同，无法引用。请让两者使用同一上游，或改用与合规校验相同的上游后重新生成。")
 
 // applyRealPersonRefs 是 Submit / SubmitTx / prepareExecution 共用的 doubao-seedance* 素材处理：
 // 先把已校验的图换成 asset:// 引用，再确认目标模型的上游就是素材注册时 seedance-asset 用的上游。
 // 两者解析出的上游指纹不同、请求里又有 asset:// 引用时直接拒绝，不调上游——
 // 否则用户只会看到上游一条晦涩的 asset not found。
-// 长期方案（素材按上游指纹分账号注册）见审查报告待办。
+// 待办：素材按上游指纹分账号注册。
 func (s *Service) applyRealPersonRefs(userID int64, model *models.ModelConfig, inputs map[string]any) (map[string]any, error) {
 	if s.realPerson == nil || model == nil || !strings.HasPrefix(model.ModelID, "doubao-seedance") {
 		return inputs, nil

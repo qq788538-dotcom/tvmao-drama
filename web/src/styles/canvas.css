@@ -1,4 +1,4 @@
-/* Inter 是默认无衬线字体。桌面端字体随应用打包（spec E7）：
+/* Inter 是默认无衬线字体。桌面端字体随应用打包：
    Inter 400/500/600/700 与 JetBrains Mono 400/500 由 main.tsx 从
    @fontsource 引入，不再从 Google Fonts 在线加载。 */
 
@@ -323,7 +323,7 @@
 /* 预设 chip 视觉内嵌：chip 叠在编辑器首行行首时，容器 text-indent 给首行让位；
    text-indent 会被行块（contenteditable 把每行包成 div，**包括第一行**——
    多行内容重建时首行也是 div）继承。只归零非第一个行块：第一行继承缩进给
-   chip 让位，后续行顶行首（对标参考产品）。曾因无差别归零所有行块，导致
+   chip 让位，后续行顶行首。不能无差别归零所有行块，否则
    「已有提示词再选预设」时首行不让位、chip 压字。 */
 .cv-mention-editor > div:not(:first-child) {
   text-indent: 0;

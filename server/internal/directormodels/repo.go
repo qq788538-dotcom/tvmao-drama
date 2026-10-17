@@ -1,6 +1,6 @@
 // Package directormodels 是「3D 导演台·用户级云端模型库」的数据层：
 // 用户上传的 FBX/OBJ 模型文件目录（director_user_models 表，schema 见
-// 桌面端迁移 0012_p1d_director.sql，源自参考仓 0092）。模型是用户级（跨画布项目共享）资源，被引用时以
+// 迁移 0012_p1d_director.sql）。模型是用户级（跨画布项目共享）资源，被引用时以
 // media://<object_key> 字符串散落在各项目 workflow_snapshots.payload 里，
 // 所以引用检查是字符串扫描而不是外键（见 CountProjectsReferencing）。
 package directormodels

@@ -1,6 +1,6 @@
 // 前端与本地 sidecar 之间的唯一入口：端口和 token 只从这里取。
 // sidecar 的端口每次启动都不同，所以**任何地方都不要把拼好的地址存起来**
-// ——存进画布的话，重启后全部失效（spec S3）。
+// ——存进画布的话，重启后全部失效。
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen as tauriListen, type UnlistenFn } from '@tauri-apps/api/event';
 

@@ -39,7 +39,7 @@ func withMigrateLock(lockPath string, stdout io.Writer, f func() error) error {
 	return f()
 }
 
-// migrateWithSourceLock：复制前确认没有 sidecar 还开着源目录（上一个窗口仍在关闭，I4），并在复制期间占住它。
+// migrateWithSourceLock：复制前确认没有 sidecar 还开着源目录（上一个窗口仍在关闭），并在复制期间占住它。
 func migrateWithSourceLock(from, to string) error {
 	release, err := datadir.AcquireInstanceLock(from, sourceLockWait)
 	if errors.Is(err, datadir.ErrDataDirBusy) {

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Ban, Trash2 } from 'lucide-react';
 import { MIN_SHOT_SECONDS, type ColorMark } from './scriptData';
 
-// 对标上游编辑器的三件套：白底黑字保存按钮 / 深色内嵌输入框 / 弹层辅助文案。
+// 编辑器的三件套：白底黑字保存按钮 / 深色内嵌输入框 / 弹层辅助文案。
 // 集中成常量导出（DialogueEditor、ComposeDialog 也用），改一处全弹层同步。
 export const SAVE_BTN = 'rounded-lg bg-white px-4 py-1.5 text-sm font-medium text-black hover:opacity-90 border-none cursor-pointer';
 export const FIELD_BOX = 'rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-foreground outline-none focus:border-white/25';
@@ -29,7 +29,7 @@ export const HINT_TEXT = 'text-xs text-muted-foreground';
 //     单元格改写过，这里重复 onClose 会把刚打开的新弹层错误地关掉。
 // onBeforeClose 必须自己做幂等/dirty 判断（各编辑器用 savedRef 实现），否则同一次
 // 关闭会经两条路径各触发一次，重复写入。
-// 导出给 DialogueEditor（Task 6）复用——对白编辑器同样需要 outside-click/Esc
+// 导出给 DialogueEditor 复用——对白编辑器同样需要 outside-click/Esc
 // 关闭 + 阻止 mousedown 冒泡这套行为，没必要另起一份。它是「保存制」（不接
 // onBeforeClose 自动落库，点外部直接丢弃草稿），细节见 DialogueEditor.tsx。
 export function PopoverShell({
@@ -219,8 +219,8 @@ export function TextCellEditor({
   );
 }
 
-// 行颜色标记 5 色定义：与 scriptData.ColorMark 保持一致。色值走实体色（对标上游
-// 的高饱和大圆点），清除态并入圆点行首位（带斜杠圆），不再单列文字按钮。
+// 行颜色标记 5 色定义：与 scriptData.ColorMark 保持一致。色值走实体色（高饱和
+// 大圆点），清除态并入圆点行首位（带斜杠圆），不再单列文字按钮。
 const COLOR_MARKS: { value: Exclude<ColorMark, ''>; label: string; swatch: string }[] = [
   { value: 'red', label: '红', swatch: 'bg-[#f26d6d]' },
   { value: 'yellow', label: '黄', swatch: 'bg-[#f2b705]' },
@@ -229,7 +229,7 @@ const COLOR_MARKS: { value: Exclude<ColorMark, ''>; label: string; swatch: strin
   { value: 'gray', label: '灰', swatch: 'bg-[#b3b3b3]' },
 ];
 
-// 行菜单对标上游：「请选择颜色」标题 + 一行大圆点（首位=清除，带斜杠圆）+
+// 行菜单：「请选择颜色」标题 + 一行大圆点（首位=清除，带斜杠圆）+
 // 分隔线 + 垃圾桶图标「删除该行」。
 export function RowMenu({
   onMark,

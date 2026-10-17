@@ -160,7 +160,7 @@ describe('StoryboardView 详情态', () => {
     expect(within(screen.getByTestId('zone-image')).getByText('图片二')).toBeInTheDocument();
   });
 
-  // 反方向：spec §7 要求的「故事板删节点 -> store 里没了」。详情面板渲染的是
+  // 反方向：「故事板删节点 -> store 里没了」。详情面板渲染的是
   // registry 里的真节点组件，删除入口在那个组件上；这里用 mock 组件暴露一个
   // 触发 deleteNodes 的按钮来验证这条链路，但断言必须落在真 store 上，不能
   // 只测 mock 自己是否被点到——否则就是假绿。

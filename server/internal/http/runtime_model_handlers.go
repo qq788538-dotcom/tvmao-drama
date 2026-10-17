@@ -10,9 +10,8 @@ type runtimeModelLister interface {
 	List(onlyVisible bool) ([]models.ModelConfig, error)
 }
 
-// RuntimeModelHandler：画布取可用模型列表。估价接口保留路由但恒返回 0（spec X3 删除积分与估价；
-// 前端迁移完成前仍有调用方，返回 0 比 404 平滑）。参考仓同名类型在 admin_model_handlers.go，
-// 桌面端单独成文件，避免与 P4 的后台模型中心 handler 冲突。
+// RuntimeModelHandler：画布取可用模型列表。估价接口保留路由但恒返回 0（桌面端没有积分与估价；
+// 前端仍有调用方，返回 0 比 404 平滑）。单独成文件，与设置页的模型中心 handler 分开。
 type RuntimeModelHandler struct {
 	repo runtimeModelLister
 }
@@ -33,7 +32,7 @@ func (h *RuntimeModelHandler) List(w nethttp.ResponseWriter, r *nethttp.Request)
 	}
 	for i := range list {
 		list[i].AdminNote = ""
-		list[i].PriceNote = "" // spec X3：价格说明删除
+		list[i].PriceNote = "" // 不下发价格说明
 	}
 	writeJSON(w, nethttp.StatusOK, map[string]any{"data": list})
 }

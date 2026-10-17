@@ -1,4 +1,4 @@
-//! 数据目录（spec S1、S2）。默认在系统应用数据目录；用户在设置里改过则从 location.json 读取。
+//! 数据目录。默认在系统应用数据目录；用户在设置里改过则从 location.json 读取。
 //! location.json 永远放在默认数据目录里、和数据库分开：壳在启动 sidecar 之前就要知道数据在哪。
 //! 这个文件只由壳读写（Tauri 命令 get_data_dir / set_data_dir，以及启动前迁移 datadir::run_pending）。
 
@@ -96,7 +96,7 @@ pub fn prepare(info: &DataDirInfo) -> Result<(), String> {
     probe_writable(&info.current).map_err(|e| format!("{e}。{FALLBACK_HINT}"))
 }
 
-/// 记录“下次用哪个数据目录”。只写配置，不搬数据（搬数据由 P4 完成）。target 为 None 或等于默认目录时删除配置。
+/// 记录“下次用哪个数据目录”。只写配置，不搬数据（搬数据见 datadir::run_pending）。target 为 None 或等于默认目录时删除配置。
 pub fn write_location(default_dir: &Path, target: Option<&Path>) -> Result<DataDirInfo, String> {
     ensure_private_dir(default_dir)?;
     let file = default_dir.join(LOCATION_FILE);
@@ -112,7 +112,7 @@ pub fn write_location(default_dir: &Path, target: Option<&Path>) -> Result<DataD
             probe_writable(t)?;
             let json = serde_json::to_string_pretty(&LocationFile { version: 1, data_dir: t.into() })
                 .map_err(|e| format!("无法生成数据目录配置：{e}"))?;
-            // 持久化原子写入（P4 审查 I1）：tmp 文件 fsync → 改名 → fsync 父目录。tmp 名为 location.json.tmp，
+            // 持久化原子写入：tmp 文件 fsync → 改名 → fsync 父目录。tmp 名为 location.json.tmp，
             // 与 Go datadir 的 ignorable 一致。
             crate::datadir::write_durable_file(&file, json.as_bytes())
                 .map_err(|e| format!("无法写入 {}：{e}", file.display()))?;
@@ -218,7 +218,7 @@ mod tests {
         assert!(d.is_dir());
     }
 
-    // I2：失败页“改用默认数据目录”调用 set_data_dir(null)，location.json 损坏时也必须能恢复。
+    // 失败页“改用默认数据目录”调用 set_data_dir(null)，location.json 损坏时也必须能恢复。
     #[test]
     fn reset_recovers_from_corrupt_location_file() {
         let d = tmp();
@@ -247,7 +247,7 @@ mod tests {
         std::process::Command::new("id").arg("-u").output().map(|o| o.stdout.starts_with(b"0\n")).unwrap_or(false)
     }
 
-    // I1：用户选的目录（例如 ~/Documents、/Users/Shared）不能被改权限。
+    // 用户选的目录（例如 ~/Documents、/Users/Shared）不能被改权限。
     #[cfg(unix)]
     #[test]
     fn prepare_leaves_custom_dir_permissions_alone() {
@@ -271,7 +271,7 @@ mod tests {
         assert!(std::fs::read_dir(&target).unwrap().next().is_none(), "试写文件要删掉");
     }
 
-    // I1：写配置前先试写，不可写的目录直接拒绝，不能等到重启才发现。
+    // 写配置前先试写，不可写的目录直接拒绝，不能等到重启才发现。
     #[cfg(unix)]
     #[test]
     fn write_location_rejects_unwritable_dir() {

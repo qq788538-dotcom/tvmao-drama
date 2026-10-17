@@ -123,7 +123,7 @@ export function NodeContextMenu({
       ref={ref}
       // 实底 + 提亮边框 + 重投影：菜单叠在深色节点上时，半透明 bg-card/85 会和
       // 节点糊成一片（用户实测「边框分界不明显、透明看着费眼睛」）。bg-muted(#2b2b2b)
-      // 比节点面(#1f1f1f)亮一档，对标上游右键菜单的实底面板。
+      // 比节点面(#1f1f1f)亮一档，做成实底面板。
       className="fixed z-[300] w-52 overflow-hidden rounded-2xl border border-solid border-white/25 bg-muted canvas-menu-enter p-1 shadow-[0_12px_32px_rgba(0,0,0,0.55)]"
       style={{ left: position.left, top: position.top }}
       onContextMenu={(e) => e.preventDefault()}

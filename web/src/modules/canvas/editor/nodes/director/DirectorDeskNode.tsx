@@ -24,7 +24,7 @@ import {
   type DirectorHostAdapter,
 } from './desk/editor/io/hostAdapter';
 
-// 3D 导演台本体（desk/ 是参考仓 storyai-3d-director-desk 的整体 copy，除 CSS
+// 3D 导演台本体（desk/ 是独立的导演台应用，除 CSS
 // 作用域与 hostAdapter 挂钩外零改动）连同 three.js/R3F 一起走懒加载 chunk——
 // 只有用户真点开节点才下载约 600KB+ 的 3D 依赖，未用到导演台的画布用户零成本。
 const DirectorDeskApp = lazy(() => import('./desk/App'));
@@ -38,7 +38,7 @@ const MSG_CLOSE = 'storyai:director-desk-close';
 const MSG_SESSION = 'storyai:director-desk-session';
 const MSG_CAPTURES = 'storyai:director-desk-captures-sent';
 
-// 阶段二拍板的两个额度（设计文档 §7）：导入单文件 30MB（弱网下 50MB 首载可达
+// 两个额度：导入单文件 30MB（弱网下 50MB 首载可达
 // 1 分钟，价值场景太少，超出直接拒）；场景 JSON 超 500KB 只告警不拦——正常是
 // 几十 KB，到这个量级说明出现 dataURL 泄漏或未知放大器，要可见但不能打断保存。
 const MAX_IMPORT_BYTES = 30 * 1024 * 1024;
@@ -127,7 +127,7 @@ function createHostAdapter(nodeId: string, assetIdByUrl: Map<string, number>): D
       useCanvasStore.getState().updateNodeSettings(nodeId, { directorProject: state });
       // debounce 1.5s / 前后端深合并 / 签名 URL 落库自动收敛 media:// 全部由
       // 画布现有 mutation 链路提供。DirectorState 的集合全是数组（深合并对数组
-      // 整体覆盖），无动态键嵌套对象，深合并语义安全（阶段二方案已核实）。
+      // 整体覆盖），无动态键嵌套对象，深合并语义安全。
       scheduleNodePatch(nodeId, { settings: { directorProject: state } });
     },
     async storeCapture(dataUrl, fileName) {
@@ -247,7 +247,7 @@ export async function resolveCachedAssetUrl(url: string): Promise<string> {
 
 export function DirectorDeskNode({ id }: { id: string }) {
   const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
-  // 面板开合是纯 UI 状态（同 ScriptNode）：刷新画布后默认收起。3D 场景阶段二起
+  // 面板开合是纯 UI 状态（同 ScriptNode）：刷新画布后默认收起。3D 场景
   // 持久化在本节点 settings.directorProject（走画布快照链路），localStorage 仅在
   // desk 独立运行（无 adapter）时作为回落。
   const [open, setOpen] = useState(false);
@@ -288,7 +288,7 @@ export function DirectorDeskNode({ id }: { id: string }) {
             typeof c.dataUrl === 'string' && /^https?:/i.test(c.dataUrl),
         );
         // dataURL 一律拒收：只有上传失败回落的截图才会以 data: 形态出现，放行会
-        // 把 MB 级 base64 写进画布快照（dataURL 禁入库硬规则，设计文档 §4.3）。
+        // 把 MB 级 base64 写进画布快照（dataURL 禁入库硬规则）。
         if (items.length > 0 && captures.length === 0) {
           message.warning('截图尚未上传成功，无法发送到画布');
           return;

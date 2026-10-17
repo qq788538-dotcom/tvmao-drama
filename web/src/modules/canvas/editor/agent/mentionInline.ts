@@ -7,7 +7,7 @@
 
 import type { RichMention } from './MentionInput';
 
-// 内联/工具分流阈值（spec 2026-08-31）：≤ 该值的正文直接内联进消息（一次到位
+// 内联/工具分流阈值：≤ 该值的正文直接内联进消息（一次到位
 // 零往返）；超过的走「引用行 + read_attachment 分段读取」通道，不再截断——
 // 内联正文进历史每轮重放，大文本一条消息就能超过 backbone 窗口。
 export const INLINE_TEXT_MAX = 100 * 1024;

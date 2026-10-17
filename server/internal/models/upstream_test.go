@@ -104,7 +104,7 @@ func TestSetUpstreamRoundTripAndHiddenFromJSON(t *testing.T) {
 	}
 }
 
-// M-1：地址末尾的 / 和 /v1 一律规范化掉，各条调用路径自己再补 /v1，不会出现 /v1/v1。
+// 地址末尾的 / 和 /v1 一律规范化掉，各条调用路径自己再补 /v1，不会出现 /v1/v1。
 func TestNormalizeUpstreamBaseURL(t *testing.T) {
 	for in, want := range map[string]string{
 		"https://a.example":        "https://a.example",

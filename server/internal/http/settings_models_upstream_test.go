@@ -231,7 +231,7 @@ func TestMaskAPIKeyShortKeyFullyMasked(t *testing.T) {
 	}
 }
 
-// M-1：独立上游地址保存时去掉末尾的 / 和 /v1。
+// 独立上游地址保存时去掉末尾的 / 和 /v1。
 func TestPatchModelUpstreamStripsTrailingV1(t *testing.T) {
 	e := newSCEnv(t)
 	path := fmt.Sprintf("/models/%d", e.ids["gpt-image-2"])
@@ -250,7 +250,7 @@ func TestPatchModelUpstreamStripsTrailingV1(t *testing.T) {
 	}
 }
 
-// M-7：SetUpstream 的 ErrUpstreamUnpaired 是校验错误，应返回 400 而不是 500。
+// SetUpstream 的 ErrUpstreamUnpaired 是校验错误，应返回 400 而不是 500。
 func TestScWriteErrorUpstreamUnpairedIs400(t *testing.T) {
 	rec := httptest.NewRecorder()
 	scWriteError(rec, fmt.Errorf("wrap: %w", models.ErrUpstreamUnpaired))

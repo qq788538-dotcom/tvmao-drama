@@ -51,7 +51,7 @@ func TestExecuteModelOwnUpstreamWithoutGlobal(t *testing.T) {
 	}
 }
 
-// M-1：独立上游地址存成了 .../v1（旧值），交给 skillruntime 的是根地址，由它补一层 /v1。
+// 独立上游地址存成了 .../v1（旧值），交给 skillruntime 的是根地址，由它补一层 /v1。
 func TestExecuteOwnUpstreamWithTrailingV1(t *testing.T) {
 	sk := &fakeSkills{content: validCandidate}
 	svc, _ := newTestService(t, testConfig(), sk, fakeModels{upstream: map[string][2]string{testModel: {"https://own.example/v1", "sk-own"}}})
@@ -61,7 +61,7 @@ func TestExecuteOwnUpstreamWithTrailingV1(t *testing.T) {
 	}
 }
 
-// M-5：查模型行遇到 ErrNotFound 以外的错误（数据库忙等）时不能静默回落全局——那可能是另一个
+// 查模型行遇到 ErrNotFound 以外的错误（数据库忙等）时不能静默回落全局——那可能是另一个
 // 计费账号，剧本内容也会发过去。应失败（按既有逻辑重试），不调上游。
 func TestExecuteModelLookupErrorDoesNotFallBackToGlobal(t *testing.T) {
 	sk := &fakeSkills{content: validCandidate}

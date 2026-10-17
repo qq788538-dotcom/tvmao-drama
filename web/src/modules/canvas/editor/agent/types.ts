@@ -1,4 +1,4 @@
-// 跟 apps/api/internal/agent/envelope.go 逐字段一一对应。保持两边对齐：
+// 跟 server/internal/agent/envelope.go 逐字段一一对应。保持两边对齐：
 // 这里改了就要在 Go 那边同步改，反过来也一样。
 export type FrameType =
   | 'thread_start' | 'action_start' | 'step_start'
@@ -22,7 +22,7 @@ export interface SkillDraft {
 
 export interface Artifact {
   // text_info（create_text_node 工具产出的剧本/文案）与 audio_info（音频类
-  // DynamicTool 产物）是 2026-08 后端新增（commit 018a35bf），协议 additive。
+  // DynamicTool 产物）是后端后加的类型，协议 additive。
   artifact_type:
     | 'image_info'
     | 'video_info'
@@ -31,7 +31,7 @@ export interface Artifact {
     // create_gen_node 工具：铺 gen-image / gen-video 节点预填提示词，不生成不扣费。
     | 'gen_image_node_info'
     | 'gen_video_node_info'
-    // 画布操作五件套（后端 tools_canvas_ops.go，2026-08-13）：增/改/删节点、
+    // 画布操作五件套（后端 tools_canvas_ops.go）：增/改/删节点、
     // 连/断连线。均无 url，结构化参数随 payload 携带，前端 canvasOps 执行。
     | 'node_create_info'
     | 'node_update_info'
@@ -97,7 +97,7 @@ export interface Mention {
 }
 
 // NodeSummary 是 `canvas_summary` 里的单条记录——一个画布节点的缩略快照，
-// LLM 可以按 name/id 引用它。跟 apps/api/internal/agent/envelope.go 里的
+// LLM 可以按 name/id 引用它。跟 server/internal/agent/envelope.go 里的
 // agent.NodeSummary 一一对应。
 export interface NodeSummary {
   id: string;
@@ -144,7 +144,7 @@ export interface Frame {
 /**
  * `canvas_changed` 帧里的 op 载荷，与后端 `canvasstate.CanvasOpSummary` 一一对应
  * （snake_case 线格式）。**这里只描述线上形状**：桌面端个人编辑页不建页面级
- * WebSocket，也不做远端 op 合并（spec X2），类型保留只为与线格式对齐。
+ * WebSocket，也不做远端 op 合并，类型保留只为与线格式对齐。
  */
 export interface CanvasOpFramePayload {
   kind?: string;

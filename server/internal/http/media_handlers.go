@@ -21,7 +21,7 @@ type mediaMimeStore interface {
 	MimeByObjectKey(objectKey string) (string, error)
 }
 
-// MediaHandler 提供 sidecar 的本地媒体文件（spec S3），以及“在访达/资源管理器中显示”。
+// MediaHandler 提供 sidecar 的本地媒体文件，以及“在访达/资源管理器中显示”。
 // URL 里的 token 由 localauth 校验（媒体专用 token 只放行 GET/HEAD /media/*）。
 type MediaHandler struct {
 	files  mediaFileStore
@@ -88,7 +88,7 @@ type revealRequest struct {
 }
 
 // Reveal 处理 POST /api/v1/media/reveal：把节点里的媒体 URL 换算成本机真实路径，在访达 / 资源管理器
-// 里选中它。由 sidecar 打开而不是把路径交给前端：Tauri 壳不必授予任何文件权限（spec SEC4），
+// 里选中它。由 sidecar 打开而不是把路径交给前端：Tauri 壳不必授予任何文件权限，
 // 真实路径也不出 sidecar。
 func (h *MediaHandler) Reveal(w http.ResponseWriter, r *http.Request) {
 	var body revealRequest

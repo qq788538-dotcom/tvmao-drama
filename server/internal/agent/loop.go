@@ -240,8 +240,8 @@ func (a *Agent) Run(ctx context.Context, threadID, actionID, userText string, me
 			// 轮次结束后的 re-hydrate 会把它抹掉——只保存文本，丢掉可能半截的 tool_call。
 			a.persistPartialText(threadID, actionID, assistant)
 			// 用户主动取消（abort 帧 → Hub.CancelRun 掐 Run ctx）不是故障：错误码
-			// 固定 aborted，前端据此渲染中性的「已停止」而不是红色报错。计费边界
-			//（用户拍板）：已消耗的 LLM 轮次照常结算（settle 走 Background ctx，
+			// 固定 aborted，前端据此渲染中性的「已停止」而不是红色报错。计费边界：
+			// 已消耗的 LLM 轮次照常结算（settle 走 Background ctx，
 			// 取消掐不断）；已提交的生成任务不撤不退，继续跑完照常扣积分。
 			if ctx.Err() != nil {
 				a.sendFatal(threadID, actionID, "aborted", "已停止生成")
@@ -314,7 +314,6 @@ func (a *Agent) Run(ctx context.Context, threadID, actionID, userText string, me
 			return nil
 		}
 
-		// Phase 0 串行执行 tool call；暂时还没有 fan-out 并发。
 		// 并行 fan-out 执行同一回合的所有 tool_call——独立的生成任务（如一口气发
 		// 4 张 generate_image）本就该并发，而不是串行排队等前一张跑完。结果按
 		// tool_call 原始顺序回灌，这样喂给 LLM 的 tool 消息序列、持久化、历史重载
@@ -915,7 +914,7 @@ func assistantToBlocks(m *schema.Message, tools ToolRegistry) []ContentBlock {
 	return out
 }
 
-// stopReasonOf 在 Phase 0 对齐 Anthropic 的 stop_reason：消息里有任何 tool call
+// stopReasonOf 对齐 Anthropic 的 stop_reason：消息里有任何 tool call
 // 就是 tool_use，否则是 end_turn。
 func stopReasonOf(m *schema.Message) string {
 	if len(m.ToolCalls) > 0 {

@@ -1,4 +1,4 @@
-// 订阅 CLI 对当前项目画布的写入（CLI spec 第 6 节）。收到更新的版本后，等画布空闲再整拉；
+// 订阅 CLI 对当前项目画布的写入。收到更新的版本后，等画布空闲再整拉；
 // 断线自动重连（原生 EventSource 收到非 200 会直接放弃重试，所以手动重连），重连成功后比较一次版本补漏。
 import { useCallback, useEffect, useRef } from 'react';
 import { getSnapshot } from '@/shared/api';

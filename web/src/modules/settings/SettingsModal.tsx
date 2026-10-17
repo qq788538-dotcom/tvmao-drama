@@ -31,8 +31,8 @@ const PAGES: Record<SectionKey, () => ReactNode> = {
   diag: () => <DiagPage embedded />,
 };
 
-// 用全局 queryClient（final-review I-3）：设置改完能让画布侧缓存失效，sidecar 重启换会话时
-// 也会被 adoptSidecarSession 一起清掉（M-3）。设置页自己的查询沿用原来的默认行为。
+// 用全局 queryClient：设置改完能让画布侧缓存失效，sidecar 重启换会话时
+// 也会被 adoptSidecarSession 一起清掉。设置页自己的查询沿用原来的默认行为。
 applySettingsQueryDefaults(queryClient);
 
 /**

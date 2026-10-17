@@ -152,7 +152,7 @@ func (h *generalSettingsHandler) putUpstream(w nethttp.ResponseWriter, r *nethtt
 			}
 		}
 	}
-	// API Key 没有内置默认值、不参与 M11 合并，直接写 settings（spec M3）。
+	// API Key 没有内置默认值、不参与内置默认值合并，直接写 settings。
 	if body.APIKey != nil || body.ClearAPIKey {
 		if err := h.d.Settings.Set(settingUpstreamAPIKey, newKey); err != nil {
 			scWriteError(w, err)
@@ -171,7 +171,7 @@ func (h *generalSettingsHandler) restoreBaseDomain(w nethttp.ResponseWriter, r *
 }
 
 // maskAPIKey 返回固定格式的掩码：最多露后 4 位，不露前几位；不足 12 位全部遮住。
-// 以 "sk-" 开头的 Key 保留这个通用前缀（spec 格式 sk-••••••••末4位）。Key 明文永不出 sidecar。
+// 以 "sk-" 开头的 Key 保留这个通用前缀（格式 sk-••••••••末4位）。Key 明文永不出 sidecar。
 func maskAPIKey(k string) string {
 	if k == "" {
 		return ""
@@ -188,7 +188,7 @@ func maskAPIKey(k string) string {
 	return prefix + dots + string(r[len(r)-4:])
 }
 
-// normalizeBaseDomain 只接受 http/https 绝对地址，去掉末尾 "/" 和 "/v1"（M-1：各调用路径
+// normalizeBaseDomain 只接受 http/https 绝对地址，去掉末尾 "/" 和 "/v1"（各调用路径
 // 自己会补 /v1，保存带 /v1 的地址会拼出 /v1/v1）；允许路径前缀（反向代理场景）。
 func normalizeBaseDomain(s string) (string, error) {
 	s = strings.TrimSpace(s)

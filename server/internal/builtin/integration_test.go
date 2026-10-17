@@ -8,7 +8,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
 )
 
-// 跨 Apply 与 Service 的端到端约定（spec M10 + M11）：
+// 跨 Apply 与 Service 的端到端约定：
 // 经 Service 改过的字段在升级后保留；改回内置值或“恢复默认”后的字段在升级后跟随新版。
 func TestServiceEditsSurviveUpgradeAndRestoreFollowsSeed(t *testing.T) {
 	ctx := context.Background()

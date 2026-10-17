@@ -9,8 +9,8 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/models"
 )
 
-// Service 是设置页（P4）修改内置数据的唯一入口：只放行白名单字段（spec M10）、保存前校验、
-// 记录用户改过的字段（spec M11）、提供“恢复默认”。内置模型和内置配置不得再经
+// Service 是设置页修改内置数据的唯一入口：只放行白名单字段、保存前校验、
+// 记录用户改过的字段、提供“恢复默认”。内置模型和内置配置不得再经
 // models.Repository 的 Create/Update/Delete 或 settings.Repository.Set 写入，否则覆盖记录会失真。
 type Service struct {
 	db   *sql.DB

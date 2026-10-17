@@ -1,7 +1,6 @@
 import { nanoid } from 'nanoid';
 
-// 脚本节点数据模型——对齐 Drama Skill 的 candidate.json（定稿见
-// docs/superpowers/specs/2026-08-01-canvas-script-node-skill-align.md）。
+// 脚本节点数据模型——对齐 Drama Skill 的 candidate.json。
 // 一行 = skill 的一个 storyboard（一次视频生成提交），prompt 是唯一真源：
 // 景别/运镜/对白/音效等全部活在 prompt 的「镜头N：」行里，与步骤 2 资产的
 // 关联也只靠 prompt 内的 @[类型-名称] token，不再有散字段第二真源。
@@ -54,23 +53,23 @@ export interface ScriptGenState {
 }
 
 export interface ScriptSettings {
-  /** 「剧本生成分镜脚本」入口的剧本原文（M2 跑 skill 用） */
+  /** 「剧本生成分镜脚本」入口的剧本原文（跑 skill 用） */
   scriptPrompt: string;
-  /** M2 跑 skill 的文本模型，显式必填 */
+  /** 跑 skill 的文本模型，显式必填 */
   modelId: string;
   rows: ScriptRow[];
   assets: ScriptAssets;
   /** skill 输出的全局风格（展示用） */
   globalStyle: string;
-  /** 主切割时长 DURATION_SEC：duration 上限 + M2 传给 skill 的参数 */
+  /** 主切割时长 DURATION_SEC：duration 上限 + 传给 skill 的参数 */
   durationSec: number;
   /** 剧本生成分镜的任务状态（见 ScriptGenState） */
   gen: ScriptGenState;
 }
 
 export const MIN_SHOT_SECONDS = 4;
-// 默认 15：durationSec 的配置入口（生成器设置）要 M2 才有，默认值就是当前用户
-// 能用到的唯一上限——取 M1 时代的 15s 上限，别拿 skill 常用参数 10 卡住手写用户。
+// 默认 15：没在生成器里改过时，默认值就是用户能用到的上限——取 15s，
+// 别拿 skill 常用参数 10 卡住手写用户。
 export const DEFAULT_DURATION_SEC = 15;
 export const MAX_NAME_LEN = 15;
 // 剧本长度上限（生成器输入框 + 上游文字节点拼接后的总长）。后端 Submit 有同值
@@ -104,9 +103,9 @@ export function renumberRows(rows: ScriptRow[]): ScriptRow[] {
   return rows.map((r, i) => (r.shotNumber === i + 1 ? r : { ...r, shotNumber: i + 1 }));
 }
 
-// 容错读取：settings 来自快照 JSON，可能是旧 schema（2026-08-01 前的 10 列散字段版）
-// 或半残数据。旧版行没有 name/prompt 这套字段——脚本节点无存量用户数据（定稿文档
-// 「兼容性说明」），不做字段迁移，识别不出的字段按默认值降级，别猜。
+// 容错读取：settings 来自快照 JSON，可能是旧 schema（10 列散字段版）
+// 或半残数据。旧版行没有 name/prompt 这套字段——脚本节点无存量用户数据，
+// 不做字段迁移，识别不出的字段按默认值降级，别猜。
 export function readScriptSettings(raw: Record<string, unknown> | undefined): ScriptSettings {
   const d = defaultScriptSettings();
   if (!raw) return d;
@@ -131,7 +130,7 @@ export function readScriptSettings(raw: Record<string, unknown> | undefined): Sc
       props: Array.isArray(rawAssets.props) ? rawAssets.props : [],
     },
     globalStyle: typeof raw.globalStyle === 'string' ? raw.globalStyle : d.globalStyle,
-    // 恒定 15（4~15s，用户拍板）：这是步骤 1 时长编辑的上限，不跟随生成器选的
+    // 恒定 15（4~15s）：这是步骤 1 时长编辑的上限，不跟随生成器选的
     // DURATION_SEC——skill 生成的行天然 ≤ 所选秒数，用户手动放宽到 15 是自由；
     // 存量快照里残留的早期默认值 10 也不该反过来卡住手写用户。
     durationSec: d.durationSec,

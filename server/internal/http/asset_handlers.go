@@ -26,7 +26,7 @@ func uniqueUploadFilename(filename string) string {
 	return hex.EncodeToString(b) + "_" + filename
 }
 
-// assetMaxUploadBytes 是单个上传文件的上限。参考仓靠 nginx 的 body 上限挡；sidecar 前面没有
+// assetMaxUploadBytes 是单个上传文件的上限。sidecar 前面没有
 // nginx，而下面 readUploadForm 会把整个文件读进内存，必须在 handler 里限住。
 const assetMaxUploadBytes int64 = 1 << 30
 
@@ -36,7 +36,7 @@ type AssetHandler struct {
 	users   storageUserRepo
 	signer  *MediaSigner
 	// probe 探测上传视频的时长（nil = 不探测）。默认 mediaprobe.ProbeDurationMsPortable：有 ffprobe 就数真实帧，
-	// 没有就读 MP4 容器时长（桌面端不计费，spec X3）。记下 duration_ms 后，后处理就不用再下载探测；
+	// 没有就读 MP4 容器时长（桌面端不计费）。记下 duration_ms 后，后处理就不用再下载探测；
 	// 探测失败只是不记时长。
 	probe func(ctx context.Context, data []byte) (int64, error)
 	// maxUploadBytes 是单个文件的上限，默认 assetMaxUploadBytes；测试可调小。
@@ -105,9 +105,8 @@ func (h *AssetHandler) storeUpload(ctx context.Context, userID, projectID int64,
 		return uploadResult{}, &uploadError{Status: http.StatusConflict, Message: "存储空间已满，请清理后重试"}
 	}
 
-	// 时长探测改为尽力而为：探测失败只是不记时长（duration_ms 为 NULL），不再拒绝上传——
-	// 参考仓拒绝无权威时长的视频是为了按秒计费不被篡改的元数据骗，桌面端不计费（spec X3）。
-	// 探测仍放在 PutObject 之前，保持参考仓的顺序不变式。
+	// 时长探测尽力而为：探测失败只是不记时长（duration_ms 为 NULL），不拒绝上传——
+	// 桌面端不计费，不需要靠权威时长防篡改。探测放在 PutObject 之前。
 	var durationMs int64
 	if strings.HasPrefix(contentType, "video/") && h.probe != nil {
 		if d, perr := h.probe(ctx, body); perr == nil {

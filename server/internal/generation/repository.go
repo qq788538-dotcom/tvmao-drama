@@ -425,8 +425,7 @@ func (r *SQLiteRepository) ListProcessing(maxAgeSec, staleSec int) ([]Task, erro
 
 // Heartbeat 续租：仅当执行权代次匹配时更新 heartbeat_at。影响 0 行 = 失租——
 // 调用方必须立刻 cancel 执行 ctx，尽早中止上游调用。
-// (ClaimLease 已删除:它无条件覆盖 owner,「接管」在 DB 层面是假的;统一走带代次的
-// ClaimQueued/ClaimStaleRunning。)
+// (取得执行权统一走带代次的 ClaimQueued/ClaimStaleRunning,不存在无条件覆盖 owner 的入口。)
 func (r *SQLiteRepository) Heartbeat(taskID, lease int64) (bool, error) {
 	res, err := r.db.Exec(`UPDATE generation_tasks SET heartbeat_at=CURRENT_TIMESTAMP WHERE id=? AND lease_version=?`, taskID, lease)
 	if err != nil {

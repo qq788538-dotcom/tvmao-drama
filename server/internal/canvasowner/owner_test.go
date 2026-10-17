@@ -30,7 +30,7 @@ func TestLocalClaimIssuesUniqueThreeSegmentTokens(t *testing.T) {
 	}
 }
 
-// 单用户单窗口（spec S11、X2）：锁永远放行，包括前端不再 Claim 时发来的空 token。
+// 单用户单窗口：锁永远放行，包括前端不再 Claim 时发来的空 token。
 func TestLocalNeverRejects(t *testing.T) {
 	l := NewLocal()
 	ctx := context.Background()

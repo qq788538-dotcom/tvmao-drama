@@ -1,7 +1,7 @@
 import { theme, type ThemeConfig } from 'antd';
 
-// 与参考仓客户端（apps/web/src/main.tsx 的 darkTheme）一致，让设置页与画布同一套配色。
-// P3a 合并后全局 ConfigProvider 用的是同一份 token，这里嵌套一层不会产生差异。
+// 与画布的暗色主题一致，让设置页与画布同一套配色。
+// 全局 ConfigProvider 用的是同一份 token，这里嵌套一层不会产生差异。
 export const settingsTheme: ThemeConfig = {
   algorithm: theme.darkAlgorithm,
   token: {

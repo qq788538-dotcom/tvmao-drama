@@ -1,6 +1,4 @@
-// apps/web/src/canvas/agent/MessageBubble.tsx
-//
-// 气泡外壳视觉沿用参考仓 ChatPanel 的 MessageBubble（桌面端未迁移 ChatPanel，spec X7）
+// 气泡外壳视觉沿用 ChatPanel 的 MessageBubble
 //（rounded-2xl、用户 justify-end / assistant justify-start、右下角 hover
 // 才显示的复制按钮）。block 渲染则是 agent 专属——遍历 msg.blocks 渲染
 // text / tool_use / tool_event（artifact 缩略图）/ tool_result，再加上下方的
@@ -260,8 +258,8 @@ function InlineSectionCard({ section }: { section: InlineSection }) {
   );
 }
 
-// text_info 产物 chip（agent 创建文本节点后落在回复里的那颗）。点击行为对标
-// 用户气泡的 InlineSectionCard（用户拍板「左右对齐」）：按 agentMeta.artifactId
+// text_info 产物 chip（agent 创建文本节点后落在回复里的那颗）。点击行为与
+// 用户气泡的 InlineSectionCard 左右对齐：按 agentMeta.artifactId
 // 反查到画布节点 → 开节点自己的展开编辑弹层；节点已删 → 用落库的 artifact.text
 // 快照开 ChatTextSectionDialog，保存落成新节点。原「点击平移定位」被弹框取代
 // ——弹的就是那个节点的内容，定位诉求由此天然满足。
@@ -629,8 +627,7 @@ export const MessageBubble = memo(function MessageBubble({
         })}
         <WorkflowProgress msg={msg} />
 
-        {/* 复制按钮——任何带文本内容的消息都会显示。定位 + hover 才显示
-            与参考仓 ChatPanel 的气泡一致。 */}
+        {/* 复制按钮——任何带文本内容的消息都会显示。定位 + hover 才显示。 */}
         {copyText && (
           <button
             onClick={copyToClipboard}

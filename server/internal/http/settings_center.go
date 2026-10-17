@@ -1,6 +1,6 @@
 package http
 
-// 设置页（P4）接口的公共部分：与 P2a 编辑策略服务、P5 Agent 仓库之间的窄接口，
+// 设置页接口的公共部分：与 builtin 编辑策略服务、Agent 仓库之间的窄接口，
 // 错误约定，以及路由注册表。各接口的 handler 在各自文件里通过 init() 注册，
 // 互不改动对方文件；依赖为 nil 的那部分接口不注册。
 
@@ -19,7 +19,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/settings"
 )
 
-// ModelPatch 是模型中心允许用户修改的全部字段（spec M10）。指针为 nil 表示不改。
+// ModelPatch 是模型中心允许用户修改的全部字段。指针为 nil 表示不改。
 // 请求体严格解码：出现这里没有的字段（如 requestTemplate）直接 400。
 type ModelPatch struct {
 	Enabled                *bool                      `json:"enabled,omitempty"`
@@ -51,7 +51,7 @@ type ModelUpstreamStore interface {
 	SetUpstream(id int64, baseURL, apiKey string) error
 }
 
-// ModelEditService 由 P2a 的编辑策略服务实现（经 settings_center_adapter.go 适配）。
+// ModelEditService 由 builtin 包的编辑策略服务实现（经 settings_center_adapter.go 适配）。
 type ModelEditService interface {
 	UpdateModel(ctx context.Context, id int64, p ModelPatch) error
 	RestoreModelDefault(ctx context.Context, id int64) error
@@ -59,7 +59,7 @@ type ModelEditService interface {
 	ModifiedModelFields(ctx context.Context) (map[int64][]string, error)
 }
 
-// SettingEditService 由 P2a 的编辑策略服务实现：只允许 M10 可改路径变化。
+// SettingEditService 由 builtin 包的编辑策略服务实现：只允许可改路径变化。
 type SettingEditService interface {
 	UpdateSetting(ctx context.Context, key, value string) error
 	RestoreSettingDefault(ctx context.Context, key string) error
@@ -75,7 +75,7 @@ type AgentModelItem struct {
 }
 
 // AgentModelService 列出 Agent 大模型，供模型中心标注“被 Agent 引用”。
-// Agent 模型写死为内置值（2026-10-07 用户要求），不再提供切换 / 恢复默认，设置页也没有 Agent 模型页。
+// Agent 模型写死为内置值，不提供切换 / 恢复默认，设置页也没有 Agent 模型页。
 type AgentModelService interface {
 	ListAgentModels(ctx context.Context) ([]AgentModelItem, error)
 }
@@ -140,7 +140,7 @@ func scWriteError(w nethttp.ResponseWriter, err error) {
 		}
 		writeJSON(w, nethttp.StatusBadRequest, body)
 	case errors.Is(err, models.ErrUpstreamUnpaired):
-		// M-7：handler 已先校验，正常走不到；别的调用方漏校验时也应是 400 而非 500。
+		// handler 已先校验，正常走不到；别的调用方漏校验时也应是 400 而非 500。
 		writeJSON(w, nethttp.StatusBadRequest, map[string]any{"error": models.ErrUpstreamUnpaired.Error(), "field": "upstream"})
 	case errors.Is(err, ErrSettingsNotFound), errors.Is(err, models.ErrNotFound):
 		writeJSON(w, nethttp.StatusNotFound, map[string]any{"error": "要修改的项目不存在"})

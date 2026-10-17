@@ -3,11 +3,11 @@ import { isApiWriteAllowed } from './apiGuards';
 import { buildHttpUrl } from './server';
 import { currentSidecarSession } from './sidecarSession';
 
-// 桌面端：所有 REST 请求直连本机 sidecar（spec D3）。地址和 token 来自本次启动的
+// 桌面端：所有 REST 请求直连本机 sidecar。地址和 token 来自本次启动的
 // 会话（./sidecarSession → server.ts 的 getServerInfo）。端口每次启动、每次 sidecar
 // 重启都不同，所以 baseURL 和 token 在每个请求里现取，不在模块加载时固化。
 //
-// 与参考仓的差异：没有登录（spec X4），所以没有 localStorage 里的登录 token、没有
+// 没有登录，所以没有 localStorage 里的登录 token、没有
 // 「401 → 清会话跳 /login」、没有团队身份自愈。401 只可能是 token 对不上（sidecar
 // 换了一次而页面没重载），原样抛给调用方。
 export const api: AxiosInstance = axios.create({
@@ -15,7 +15,7 @@ export const api: AxiosInstance = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  // 每个请求现取会话（getServerInfo 有缓存，sidecar 重启事件会清掉它）：P8 的壳会自动
+  // 每个请求现取会话（getServerInfo 有缓存，sidecar 重启事件会清掉它）：壳会自动
   // 重启 sidecar，端口和 token 都会变。sidecar 正在重启时这里会等到它就绪或失败。
   const session = await currentSidecarSession();
   config.baseURL = session ? buildHttpUrl(session, '/api/v1') : '/api/v1';
@@ -412,7 +412,7 @@ export interface ModelConfig {
   name: string;
   modelId: string;
   basePath: string;
-  // 参考仓的单价说明。桌面端不计费（spec X3），界面不显示；字段保留只为兼容 sidecar 返回。
+  // 单价说明。桌面端不计费，界面不显示；字段保留只为兼容 sidecar 返回。
   priceNote?: string;
   enabled: boolean;
   hidden: boolean;
@@ -964,7 +964,7 @@ export interface AgentSkillDTO {
   description: string;
   /** 主分类。后端保证等于 categories[0]（写入时 normalizeSkillCategories 回写）。 */
   category: string;
-  /** 多分类真源（后端 5fbb661a 起）。旧行/旧服务端可能缺失或为空——读方一律走
+  /** 多分类真源。旧行/旧服务端可能缺失或为空——读方一律走
    *  skillCategoryGroups 的 effectiveCategories 拿 [category] 兜底，别直接读。 */
   categories?: string[];
   icon_url: string;
@@ -1085,7 +1085,7 @@ export async function saveMediaToLibrary(
 export interface CanvasScriptModelCandidate {
   modelId: string;
   displayName: string;
-  /** 参考仓的预冻结积分。桌面端 sidecar 恒为 0、界面不显示（spec X3），字段保留只为兼容。 */
+  /** 预冻结积分。桌面端 sidecar 恒为 0、界面不显示，字段保留只为兼容。 */
   credits: number;
 }
 

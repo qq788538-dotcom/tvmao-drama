@@ -1,4 +1,4 @@
--- P1d：自由画布「AI 角色库」（参考仓迁移 0090）。只建表；1729 条角色数据由 P2b 从
+-- 自由画布「AI 角色库」。只建表；1729 条角色数据由内置种子从
 -- seed/seedance_characters.jsonl 导入，image_url 保持 canonical 的 media://<object_key> 形态。
 CREATE TABLE seedance_characters (
   -- Seedance 素材库分配的角色资产 id（asset-YYYYMMDDHHMMSS-xxxxx），生成时以 asset://<id> 引用。
@@ -15,7 +15,7 @@ CREATE TABLE seedance_characters (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
--- 参考仓没有这个索引；桌面端每次生成（asset:// 替换）和每个 /media 请求（缓存判定）都按 image_url 查。
+-- 桌面端每次生成（asset:// 替换）和每个 /media 请求（缓存判定）都按 image_url 查。
 CREATE INDEX idx_seedance_characters_image_url ON seedance_characters (image_url);
 
 CREATE TRIGGER trg_seedance_characters_updated_at AFTER UPDATE ON seedance_characters

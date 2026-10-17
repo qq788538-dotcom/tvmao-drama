@@ -193,7 +193,7 @@ func TestDiagMediaRejectsOtherNames(t *testing.T) {
 	}
 }
 
-// P0 遗留：WebSocket 握手的外来 Origin 必须被 localauth 挡下，哪怕 token 正确。
+// WebSocket 握手的外来 Origin 必须被 localauth 挡下，哪怕 token 正确。
 func TestWebSocketRejectsForeignOrigin(t *testing.T) {
 	srv := newTestServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -1,5 +1,5 @@
 // Package objectstore 把本机媒体上传到用户自己配置的对象存储（火山 TOS / 阿里云 OSS），
-// 交给上游一个 24 小时有效的预签名地址（对象存储设计 docs/superpowers/specs/2026-10-07-object-storage-design.md）。
+// 交给上游一个 24 小时有效的预签名地址。
 package objectstore
 
 import (

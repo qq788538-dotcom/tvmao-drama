@@ -344,7 +344,7 @@ func TestStatusWithoutPublicUnchanged(t *testing.T) {
 	}
 }
 
-// spec S12 未定：本机素材签出来是回环地址，上游拉不到。必须就地拒绝，不发上游、不落行。
+// 本机素材签出来是回环地址，上游拉不到。必须就地拒绝，不发上游、不落行。
 func TestSubmitRefusesLoopbackURL(t *testing.T) {
 	for _, host := range []string{"127.0.0.1:5173", "localhost:9", "[::1]:80"} {
 		repo := newFakeAssets()
@@ -363,7 +363,7 @@ func TestSubmitRefusesLoopbackURL(t *testing.T) {
 	}
 }
 
-// 前端直接展示这条错误文案（spec X5「未配置时入口提示“合规接口未配置”」）。
+// 前端直接展示这条错误文案（未配置时入口提示“合规接口未配置”）。
 type fakeSeedancePub struct{ configured bool }
 
 func (f fakeSeedancePub) Configured() bool { return f.configured }
@@ -387,7 +387,7 @@ func TestSeedanceSignedURLPublishesLoopback(t *testing.T) {
 	}
 }
 
-// ---- 同步注册（seedance-asset 设计 A2）----
+// ---- 同步注册 ----
 
 func TestSubmitActiveOnSuccess(t *testing.T) {
 	svc, repo, reg := newSyncSvc(t, &fakeRegistrar{configured: true, id: "asset-1"})
@@ -441,7 +441,7 @@ func TestSubmitDisabledWhenModelOff(t *testing.T) {
 	}
 }
 
-// 终审 I3：同步注册可能长达数分钟，调用期间必须已有 pending 行——节点角标/5 秒轮询
+// 同步注册可能长达数分钟，调用期间必须已有 pending 行——节点角标/5 秒轮询
 // 看得到「正在进行」，生成侧 Resolve 报「请稍候」而不是把签名 URL 原样透传。
 func TestSubmitWritesPendingBeforeRegister(t *testing.T) {
 	reg := &fakeRegistrar{configured: true, id: "asset-1"}

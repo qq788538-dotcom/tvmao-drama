@@ -8,11 +8,11 @@ import (
 
 // SettingGenImagePresets 是「绘图提示词预设」在 settings 表里的 key。
 // gen-image 节点专属——视频将来另起 gen_video_prompt_presets，互不复用，
-// 两套配置天然隔离（设计文档 docs/2026-08-14-gen-image-prompt-presets-design.md）。
+// 两套配置天然隔离。
 const SettingGenImagePresets = "gen_image_prompt_presets"
 
 // GenImagePresetEntry 是一条预设。Value 刻意用 map 而非结构体：key-value + 自由 JSON
-// 是拍板过的扩展位设计——未知字段必须原样落库、原样回显（admin 整体覆盖写回时不能丢），
+// 是有意的扩展位设计——未知字段必须原样落库、原样回显（admin 整体覆盖写回时不能丢），
 // 结构体会把没声明的字段静默吃掉。
 type GenImagePresetEntry struct {
 	Key   string         `json:"key"`
@@ -158,7 +158,7 @@ func (e GenImagePresetEntry) ComposePresetText(selected map[string]string) strin
 // PresetConstraintError 表示预设的图片数约束不满足。独立类型让 handler 层能
 // errors.As 出来回 400（连线是用户自己能改的前置条件，不是网关故障）——
 // 与 generation.InputLimitError 同一套处理思路。文案用预设 name 不用 key：
-// key 是内部标识，用户看不懂（设计文档需求第 10 条）。
+// key 是内部标识，用户看不懂。
 type PresetConstraintError struct{ Msg string }
 
 func (e *PresetConstraintError) Error() string { return e.Msg }

@@ -3,8 +3,8 @@ package generation
 import "sync"
 
 // modelLimiter 是可运行期动态调容量的并发信号量(mutex+cond)。
-// 逻辑与 drama 的 extractLimiter 相同——channel 容量不可变,而这里上限要随模型配置热调,故自己实现。
-// 直接照搬,只把语义从"全局一个池"改成"每模型一把"(由 ConcurrencyRegistry 持有 map)。
+// channel 容量不可变,而这里上限要随模型配置热调,故自己实现。
+// 语义是"每模型一把"(由 ConcurrencyRegistry 持有 map)。
 type modelLimiter struct {
 	mu     sync.Mutex
 	cond   *sync.Cond
@@ -54,7 +54,7 @@ func (l *modelLimiter) release() {
 
 // ConcurrencyRegistry 是"每模型一把并发闸"的共享持有者。
 //
-// 设计(方案 B):并发闸不塞进 Submit 内部,而是由业务 runner(画布 canvasgen、P1b 的 drama)
+// 设计:并发闸不塞进 Submit 内部,而是由业务 runner(画布 canvasgen、drama)
 // 在自己的"占位同步跑"goroutine 里 Acquire → 跑完整个生命周期 → release。全平台只 new 一个
 // ConcurrencyRegistry 实例、同时传给画布和 drama,于是**同一模型跨模块共用同一把信号量**——
 // 这就是"并发是模型属性、跨模块共享"的落地点。

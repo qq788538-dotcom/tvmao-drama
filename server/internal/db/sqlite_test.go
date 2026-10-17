@@ -105,7 +105,7 @@ func TestLocalUserSeeded(t *testing.T) {
 	}
 }
 
-// 参考仓依赖外键级联删除快照（projects/repository.go HardDelete 的注释）；SQLite 默认不开外键。
+// 删除项目依赖外键级联删除快照（见 projects/repository.go HardDelete）；SQLite 默认不开外键。
 func TestSnapshotCascadesWithProject(t *testing.T) {
 	conn := dbtest.Open(t)
 	res, err := conn.Exec(`INSERT INTO projects (user_id, name) VALUES (1, 'p')`)
@@ -254,7 +254,7 @@ func TestOpenFailsOnUnwritableDir(t *testing.T) {
 	}
 }
 
-// 用户可以把数据目录改到任意文件夹（spec S2）。路径里的 ? 会被驱动当成参数分隔符，
+// 用户可以把数据目录改到任意文件夹。路径里的 ? 会被驱动当成参数分隔符，
 // 库会被静默建到别处且所有 pragma 失效——必须明确报错，而不是静默成功。
 func TestOpenRejectsPathsTheDriverWouldMisparse(t *testing.T) {
 	base := t.TempDir()

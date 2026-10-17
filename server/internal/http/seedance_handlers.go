@@ -12,7 +12,7 @@ import (
 // SeedanceHandler 暴露「画布素材（图片/视频/音频）的 Seedance 2.0 合规校验」。
 // 校验状态挂在 object_key 上（见 0075），所以这里只做「asset id → object_key +
 // 归属校验」的转换，剩下交给 service。
-// seedanceKeyExtractor 是 assets.Storage 在这里用到的唯一方法（P1b 的 LocalStorage 认
+// seedanceKeyExtractor 是 assets.Storage 在这里用到的唯一方法（LocalStorage 认
 // media:// 与任意端口的本地媒体 URL）。
 type seedanceKeyExtractor interface {
 	ExtractKey(urlOrKey string) (string, bool)
@@ -151,7 +151,7 @@ func (h *SeedanceHandler) Status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// Config: GET /seedance/config —— 前端据此在「合规校验」入口提示「合规接口未配置」（spec X5）。
+// Config: GET /seedance/config —— 前端据此在「合规校验」入口提示「合规接口未配置」。
 func (h *SeedanceHandler) Config(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"configured": h.svc.Configured()})
 }

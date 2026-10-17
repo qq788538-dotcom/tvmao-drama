@@ -1,5 +1,5 @@
-// 守护：前端源码里不得写死任何公网地址（spec S12 未定、E7 字体本地化、SEC4 CSP）。
-// 媒体和接口地址一律由 sidecar 会话给出；需要外链的功能（如 F7 角色库图片）把
+// 守护：前端源码里不得写死任何公网地址（字体本地化、CSP）。
+// 媒体和接口地址一律由 sidecar 会话给出；需要外链的功能（如角色库图片）把
 // 地址写进配置，而不是写进前端代码。
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';

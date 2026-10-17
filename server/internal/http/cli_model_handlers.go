@@ -15,7 +15,7 @@ type cliModelRepo interface {
 	GetByModelID(modelID string) (*models.ModelConfig, error)
 }
 
-// CLIModelHandler 暴露 CLI 可见的模型目录（桌面端无计费，去掉了参考仓的费用估算）。
+// CLIModelHandler 暴露 CLI 可见的模型目录（桌面端无计费，不含费用估算）。
 //
 // 与公开的 /api/v1/models 是两套响应：那条直接回内部 ModelConfig（网页需要
 // uiSchema 渲染下拉框），这条回归一化后的公共契约（Agent 需要 JSON Schema）。

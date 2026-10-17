@@ -1,11 +1,11 @@
 // 画布节点能力清单（浏览器侧）。
 //
-// canvasManifest.json 是从 apps/api/internal/agent/canvasmanifest/manifest.json
+// canvasManifest.json 是从 server/internal/agent/canvasmanifest/manifest.json
 // **原样复制**过来的副本，Go 侧的 sync_test.go 钉死两份字节级一致。改清单必须
 // 两处一起改：
 //
-//   cp apps/api/internal/agent/canvasmanifest/manifest.json \
-//      apps/web/src/modules/canvas/editor/agent/canvasManifest.json
+//   cp server/internal/agent/canvasmanifest/manifest.json \
+//      web/src/modules/canvas/editor/agent/canvasManifest.json
 //
 // 用同一份 JSON 两处拷贝，而不是两侧各写一份结构体：结构体本身就是漂移的入口
 //（一侧加了字段、另一侧的解析忽略它，测试照样绿），字节比对糊弄不过去。

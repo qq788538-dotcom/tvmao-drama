@@ -176,8 +176,8 @@ const ADDED_MODEL_WORLD_SPACING = 1.25;
 const COPY_PASTE_POSITION_OFFSET = 0.6;
 const UNDO_STACK_LIMIT = 80;
 // 群演是场景 JSON 唯一的结构性放大器（一次操作可批量产出上百个对象，其余入口都是
-// 单对象递增），不设闸的话画布快照体积会被一次误操作撑爆。100 上限是用户拍板
-// （设计文档 §7）。导出常量供 UI 错误文案与测试引用，避免两处各写一个魔法数。
+// 单对象递增），不设闸的话画布快照体积会被一次误操作撑爆，上限 100。
+// 导出常量供 UI 错误文案与测试引用，避免两处各写一个魔法数。
 export const CROWD_CHARACTER_LIMIT = 100;
 const LOCAL_MODEL_LIBRARY_STORAGE_KEY = "storyai-3d-director-local-model-library";
 const DIRECTOR_SCENE_STORAGE_KEY = "storyai-3d-director-desk-demo";
@@ -273,7 +273,7 @@ function cloneJsonValue<T>(value: T): T {
 function readPersistedLocalModelAssets() {
   // 宿主（自由画布）在场时禁用「跨场景本地模型目录」：宿主侧资产 URL 是 24 小时
   // 过期的签名 URL，跨项目把它们存进 localStorage 再合并出来的只会是死链；
-  // 跨项目模型库的正解是阶段三的后台模型库，不在 localStorage 这层凑合。
+  // 跨项目模型库应该放在后台，不在 localStorage 这层凑合。
   if (getDirectorHostAdapter()) return [];
 
   const storage = getLocalStorageSafe();

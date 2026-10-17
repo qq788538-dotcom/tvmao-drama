@@ -43,7 +43,7 @@ describe('MultiAnglePanel', () => {
     });
   });
 
-  // spec X3：底栏原来显示「⚡ 预扣积分」或 priceNote 计费说明，桌面端一律不显示。
+  // 桌面端不计费：底栏不显示「⚡ 预扣积分」或 priceNote 计费说明。
   it('底栏不显示预扣积分或计费说明（X3）', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(

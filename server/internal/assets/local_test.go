@@ -273,7 +273,7 @@ func TestCopyObjectIsIndependentOfSource(t *testing.T) {
 	}
 }
 
-// I1：key 里的 # 和 % 会让 media:// 与 ExtractKey 对不上，sanitizeName 必须替换掉，ValidKey 必须拒收。
+// key 里的 # 和 % 会让 media:// 与 ExtractKey 对不上，sanitizeName 必须替换掉，ValidKey 必须拒收。
 func TestValidKeyRejectsHashAndPercent(t *testing.T) {
 	for _, k := range []string{"u1/a#b.png", "u1/50%off.png", "u1/a%41.png"} {
 		if ValidKey(k) {

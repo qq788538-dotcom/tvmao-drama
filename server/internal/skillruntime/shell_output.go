@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// 单条 Skill 命令的输出上限与默认超时（与参考仓一致）。
+// 单条 Skill 命令的输出上限与默认超时。
 const (
 	maxShellOutputBytes = 1024 * 1024
 	defaultShellTimeout = 30 * time.Second

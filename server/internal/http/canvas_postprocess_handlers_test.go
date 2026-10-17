@@ -423,10 +423,9 @@ func TestDesub_ProjectNotOwned(t *testing.T) {
 
 // ── POST /canvas-tasks/postprocess-estimate ──────────────────────────────────
 //
-// 这组测试存在的理由：上一轮实现让前端拿 <video>.duration（容器声明值，可被单独
-// 篡改）去算「预计 X 积分」，用户改了 metadata 就看到「预计 1 积分」而实际按真实
-// 两分多钟结算。旧 spec A.5 本已规定「预估与结算统一读权威秒数」，只落实了结算那
-// 一半。故预估改由后端算，且必须用与提交完全相同的 resolveDurationMs。
+// 这组测试存在的理由：前端拿 <video>.duration（容器声明值，可被单独篡改）去算
+// 「预计 X 积分」时，用户改了 metadata 就看到「预计 1 积分」而实际按真实两分多钟结算。
+// 预估与结算必须统一读权威秒数，故预估由后端算，且必须用与提交完全相同的 resolveDurationMs。
 
 // E1) duration_ms 命中缓存 → credits 按权威秒数算，响应带 durationMs。
 func TestPostprocessEstimate_KnownDuration(t *testing.T) {
@@ -453,7 +452,7 @@ func TestPostprocessEstimate_KnownDuration(t *testing.T) {
 	}
 }
 
-// E2) 防薅回归（本次的核心）：请求体注入 duration=1，但 assets 里权威值是 137200ms。
+// E2) 防薅回归（核心）：请求体注入 duration=1，但 assets 里权威值是 137200ms。
 // credits 必须按 137.2 秒算(ceil → 138)，证明请求体那个字段根本没被读。
 // 这正是用户改视频容器 metadata 后「预计 1 积分」的复现场景。
 func TestPostprocessEstimate_IgnoresClientDuration(t *testing.T) {
@@ -805,7 +804,7 @@ func TestUpscale_IgnoresClientDuration(t *testing.T) {
 }
 
 // U5) 防薅：链式继承——源是「去字幕产物」这类 duration_ms 已继承权威值的 asset，
-// 转高清仍按权威秒数计费。钉住 spec 决策 #4「可对去字幕产物再转高清」的安全性。
+// 转高清仍按权威秒数计费。钉住「可对去字幕产物再转高清」的安全性。
 func TestUpscale_ChainedFromDesubOutput(t *testing.T) {
 	// desub 产物 asset：其 duration_ms 由 persistOutputs 从后处理 inputs.duration
 	// (服务端权威塞的) 继承而来，故这里就是权威值。
@@ -1195,7 +1194,6 @@ func TestPostprocessEstimate_ResolutionCheckedPerModel(t *testing.T) {
 }
 
 // postprocessFakeModelLookup 满足 postprocessModelLookup：按 modelId 返回预置模型(含隐藏)。
-// 参考仓叫 httpFakeModelLookup、定义在不移植的 drama_postprocess_handlers_test.go。
 type postprocessFakeModelLookup struct {
 	m map[string]*models.ModelConfig
 }
@@ -1207,7 +1205,7 @@ func (f *postprocessFakeModelLookup) GetByModelID(id string) (*models.ModelConfi
 	return nil, errors.New("model not found")
 }
 
-// postprocessNoopSigner 复刻参考仓 newNoopSigner()（noopStorage）的语义：
+// postprocessNoopSigner 是 noop 签名替身：
 // 只认 media://，签成 https://cdn.example.com/<key>；认不出原样返回。
 type postprocessNoopSigner struct{}
 

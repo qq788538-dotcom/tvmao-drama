@@ -139,7 +139,7 @@ func mediaCfg() Config {
 	return Config{Token: testToken, MediaToken: testMediaToken, AllowedOrigins: []string{"tauri://localhost"}}
 }
 
-// P0 遗留：TrimPrefix 不校验前缀，"Basic xxx" 会挡住 ?token= 回退。
+// TrimPrefix 不校验前缀，"Basic xxx" 会挡住 ?token= 回退。
 func TestNonBearerAuthorizationFallsBackToQuery(t *testing.T) {
 	rec := do(t, "GET", "/x?token="+testToken, map[string]string{"Authorization": "Basic Zm9vOmJhcg=="})
 	if rec.Code != http.StatusOK {
@@ -186,7 +186,7 @@ func cliCfg() Config {
 	}
 }
 
-// spec 3.3：CLI 路由只认 Bearer CLI token；CLI token 不能用于其他路由。
+// CLI 路由只认 Bearer CLI token；CLI token 不能用于其他路由。
 func TestCLITokenIsolation(t *testing.T) {
 	cfg := cliCfg()
 	cases := []struct {

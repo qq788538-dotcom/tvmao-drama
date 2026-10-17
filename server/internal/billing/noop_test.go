@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// 以下三个接口逐字对应参考仓的计费窄接口：agent.AgentBilling（agent/backbone.go:197）、
-// http 的 chatBilling（chat_handlers.go:53）、canvasscript 的 billingService（service.go:153-158）。
-// NoopService 必须同时满足它们，P5/P6 才能直接把它传进去。
+// 以下三个接口逐字对应各处的计费窄接口：agent.AgentBilling、
+// http 的 chatBilling、canvasscript 的 billingService。
+// NoopService 必须同时满足它们，才能直接把它传进去。
 type agentBilling interface {
 	Freeze(ctx context.Context, userID, taskID, amountCredits int64, note string) (Result, error)
 	Settle(ctx context.Context, userID, taskID, frozenCredits, actualCredits int64, note string) (Result, error)
@@ -35,7 +35,7 @@ var (
 func TestNoopServiceAlwaysSucceedsWithoutDB(t *testing.T) {
 	s := NewNoopService()
 	ctx := context.Background()
-	// 桌面端不计费（spec X3）：任何金额、nil 事务都立即成功，不碰数据库。
+	// 桌面端不计费：任何金额、nil 事务都立即成功，不碰数据库。
 	if _, err := s.Freeze(ctx, 1, 2, 999999, "n"); err != nil {
 		t.Fatal(err)
 	}

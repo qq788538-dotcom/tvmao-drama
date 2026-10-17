@@ -15,7 +15,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/generation"
 )
 
-// generationApplyAssets 是 P1b assets 仓库的窄子集（generation.AssetRecorder 也满足）。
+// generationApplyAssets 是 assets 仓库的窄子集（generation.AssetRecorder 也满足）。
 type generationApplyAssets interface {
 	FindByTaskSlot(taskID int64, outputIndex int) (*assets.AssetRecord, error)
 	ListForTask(taskID int64) ([]assets.AssetRecord, error)

@@ -1,6 +1,6 @@
 import { Tag, theme } from 'antd';
 
-/** 技术字段只读展示（spec M10）：格式化 JSON，不提供任何编辑入口。 */
+/** 技术字段只读展示：格式化 JSON，不提供任何编辑入口。 */
 export function ReadonlyJson({ value, maxHeight = 240 }: { value: unknown; maxHeight?: number }) {
   const { token } = theme.useToken();
   const text = value === null || value === undefined ? '（未配置）' : JSON.stringify(value, null, 2);

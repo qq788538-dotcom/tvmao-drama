@@ -1,6 +1,5 @@
-// Package users 是桌面端的本地用户仓库：只有 id=1 一个用户（spec X4，迁移 0001 预置），
-// 只保留画布链路用到的读取与存储用量方法。参考仓的注册、团队影子用户、会员配额、改密等
-// 方法随登录与会员一起删除（spec X3、X4）。SQL 与参考仓同名方法逐字一致。
+// Package users 是桌面端的本地用户仓库：只有 id=1 一个用户（迁移 0001 预置），
+// 只保留画布链路用到的读取与存储用量方法；没有注册、团队影子用户、会员配额、改密等方法。
 package users
 
 import (
@@ -18,7 +17,7 @@ type User struct {
 	StorageUsedBytes  int64
 	BalanceCredits    int64
 	FrozenCredits     int64
-	// UpstreamAPIKey 非空 = 该用户上游调用用自己的 SK；空 = 回落全局 settings.upstream_api_key（P1c 用）。
+	// UpstreamAPIKey 非空 = 该用户上游调用用自己的 SK；空 = 回落全局 settings.upstream_api_key（生成链路用）。
 	UpstreamAPIKey string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -30,7 +29,7 @@ type SQLiteRepository struct{ db *sql.DB }
 
 func NewSQLiteRepository(db *sql.DB) *SQLiteRepository { return &SQLiteRepository{db: db} }
 
-// GetByID 读一个用户。桌面端 users 表没有参考仓的 kind、password_changed_at 列，这里只选存在的列。
+// GetByID 读一个用户。桌面端 users 表没有 kind、password_changed_at 列，这里只选存在的列。
 func (r *SQLiteRepository) GetByID(id int64) (*User, error) {
 	var u User
 	err := r.db.QueryRow(`SELECT id, email, status, role, storage_quota_bytes, storage_used_bytes,
@@ -54,7 +53,7 @@ func (r *SQLiteRepository) AddStorage(id int64, delta int64) error {
 	return err
 }
 
-// AddStorageTx 在调用方事务里累计用量（与 asset 行插入同事务，P1c 的生成产物落库用）。
+// AddStorageTx 在调用方事务里累计用量（与 asset 行插入同事务，生成产物落库用）。
 func (r *SQLiteRepository) AddStorageTx(tx *sql.Tx, id int64, delta int64) error {
 	_, err := tx.Exec(`UPDATE users SET storage_used_bytes = storage_used_bytes + ? WHERE id = ?`, delta, id)
 	return err

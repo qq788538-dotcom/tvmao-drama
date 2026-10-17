@@ -11,7 +11,7 @@ import (
 
 const sseHeartbeat = 25 * time.Second
 
-// ProjectEvents 是 GET /api/v1/projects/{projectID}/events：推送 CLI 对该项目画布的写入（CLI spec 第 6 节）。
+// ProjectEvents 是 GET /api/v1/projects/{projectID}/events：推送 CLI 对该项目画布的写入。
 // EventSource 带不了请求头，token 走 ?token=（localauth 已支持）。
 func ProjectEvents(hub *events.Hub) nethttp.HandlerFunc {
 	return func(w nethttp.ResponseWriter, r *nethttp.Request) {

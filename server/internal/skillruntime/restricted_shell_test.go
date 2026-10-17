@@ -17,7 +17,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 )
 
-// testPython 单元测试用本机 python3；内置 Python 的真实运行在 Task 8 的 bundled_python_test.go。
+// testPython 单元测试用本机 python3；内置 Python 的真实运行在 bundled_python_test.go。
 func testPython(t *testing.T) string {
 	t.Helper()
 	for _, name := range []string{"python3", "python"} {

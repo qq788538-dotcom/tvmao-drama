@@ -1,5 +1,4 @@
--- 桌面端 SQLite 基线（P1a）：本地用户、设置、模型中心、项目、画布快照、资产。
--- 列与参考仓 MySQL 最终结构一致（由迁移 0001…0099 推导，见 docs/superpowers/plans/p1-research.md）。
+-- 桌面端 SQLite 基线：本地用户、设置、模型中心、项目、画布快照、资产。
 -- 约定：时间列 DATETIME，存 UTC 文本 'YYYY-MM-DD HH:MM:SS'；JSON 列 TEXT；布尔 INTEGER 0/1；
 -- MySQL 的 ON UPDATE CURRENT_TIMESTAMP 用 AFTER UPDATE 触发器实现。
 

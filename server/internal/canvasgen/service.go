@@ -15,11 +15,10 @@ import (
 // generation.SinkResult.UpstreamURLs 的 22h 时效对齐（见该字段注释）。
 const canvasUpstreamTTL = 22 * time.Hour
 
-// 画布 AI 生成的队列薄层（v5 批次二重构后）。
+// 画布 AI 生成的队列薄层。
 //
-// 上一版在 generation 之上又铺了一张 canvas_gen_tasks 表：自己管状态机、自己起
-// retry worker、Submit 后回写 gen_task_id——那次回写就是「恢复逻辑重发 → 双冻结」
-// 的崩溃窗口（v5 §3.4）。现在这一层删干净：
+// 本层不另建任务表、不自管状态机、不起 retry worker，也不在 Submit 后回写任务 id
+// （那次回写会留下「恢复逻辑重发 → 双冻结」的崩溃窗口）：
 //   - 排队/执行/重试/恢复 全部由 generation 队列承担（任务活在 generation_tasks 里）；
 //   - 前端拿到的 taskId 就是 generation task id，GetStatus 直查 generation；
 //   - 结果经 sink {kind:canvas_node,projectId,nodeId} 直指画布节点，无中间表解引用。
@@ -154,7 +153,7 @@ func (s *Service) Enqueue(ctx context.Context, in EnqueueInput) (int64, error) {
 }
 
 // OnGenerationResult 是注册给 generation 的 sink handler：任务终态时被调用。
-// 只做幂等业务写入并如实返错（v5 §5.7）：
+// 只做幂等业务写入并如实返错：
 //   - 目标节点已被用户删除 = 成功 no-op（无处可写不是故障）；
 //   - 快照损坏 / DB 错 = 真失败，返回 error 让投递方重试；
 //   - 同 URL 重写同节点天然幂等，重投安全。
@@ -173,7 +172,7 @@ func (s *Service) OnGenerationResult(_ context.Context, ref json.RawMessage, res
 	// 文本产物（文本节点的 AI 生成）：写 settings.text 而非 content——content 在
 	// 画布语义里是「媒体 URL」，文本节点的正文字段以浏览器 TextNode.tsx 为准。
 	// 不并 genHistory：历史条目形状是 {url,...} 且与前端 genHistory.ts 逐字同构，
-	// 文本硬塞进去要两侧改形状（拍板：第一版不做文本历史）。
+	// 文本硬塞进去要两侧改形状（不做文本历史）。
 	if len(result.OutputURLs) == 0 && result.Text != "" {
 		return s.writeNode(payload.UserID, payload.ProjectID, payload.NodeID, func(node map[string]any) {
 			settings := nodeSettings(node)
@@ -208,7 +207,7 @@ func (s *Service) OnGenerationResult(_ context.Context, ref json.RawMessage, res
 		node["status"] = "succeeded"
 		delete(node, "taskId")
 		clearNodeError(node)
-		// spec S5：产物没能保存到本地 → 节点显示「未保存到本地」和重试按钮；重试走
+		// 产物没能保存到本地 → 节点显示「未保存到本地」和重试按钮；重试走
 		// POST /api/v1/tasks/{genTaskId}/repersist，成功后 ApplyRepersist 删掉这两个键。
 		if isUnsavedOutput(url, result.AssetIDs) {
 			settings["unsaved"] = true
@@ -243,7 +242,7 @@ type Status struct {
 
 // GetStatus 供前端轮询：taskID 即 generation task id。
 // queued/running/processing/retry_pending 一律映射 processing——排队、执行、重试对
-// 前端都是「生成中」，重试细节画布不展示（v5 §4.4：画布无「重试中(n)」消费方）。
+// 前端都是「生成中」，重试细节画布不展示（画布无「重试中(n)」消费方）。
 func (s *Service) GetStatus(ctx context.Context, userID, taskID int64) (*Status, error) {
 	t, err := s.gen.Get(ctx, userID, taskID)
 	if err != nil {

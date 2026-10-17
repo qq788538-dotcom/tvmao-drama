@@ -6,22 +6,22 @@ import (
 	"time"
 )
 
-// DefaultGracePeriod 是孤儿对象的宽限期（spec S9）：删除后 7 天内撤销、重新引用都来得及。
+// DefaultGracePeriod 是孤儿对象的宽限期：删除后 7 天内撤销、重新引用都来得及。
 const DefaultGracePeriod = 7 * 24 * time.Hour
 
 type objectDeleter interface {
 	DeleteObject(ctx context.Context, key string) error
 }
 
-// SweepResult 是一轮清扫的统计，字段与参考仓 POST /admin/gc 的响应一一对应。
+// SweepResult 是一轮清扫的统计，字段与 POST /admin/gc 的响应一一对应。
 type SweepResult struct {
 	Deleted         int
 	Skipped         int
 	TotalCandidates int
 }
 
-// OrphanSweeper 真正删除过了宽限期的孤儿对象。逻辑搬自参考仓 admin_gc_handlers.go 的 Run；
-// 参考仓只能由管理员手动触发，桌面端没有运维，改由 sidecar 启动时跑一次、之后每天跑一次（Start）。
+// OrphanSweeper 真正删除过了宽限期的孤儿对象。桌面端没有运维，由 sidecar 启动时跑一次、
+// 之后每天跑一次（Start）；POST /admin/gc 也可手动触发。
 type OrphanSweeper struct {
 	orphans OrphansRepository
 	storage objectDeleter

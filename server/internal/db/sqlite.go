@@ -1,6 +1,6 @@
 // Package db 负责打开桌面端的 SQLite 数据库并执行嵌入式迁移。
 //
-// 与参考仓（MySQL）的差异集中在这里：
+// SQLite 特有的处理集中在这里：
 //   - 事务锁模式 _txlock=immediate：Begin 即拿写锁，替代 SELECT … FOR UPDATE；
 //     后台 worker 与 HTTP 写请求争锁时排队等待（busy_timeout），而不是在锁升级处报 SQLITE_BUSY。
 //   - WAL：读不阻塞写。

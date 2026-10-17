@@ -9,8 +9,7 @@ import (
 
 // 绘图提示词预设：整块存 settings 一个 KV（先例 cli_release / canvas_postprocess_config）。
 // 预设正文（value.prompt）是运营资产，对前端保密——用户端点白名单剥字段后才下发，
-// 提交生成只传 key，key → 正文的替换在服务端执行层完成
-// （设计文档 docs/2026-08-14-gen-image-prompt-presets-design.md 需求第 9/10 条）。
+// 提交生成只传 key，key → 正文的替换在服务端执行层完成。
 
 // genImagePresetPublicFields 是用户端点下发 value 时的字段白名单。
 // 用白名单而非「删掉 prompt」的黑名单：将来 value 里再加敏感字段，黑名单忘了删就

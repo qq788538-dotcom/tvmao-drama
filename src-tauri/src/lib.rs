@@ -27,7 +27,7 @@ const RELEASE_ORIGINS: &str = "tauri://localhost,http://tauri.localhost";
 /// Vite 开发服务器，只在 debug 构建放行。
 const DEV_ORIGIN: &str = "http://localhost:5173";
 
-/// 传给 sidecar 的参数。token 不在这里：它只走 stdin（SEC3）。
+/// 传给 sidecar 的参数。token 不在这里：它只走 stdin。
 pub fn sidecar_args(data_dir: &Path, debug: bool, python_home: Option<&Path>) -> Vec<String> {
     let mut origins = RELEASE_ORIGINS.to_string();
     if debug {
@@ -66,7 +66,7 @@ pub fn locate_python_home(roots: &[PathBuf]) -> Option<PathBuf> {
         .find(|home| python_interpreter(home).is_file())
         .map(|home| {
             let p = std::fs::canonicalize(&home).unwrap_or(home);
-            // M7：Windows 的 canonicalize 返回 \\?\C:\... 形式，Python getpath 和下游路径比较未必认，去掉前缀。
+            // Windows 的 canonicalize 返回 \\?\C:\... 形式，Python getpath 和下游路径比较未必认，去掉前缀。
             if cfg!(windows) {
                 PathBuf::from(strip_verbatim(&p.to_string_lossy()))
             } else {
@@ -153,7 +153,7 @@ async fn restart_sidecar(
     m.inner().restart().await
 }
 
-/// 设置页“更改数据目录”（P4 T7）：记下待迁移目录，优雅关闭 sidecar，重启应用；迁移在下次启动时、
+/// 设置页“更改数据目录”：记下待迁移目录，优雅关闭 sidecar，重启应用；迁移在下次启动时、
 /// 拉起 sidecar 之前进行（见 datadir::run_pending）。path 是 /settings/data-dir/check 返回的路径
 /// （用户所选目录下的 MiaojuData 子目录，或默认目录）。成功时不返回。
 #[tauri::command]
@@ -163,7 +163,7 @@ async fn apply_data_dir_change(
     dd: State<'_, datadir::DataDirState>,
     path: String,
 ) -> Result<(), String> {
-    // M1：迁移进行中不接受新的待办（会被迁移循环的内存副本覆盖），也不能重启（会中断迁移）。
+    // 迁移进行中不接受新的待办（会被迁移循环的内存副本覆盖），也不能重启（会中断迁移）。
     if dd.migrating.load(Ordering::SeqCst) {
         return Err("正在迁移数据目录，请稍候".into());
     }
@@ -191,8 +191,8 @@ fn get_data_dir(app: tauri::AppHandle) -> Result<data_dir::DataDirInfo, String> 
 
 /// 只改“用哪个数据目录”，不搬数据；前端随后调 restart_sidecar 生效。
 /// - path 为 null：恢复默认目录（失败页“改用默认数据目录”）。
-/// - path 为已有喵剧数据的目录（设置页“直接使用该目录（不迁移）”，I1）：必须是“所选文件夹/MiaojuData”，
-///   含有效 data.db 且没有未完成的迁移标记（M2：不接受任意路径）。
+/// - path 为已有喵剧数据的目录（设置页“直接使用该目录（不迁移）”）：必须是“所选文件夹/MiaojuData”，
+///   含有效 data.db 且没有未完成的迁移标记（不接受任意路径）。
 /// 用户手动切换后，尚未执行的迁移 / 清理待办作废。
 #[tauri::command]
 fn set_data_dir(
@@ -251,12 +251,12 @@ fn shutdown_sidecar(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // E8：建窗口前检测 WebView2，缺失则弹窗并退出。
+    // 建窗口前检测 WebView2，缺失则弹窗并退出。
     #[cfg(windows)]
     webview2::ensure_or_exit();
 
     let built = tauri::Builder::default()
-        // 单实例插件必须最先注册：第二次启动时只把已有窗口带到前台（spec S11）。
+        // 单实例插件必须最先注册：第二次启动时只把已有窗口带到前台。
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -306,7 +306,7 @@ pub fn run() {
             app.manage(manager.clone());
             app.manage(datadir::DataDirState::default());
             // 异步启动：窗口立即出现，前端显示“正在启动本地服务…”。
-            // 有数据目录迁移待办（P4）时先在这里做完，再拉起 sidecar；期间状态为 migrating。
+            // 有数据目录迁移待办时先在这里做完，再拉起 sidecar；期间状态为 migrating。
             let task_app = handle.clone();
             tauri::async_runtime::spawn(async move {
                 if let Ok(default) = default_data_dir(&task_app) {
@@ -318,7 +318,7 @@ pub fn run() {
                         let (line_app, line_emit) = (task_app.clone(), emit.clone());
                         let r = tauri::async_runtime::spawn_blocking(move || {
                             let program = sidecar_program()?;
-                            // 子命令在等上一次迁移的锁时打一行提示（I3），界面据此区分“等待”与“迁移中”。
+                            // 子命令在等上一次迁移的锁时打一行提示，界面据此区分“等待”与“迁移中”。
                             let mut on_line = |line: &str| {
                                 if let Some(waiting) = datadir::lock_line_status(line) {
                                     line_app.state::<datadir::DataDirState>().waiting_lock.store(waiting, Ordering::SeqCst);
@@ -343,7 +343,7 @@ pub fn run() {
             });
             Ok(())
         })
-        // I2：迁移期间拦下关窗（否则窗口没了、进程还在）。macOS 的 Cmd+Q 拦不住，走 Exit 里结束子进程那条路。
+        // 迁移期间拦下关窗（否则窗口没了、进程还在）。macOS 的 Cmd+Q 拦不住，走 Exit 里结束子进程那条路。
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if migrating(window.app_handle()) {
@@ -381,13 +381,13 @@ pub fn run() {
 
     app.run(|app, event| match event {
         RunEvent::ExitRequested { code, api, .. } => {
-            // I2：迁移期间不退出（restart 不可拦，也不会发生：迁移期间 apply_data_dir_change 被拒绝）。
+            // 迁移期间不退出（restart 不可拦，也不会发生：迁移期间 apply_data_dir_change 被拒绝）。
             if code != Some(tauri::RESTART_EXIT_CODE) && migrating(app) {
                 api.prevent_exit();
                 notify_exit_blocked(app);
                 return;
             }
-            // I4：单实例插件在 Exit 时释放锁，这里（Exit 之前）先把 sidecar 关掉，新实例不会和它同时打开数据目录。
+            // 单实例插件在 Exit 时释放锁，这里（Exit 之前）先把 sidecar 关掉，新实例不会和它同时打开数据目录。
             // macOS Cmd+Q 不经过 ExitRequested，靠 sidecar 自己的数据目录锁兜底。
             shutdown_sidecar(app);
         }
@@ -470,7 +470,7 @@ mod tests {
         assert!(!args.iter().any(|a| a == "--python-home"));
     }
 
-    /// M7：Windows 上 canonicalize 产生的 \\?\ 前缀要去掉（UNC 形式保留为 \\server\share）。
+    /// Windows 上 canonicalize 产生的 \\?\ 前缀要去掉（UNC 形式保留为 \\server\share）。
     #[test]
     fn strip_verbatim_prefix_rules() {
         assert_eq!(strip_verbatim(r"\\?\C:\Program Files\miaoju\python"), r"C:\Program Files\miaoju\python");

@@ -13,7 +13,7 @@ import (
 )
 
 // Hub 把帧分发到按 (user, project) 维度的 WS 连接，并跟踪进行中 Run 的 cancel
-// 函数（key 为 (user,thread,action)）。Phase 0 是单进程的；多实例横向扩展
+// 函数（key 为 (user,thread,action)）。当前是单进程的；多实例横向扩展
 // （Redis pubsub）以后再做。
 //
 // 为什么 cancel 注册表挂在 Hub 而不是 WS handler 的局部变量上：线上 WS 会被反向

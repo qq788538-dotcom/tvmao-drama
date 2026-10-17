@@ -95,7 +95,7 @@ func (s *Service) RunNode(ctx context.Context, userID, projectID int64, nodeID s
 		return RunResponse{}, Errf(CodeInvalidNodeType, "节点 %s 的类型 %q 不是生成节点", nodeID, semantic)
 	}
 	// 重复运行保护。没有它，用户在网页上看不到 CLI 的改动时会重复触发，
-	// 每一次都是一次真实的生成（spec §9.7）。
+	// 每一次都是一次真实的生成。
 	if str(raw["status"]) == "generating" {
 		return RunResponse{}, Errf(CodeNodeAlreadyRunning,
 			"节点 %s 正在生成中，请等它结束或用 tvmao run wait 跟踪", nodeID)

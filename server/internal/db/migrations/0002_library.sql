@@ -1,6 +1,5 @@
--- 桌面端 P1b：个人素材库（目录树 + 条目）与孤儿对象回收表。
--- 列与参考仓 MySQL 最终结构一致：0010_material_library.sql 建表；0074 加的 system_key、seedance_* 列
--- 已被 0075 删除。约定同 0001：时间 DATETIME 存 UTC 文本，ON UPDATE CURRENT_TIMESTAMP 用触发器。
+-- 桌面端个人素材库（目录树 + 条目）与孤儿对象回收表。
+-- 约定同 0001：时间 DATETIME 存 UTC 文本，ON UPDATE CURRENT_TIMESTAMP 用触发器。
 
 CREATE TABLE library_folders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +35,7 @@ CREATE INDEX idx_library_items_user ON library_items (user_id);
 CREATE INDEX idx_library_items_folder ON library_items (folder_id);
 CREATE INDEX idx_library_items_object_key ON library_items (object_key);
 
--- 删除记录后已无引用的对象先在这里打标记，过了宽限期（7 天，spec S9）才由清扫真正删文件。
+-- 删除记录后已无引用的对象先在这里打标记，过了宽限期（7 天）才由清扫真正删文件。
 CREATE TABLE orphan_objects (
   object_key TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,

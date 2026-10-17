@@ -1,8 +1,8 @@
--- P2a 内置数据（spec M9–M11）：
+-- 内置数据：
 --   user_overrides：用户改过的字段路径，JSON 字符串数组，如 ["enabled","ui_schema.ratio.default"]；
 --     路径语法见 internal/builtin/path.go。'[]' = 全部字段跟随内置种子。
 --   builtin_seed_state：每个内置数据集最近一次导入的种子哈希；哈希没变则启动时跳过合并。
--- 只有 ADD COLUMN 和新表，不依赖 0001 之后的其他迁移；编号在合并进 main 时按顺序分配。
+-- 只有 ADD COLUMN 和新表，不依赖 0001 之后的其他迁移。
 ALTER TABLE model_configs ADD COLUMN user_overrides TEXT NOT NULL DEFAULT '[]' CHECK (typeof(user_overrides) = 'text');
 ALTER TABLE settings ADD COLUMN user_overrides TEXT NOT NULL DEFAULT '[]' CHECK (typeof(user_overrides) = 'text');
 

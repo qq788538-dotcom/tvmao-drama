@@ -7,7 +7,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
 )
 
-// aiCharacterSigner 是 *MediaSigner 在这里用到的两个方法（P1b 提供实现）。
+// aiCharacterSigner 是 *MediaSigner 在这里用到的两个方法。
 type aiCharacterSigner interface {
 	Sign(string) string
 	SignThumb(string, int) string
@@ -37,7 +37,7 @@ type aiCharacterDTO struct {
 	AgeGroup    string `json:"ageGroup"`
 	// ImageURL 是签名后的本地 URL——详情弹框展示、「应用到画布」的节点内容都用它
 	//（节点持久化时会被 canonical 化回 media:// 形式）。ThumbURL 给网格卡片用；
-	// 桌面端不生成缩略图（spec S8），与 ImageURL 相同。
+	// 桌面端不生成缩略图，与 ImageURL 相同。
 	ImageURL string `json:"imageUrl"`
 	ThumbURL string `json:"thumbUrl"`
 }

@@ -16,8 +16,8 @@ describe('apiGuards 只读模式写入闸', () => {
     expect(isApiWriteAllowed('get', '/projects/1/snapshot')).toBe(true);
   });
 
-  // 桌面端没有分享、团队观看、登录身份（spec X2、X4），参考仓为这些功能开的口子
-  // 全部去掉：只读态下写请求一律拦住。
+  // 桌面端没有分享、团队观看、登录身份，不为这些功能开口子：
+  // 只读态下写请求一律拦住。
   it('没有放行名单：只读态下抢锁、身份换发、分享克隆都被拦住', () => {
     setApiWritesBlocked(true);
     for (const url of ['/projects/14/canvas/owner/claim', '/auth/switch-context', '/workflows/by-token/abc/clone']) {

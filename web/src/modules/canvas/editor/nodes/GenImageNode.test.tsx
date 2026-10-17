@@ -205,7 +205,7 @@ describe('GenImageNode lightbox', () => {
     expect(screen.getByTitle('上传图片（节点将转为图片节点）')).toBeInTheDocument();
   });
 
-  // spec X3：桌面端不计费。哪怕模型配置里带着 priceNote（单价说明），节点上也不出现
+  // 桌面端不计费。哪怕模型配置里带着 priceNote（单价说明），节点上也不出现
   // 任何估价/积分文案。
   it('选中后不显示估价或积分文案（X3）', async () => {
     vi.mocked(listRuntimeModels).mockResolvedValue([{ ...imageModel, priceNote: '100积分/分钟' }]);
@@ -602,7 +602,7 @@ describe('GenImageNode 在故事板详情面板里', () => {
   });
 });
 
-// 故事板参考区的连线编辑（用户拍板推翻 spec 的「不做连线编辑」）：
+// 故事板参考区的连线编辑：
 // 缩略图 hover 出 × 断开、左侧卡片拖进参数面板即连上。
 describe('GenImageNode 故事板参考区连线编辑', () => {
   const MIME = 'application/x-tvmao-storyboard-node';

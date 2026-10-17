@@ -20,7 +20,7 @@ import (
 
 // AgentHandler 暴露 agent 的 WS upgrader，以及给右侧聊天面板做引导的
 // thread/message REST 端点。桌面端：token 已由 localauth 校验（WS 走 ?token=），
-// 用户恒为本地用户 1，没有团队与多人协作（spec X2）。
+// 用户恒为本地用户 1，没有团队与多人协作。
 type AgentHandler struct {
 	Hub    *agent.Hub
 	Repo   agent.Repository
@@ -58,7 +58,7 @@ func (h *AgentHandler) Done() <-chan struct{} {
 	return done
 }
 
-// agentURLSigner 是出口签名需要的最小能力（P1b 的 *MediaSigner 满足）。
+// agentURLSigner 是出口签名需要的最小能力（*MediaSigner 满足）。
 type agentURLSigner interface {
 	Sign(s string) string
 }
@@ -72,9 +72,9 @@ func NewAgentHandler(hub *agent.Hub, repo agent.Repository, runner AgentRunner, 
 // userID 传进来，让 runner 在活跃的 backbone 委托给 newapi 时能解析出
 // 调用方自己的上游 sk-key。projectID 一路传下去，让 DynamicTool 的
 // GenService.Submit 能把 generation_tasks row 归到正确的项目下。skillID
-// （Phase 2 Task 4 加的）是可选的；runner 会加载匹配的 Skill row 并传给
+// 是可选的；runner 会加载匹配的 Skill row 并传给
 // agent.Agent.Run，让本次 Run 的工具集 + system prompt addon 相应地被限定。
-// 空的 skillID 保留 Phase 0+1 的不受限行为。
+// 空的 skillID 表示不受限。
 type AgentRunner interface {
 	Run(ctx context.Context, userID, projectID int64, threadID, actionID, userText string, mentions []agent.Mention, skillID string, sink agent.FrameSink) error
 }
@@ -135,7 +135,7 @@ func (h *AgentHandler) WS(w http.ResponseWriter, r *http.Request) {
 			if actionID == "" {
 				actionID = uuid.NewString()
 			}
-			// 正文长度兜底（spec 2026-08-31）：前端把 >100KB 的附件/文字节点分流
+			// 正文长度兜底：前端把 >100KB 的附件/文字节点分流
 			// 到 read_attachment 通道、输入框超长禁止提交，这里挡「绕过前端直连
 			// WS 塞大文本」。上限给足余量（几个 100KB 内联附件 + 正文），但远低
 			// 于 8MB ReadLimit——超过它的正文没有任何合法来路。
@@ -196,7 +196,7 @@ func (h *AgentHandler) WS(w http.ResponseWriter, r *http.Request) {
 		case agent.FrameAck:
 			// noop——不需要 ack 记账。
 		default:
-			// 其余帧（含旧前端可能发来的 canvas_transient）一律丢弃：桌面端没有多人协作（X2）。
+			// 其余帧（含旧前端可能发来的 canvas_transient）一律丢弃：桌面端没有多人协作。
 		}
 	}
 }

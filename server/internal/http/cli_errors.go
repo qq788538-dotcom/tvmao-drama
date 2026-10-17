@@ -12,7 +12,7 @@ import (
 )
 
 // CLI HTTP 层的响应渲染。与网页的 writeError（{"error":"中文"}）刻意不同：
-// CLI 调用方按稳定 code 分支决定退出码，不解析中文 message（spec §12）。
+// CLI 调用方按稳定 code 分支决定退出码，不解析中文 message。
 // 两套渲染并存是有意的——网页那套是给人看的表单错误，改它会波及所有前端页面。
 
 type cliErrorBody struct {

@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 
-// 设置页和画布共用全局 queryClient（final-review I-3）。设置改完后，画布侧这些缓存必须失效，
+// 设置页和画布共用全局 queryClient。设置改完后，画布侧这些缓存必须失效，
 // 否则回到画布最多 60 秒（模型目录）/ 300 秒（各画布配置）还在用旧配置。
 // key 名以画布侧的 useQuery 为准：
 //   runtime-models              节点模型下拉（GenImage/GenVideo/GenAudio/HistoryPanel 等）

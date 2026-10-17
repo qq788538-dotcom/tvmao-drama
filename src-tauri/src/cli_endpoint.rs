@@ -1,4 +1,4 @@
-//! CLI 地址文件（spec 3.2）：sidecar 就绪后写入默认数据目录，CLI 每次执行时读取。
+//! CLI 地址文件：sidecar 就绪后写入默认数据目录，CLI 每次执行时读取。
 //! 端口每次启动随机，所以 CLI 不能记端口，只能读这个文件。
 
 use crate::lifecycle::ServerInfo;

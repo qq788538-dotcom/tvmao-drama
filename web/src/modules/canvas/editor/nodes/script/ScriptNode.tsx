@@ -10,8 +10,8 @@ import { ScriptPanel } from './ScriptPanel';
 import { BatchVideoDialog } from './BatchVideoDialog';
 import { ScriptGenerator, useScriptGenPolling } from './ScriptGenerator';
 
-// 卡片中央的「四横线」文本占位图形——对标上游脚本生成器卡片的视觉锚点。
-// 用 div 画而不是引图标：上游是不等宽的几条圆角横线，lucide 没有同形图标，
+// 卡片中央的「四横线」文本占位图形——脚本生成器卡片的视觉锚点。
+// 用 div 画而不是引图标：图形是不等宽的几条圆角横线，lucide 没有同形图标，
 // 硬凑（AlignLeft 之类）线条宽度节奏对不上。
 function TextGlyph() {
   return (
@@ -86,7 +86,7 @@ export function ScriptNode({ id }: { id: string }) {
   // 状态机，prompt 有内容即可铺节点）。
   const hasSpawnableRows = settings.rows.some((r) => r.prompt.trim() !== '');
   // 空态判定：一行镜头都没有 = 用户还没开始，卡片展示「尝试：」引导入口；
-  // 有行之后切换为三步进度态。对标上游脚本生成器的两种卡片形态。
+  // 有行之后切换为三步进度态。
   const empty = stats.shots === 0;
 
   const menuItems: NodeMenuItem[] = [
@@ -131,9 +131,7 @@ export function ScriptNode({ id }: { id: string }) {
       >
         {empty ? (
           <>
-            {/* 空态＝引导态：中央占位图形 + 「尝试：」入口列表，对标上游卡片。
-                「剧本生成分镜脚本」是 M2 的 LLM 能力，入口占位置灰不藏——藏掉的话
-                M2 上线时布局跳变，且用户会以为产品没这个能力。 */}
+            {/* 空态＝引导态：中央占位图形 + 「尝试：」入口列表。 */}
             <div className="flex-1 flex items-center justify-center py-3">
               <TextGlyph />
             </div>
@@ -177,7 +175,7 @@ export function ScriptNode({ id }: { id: string }) {
               <StepCircles stats={stats} />
             </div>
             {/* 显式 bg + border-none：原生 <button> 的 UA 默认样式是浅灰底，暗色画布
-                里会渲染成刺眼白块。深灰次级按钮对标上游——上游此按钮不是主色调。 */}
+                里会渲染成刺眼白块。这里用深灰次级按钮，不用主色调。 */}
             <button
               type="button"
               data-testid="script-open-panel"

@@ -9,11 +9,11 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/assets"
 )
 
-// 只给 *_db_test.go 用的 SQLite 测试替身。生产实现分别在 P1b 的 assets / library 包和
-// cmd/sidecar/gen_wiring.go；这里用同形 SQL 直写，让 generation 的真实库测试不依赖 P1b。
+// 只给 *_db_test.go 用的 SQLite 测试替身。生产实现分别在 assets / library 包和
+// cmd/sidecar/gen_wiring.go；这里用同形 SQL 直写，让 generation 的真实库测试不依赖它们。
 
-// billingCall / billingSpy：桌面端计费是空实现，原测试里「钱动没动」的断言改成
-// 「收口事务里调没调、调了几次 Settle/Refund」——结构性保证不变。
+// billingCall / billingSpy：桌面端计费是空实现，「钱动没动」的断言落在
+// 「收口事务里调没调、调了几次 Settle/Refund」上——结构性保证不变。
 type billingCall struct {
 	Op     string
 	TaskID int64
@@ -71,7 +71,7 @@ func (b *billingSpy) RefundTx(_ context.Context, _ *sql.Tx, _, t, f int64, _ str
 
 func spyOf(s *Service) *billingSpy { return s.billing.(*billingSpy) }
 
-// sqlTestAssets 实现 AssetRecorder（槽位幂等语义与 research §6 约定的 P1b 实现一致）。
+// sqlTestAssets 实现 AssetRecorder（槽位幂等语义与 assets 包的实现一致）。
 type sqlTestAssets struct{ db *sql.DB }
 
 func (a sqlTestAssets) Insert(rec assets.AssetRecord) (int64, error) {
@@ -174,7 +174,7 @@ func (u sqlTestUsers) AddStorageTx(tx *sql.Tx, id, delta int64) error {
 	return err
 }
 
-// sqlTestReclaimer 只看 assets 引用（library_items / orphan_objects 是 P1b 的表），
+// sqlTestReclaimer 只看 assets 引用（library_items / orphan_objects 属于 library 包），
 // 被判定无引用的 key 记进 marked。
 type sqlTestReclaimer struct{ marked *[]string }
 

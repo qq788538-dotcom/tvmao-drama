@@ -43,7 +43,7 @@ func (s *Service) prepareExecution(ctx context.Context, userID int64, modelID st
 
 	// 绘图提示词预设：key → 正文的替换收口在这里。执行层是「所有会回读给前端的
 	// 存储」之后、上游请求之前的唯一位置——GET /tasks 会把 input 快照原样吐回，
-	// 拼接结果绝不能早于此出现（对前端保密，设计文档需求第 9 条）。
+	// 拼接结果绝不能早于此出现（对前端保密）。
 	// key 查不到（后台已删该预设）静默按未选处理，不让存量任务执行失败。
 	// 每次执行现读配置（resolver 内部查 settings）：后台改了预设正文，排队中的
 	// 任务执行时自动用新文案，与「节点只存 key」同一语义。
@@ -84,7 +84,7 @@ func (s *Service) prepareExecution(ctx context.Context, userID int64, modelID st
 		removePreparedFiles(preparedImages)
 		return nil, fmt.Errorf("interpolate template: %w", err)
 	}
-	// S12 未定：插值后的请求里还留着本机地址，上游访问不到，调上游之前失败。
+	// 插值后的请求里还留着本机地址时，上游访问不到，调上游之前失败。
 	if err := s.ensureNoLocalMediaForRequest(model, payload, preparedImages); err != nil {
 		removePreparedFiles(preparedImages)
 		return nil, err
@@ -128,7 +128,7 @@ type taskSnapshot struct {
 }
 
 // containsDataURI 深度检查 inputs 里是否有内联的 data URI（"data:...,..."）。
-// sink 任务在 Submit 建行前用它拒绝（v5 §3.1）：快照会把 data URI 脱敏，队列 worker
+// sink 任务在 Submit 建行前用它拒绝：快照会把 data URI 脱敏，队列 worker
 // 重建不出来；产品路径全 URL，出现 data URI 只可能是绕过前端的直连调用方。
 func containsDataURI(inputs map[string]any) bool {
 	found := false

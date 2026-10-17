@@ -7,7 +7,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
 )
 
-// ---- I1：带 CASCADE 外键的子表（P5 的 agent_tools.source_model_id）不能让 Apply 失败 ----
+// ---- 带 CASCADE 外键的子表（agent_tools.source_model_id）不能让 Apply 失败 ----
 
 const cascadeChildDDL = `CREATE TABLE child_tool (id INTEGER PRIMARY KEY, mid INTEGER NOT NULL REFERENCES model_configs(id) ON DELETE CASCADE ON UPDATE CASCADE)`
 
@@ -42,7 +42,7 @@ func TestApplyRenumberModelWithCascadeChildFollowsNewID(t *testing.T) {
 	}
 }
 
-// ---- M2：坏的 user_overrides 不能阻断启动 ----
+// ---- 坏的 user_overrides 不能阻断启动 ----
 
 func TestApplyToleratesMalformedUserOverrides(t *testing.T) {
 	conn := dbtest.Open(t)
@@ -61,7 +61,7 @@ func TestApplyToleratesMalformedUserOverrides(t *testing.T) {
 	}
 }
 
-// ---- M9：用户值与新版种子值相同时，覆盖记录退回“跟随内置” ----
+// ---- 用户值与新版种子值相同时，覆盖记录退回“跟随内置” ----
 
 func TestOverlayDropsOverrideEqualToNewSeed(t *testing.T) {
 	conn := dbtest.Open(t)
@@ -73,7 +73,7 @@ func TestOverlayDropsOverrideEqualToNewSeed(t *testing.T) {
 	}
 }
 
-// ---- M5：白名单一变就逼开发者递增 seedFormatVersion ----
+// ---- 白名单一变就逼开发者递增 seedFormatVersion ----
 
 func TestPolicyPatternsSnapshot(t *testing.T) {
 	got := map[string][]string{"<model>": modelPolicy.Patterns()}
@@ -84,7 +84,7 @@ func TestPolicyPatternsSnapshot(t *testing.T) {
 		"<model>": {"name", "enabled", "hidden", "sort_order", "ui_schema.*.default", "gen_control.concurrency",
 			"gen_control.modules.canvas.maxRetries", "gen_control.modules.canvas.retryIntervalSec"},
 		SettingBaseDomain: {"$"},
-		// 五项画布配置写死（2026-10-07）：全只读。
+		// 五项画布配置写死：全只读。
 		SettingCanvasLightControl: {},
 		SettingCanvasMultiAngle:   {},
 		SettingGenImagePresets:    {},
@@ -96,7 +96,7 @@ func TestPolicyPatternsSnapshot(t *testing.T) {
 	}
 }
 
-// ---- M7：结尾的 ? / # ----
+// ---- 结尾的 ? / # ----
 
 func TestCheckBaseDomainRejectsDanglingQueryOrFragment(t *testing.T) {
 	for _, s := range []string{"http://h:3000?", "http://h:3000#", "http://h:3000/?", "http://h:3000?a=1"} {
@@ -109,7 +109,7 @@ func TestCheckBaseDomainRejectsDanglingQueryOrFragment(t *testing.T) {
 	}
 }
 
-// ---- M10：decodeStrict 的尾随垃圾、secretKeyRe 的误伤 ----
+// ---- decodeStrict 的尾随垃圾、secretKeyRe 的误伤 ----
 
 func TestDecodeStrictRejectsTrailingGarbage(t *testing.T) {
 	for _, s := range []string{`{"a":1}]`, `{"a":1}}`, `{"a":1} {"a":2}`, `{"a":1} x`} {
@@ -133,7 +133,7 @@ func TestSecretKeyRe(t *testing.T) {
 	}
 }
 
-// ---- M11：expandPattern → ParsePath 往返 ----
+// ---- expandPattern → ParsePath 往返 ----
 
 func TestExpandedPathsRoundTripThroughParsePath(t *testing.T) {
 	s, err := Load()

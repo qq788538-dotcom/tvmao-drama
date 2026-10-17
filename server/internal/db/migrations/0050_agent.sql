@@ -1,5 +1,4 @@
--- P5 Agent：对话线程/消息、Agent 工具目录、Skill 与分类、Agent 大模型。
--- 列与参考仓 MySQL 最终结构一致（迁移 0016–0021、0100–0102、0108、0117）。
+-- Agent：对话线程/消息、Agent 工具目录、Skill 与分类、Agent 大模型。
 -- 约定同 0001：时间 DATETIME 存 UTC 文本；JSON 列 TEXT 且 CHECK typeof='text'；布尔 INTEGER。
 -- 例外：agent_messages.created_at / summarized_at 是 26 字符微秒文本（keyset 分页依赖），由 Go 写入。
 
@@ -17,7 +16,7 @@ CREATE TABLE agent_backbone_models (
   sort_weight INTEGER NOT NULL DEFAULT 0,
   description TEXT NOT NULL DEFAULT '',
   context_window INTEGER NOT NULL DEFAULT 8192,
-  -- 桌面端新增（spec A2）：1 = 用户在设置里切换过 model_name，内置数据升级时不覆盖该列。
+  -- 桌面端新增：1 = 用户在设置里切换过 model_name，内置数据升级时不覆盖该列。
   model_name_overridden INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

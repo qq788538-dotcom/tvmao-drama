@@ -1,4 +1,4 @@
--- CLI 写请求的幂等记录（照搬参考仓 0085，改 SQLite 语法）。CLI 网络失败后会带同一个
+-- CLI 写请求的幂等记录。CLI 网络失败后会带同一个
 -- Idempotency-Key 重试，没有这张表就会建出第二个节点、再跑一次生成。
 CREATE TABLE IF NOT EXISTS cli_idempotency_keys (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,

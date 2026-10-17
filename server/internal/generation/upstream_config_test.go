@@ -49,7 +49,7 @@ func TestUpstreamCredentialsModelOwnWithoutGlobal(t *testing.T) {
 	}
 }
 
-// M-1：画布生成拼 baseDomain + base_path（种子 base_path 自带 /v1）。独立上游存成 .../v1
+// 画布生成拼 baseDomain + base_path（种子 base_path 自带 /v1）。独立上游存成 .../v1
 // 的旧值时，执行计划里的 baseDomain 已去掉 /v1，最终 URL 只有一层 /v1。
 func TestPrepareExecutionStripsTrailingV1(t *testing.T) {
 	m := &models.ModelConfig{ModelID: "m", Enabled: true, BasePath: "/v1/chat/completions", RequestTemplate: json.RawMessage(`{"prompt":"{{prompt}}"}`),

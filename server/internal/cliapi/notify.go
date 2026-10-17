@@ -2,7 +2,7 @@ package cliapi
 
 import "encoding/json"
 
-// ChangeNotifier 接收 CLI 的画布写入事件（CLI spec 第 6 节），由 sidecar 的事件中心实现。
+// ChangeNotifier 接收 CLI 的画布写入事件，由 sidecar 的事件中心实现。
 // 只有 CLI 写入才发：生成回写、Agent、网页自己的写入走各自已有的链路，不经过这里。
 type ChangeNotifier interface {
 	Publish(projectID, version int64, source string)

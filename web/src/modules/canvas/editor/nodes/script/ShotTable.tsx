@@ -9,8 +9,7 @@ import { MAX_NAME_LEN, MIN_SHOT_SECONDS, type ColorMark, type ScriptRow, type Sc
 
 // 分镜表（skill 对齐版）：5 列——镜号 / 分镜简述(name≤15字) / 时长(4~durationSec) /
 // 提示词(prompt 唯一真源，点开大编辑器) / 操作。景别/运镜/对白/音效等散字段列已随
-// skill 对齐移除（全部活在 prompt 的镜头N行里），见
-// docs/superpowers/specs/2026-08-01-canvas-script-node-skill-align.md。
+// skill 对齐移除（全部活在 prompt 的镜头N行里）。
 const HEADERS = ['镜号', '分镜简述', '时长', '提示词', '操作'];
 
 type CellField = 'name' | 'duration';

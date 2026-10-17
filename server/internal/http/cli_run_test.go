@@ -421,7 +421,7 @@ func assertInputsEqual(t *testing.T, want, got map[string]any) {
 	}
 }
 
-// ---- node get 的运行前审计信息（spec §19.5 第 5 条） ----
+// ---- node get 的运行前审计信息 ----
 
 // Agent 可以先搭完整张图再由用户确认是否花钱——前提是运行前能看清
 // 每个节点会拿到什么输入、什么顺序。

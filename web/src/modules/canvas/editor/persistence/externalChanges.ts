@@ -1,4 +1,4 @@
-// 外部（CLI）变更的整拉（CLI spec 第 6 节）：只在画布空闲时把服务端快照换进 store，
+// 外部（CLI）变更的整拉：只在画布空闲时把服务端快照换进 store，
 // 保留视口与选中，清空撤销栈（否则撤销会删掉外部新增的节点）。
 import { getSnapshot } from '@/shared/api';
 import { useCanvasStore } from '../store';

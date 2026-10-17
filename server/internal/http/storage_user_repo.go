@@ -1,7 +1,7 @@
 package http
 
-// storageUserRepo 是上传、项目、素材库各 handler 共用的存储用量接口（参考仓定义在 asset_handlers.go，
-// 挪到独立文件是因为多个任务的 handler 并发移植、都要用它）。
+// storageUserRepo 是上传、项目、素材库各 handler 共用的存储用量接口（多个 handler 都要用，
+// 所以放在独立文件）。
 type storageUserRepo interface {
 	AddStorage(id int64, delta int64) error
 	// StorageUsage 取 (used, quota) 做上传前的配额预检——记账(AddStorage)与

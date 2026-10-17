@@ -8,7 +8,7 @@ import type { ScriptAsset, ScriptAssets } from './scriptData';
 
 type SectionKey = keyof ScriptAssets;
 
-// 资产编辑右侧抽屉（对标上游：单击资产图 → 右侧滑出编辑面板）。
+// 资产编辑右侧抽屉（单击资产图 → 右侧滑出编辑面板）。
 // 字段失焦自动保存，没有保存按钮——名称改动由父组件做唯一校验 + token 全表联动，
 // 校验失败在抽屉内红字提示且不写回。抽屉内形象图带 🔍 预览与 ··· 菜单，与卡片
 // 右上角为同一套操作（onMenuAction 上抛给父组件复用同一份处理逻辑）。

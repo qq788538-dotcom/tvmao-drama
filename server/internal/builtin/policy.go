@@ -11,14 +11,14 @@ import (
 	"unicode/utf8"
 )
 
-// 可改字段白名单（spec M10）。模型和每个内置配置各有一份 policy：只有命中某条规则模式的路径
+// 可改字段白名单。模型和每个内置配置各有一份 policy：只有命中某条规则模式的路径
 // 才允许修改，且新值必须通过该规则的校验。白名单之外的字段（请求/轮询模板、base_path、图片协议、
 // 计费、预设的结构字段……）对用户只读，升级时永远跟随新版种子。
 
 // 内置配置的 key。
 const (
 	SettingBaseDomain         = "base_domain"
-	SettingUpstreamAPIKey     = "upstream_api_key" // 不在种子里，用户自己填（spec M3）；本包的合并永远不碰它
+	SettingUpstreamAPIKey     = "upstream_api_key" // 不在种子里，用户自己填；本包的合并永远不碰它
 	SettingCanvasLightControl = "canvas_light_control"
 	SettingCanvasMultiAngle   = "canvas_multi_angle"
 	SettingCanvasPostprocess  = "canvas_postprocess_config"
@@ -33,7 +33,7 @@ const (
 	kindText                  // settings.value 是纯文本（base_domain）
 )
 
-// ValidationError 是一次编辑里第一个不合法的字段。P4 的 HTTP 层把它映射成 400。
+// ValidationError 是一次编辑里第一个不合法的字段。HTTP 层把它映射成 400。
 type ValidationError struct {
 	Path string
 	Msg  string
@@ -82,7 +82,7 @@ func (pl policy) find(p Path) (rule, bool) {
 	return rule{}, false
 }
 
-// Patterns 返回白名单模式字符串，供 P4 的设置页决定哪些控件可编辑。
+// Patterns 返回白名单模式字符串，供设置页决定哪些控件可编辑。
 func (pl policy) Patterns() []string {
 	out := make([]string, len(pl.rules))
 	for i, r := range pl.rules {
@@ -103,7 +103,7 @@ var modelPolicy = newPolicy(kindJSON,
 	ruleDef{"gen_control.modules.canvas.retryIntervalSec", checkInt(0, 600), nil},
 )
 
-// 五项画布配置写死为内置值（2026-10-07 用户要求）：白名单为空 = 全只读。
+// 五项画布配置写死为内置值：白名单为空 = 全只读。
 // 已有的 user_overrides 在合并时因找不到规则而作废（overlay），另见 apply.go 的 resetLockedSettings。
 var settingPolicies = map[string]policy{
 	SettingBaseDomain:         newPolicy(kindText, ruleDef{"$", checkBaseDomain, nil}),
@@ -254,7 +254,7 @@ func applyEdits(pl policy, cur, seedDoc any, overrides []string, edits map[strin
 	return doc, sortedKeys(ov), nil
 }
 
-// overlay 以 base（新版种子文档）为底，把 user 文档里 overrides 列出的字段逐个盖上去（spec M11）。
+// overlay 以 base（新版种子文档）为底，把 user 文档里 overrides 列出的字段逐个盖上去。
 // 覆盖项在新版里不再可改、找不到挂载位置（预设或 uiSchema 参数被删）、或不再通过校验
 // （选项被删、引用的模型被删）时丢弃，该字段改为跟随新版。返回合成文档、保留的和丢弃的覆盖路径。
 func overlay(pl policy, base, user any, overrides []string, cat Catalog) (any, []string, []string) {

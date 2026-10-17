@@ -12,7 +12,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/projects"
 )
 
-// ProjectCleaner 后台异步清理已软删的画布项目。删项目时只软删(秒回)，这里把原来同步做的
+// ProjectCleaner 后台异步清理已软删的画布项目。删项目时只软删(秒回)，这里把
 // 「列资产 → 删 asset 行 → 标孤儿给 GC → 删生成任务 → 回收配额 → 硬删项目」慢慢清。
 // 画布项目内生成/上传的文件可能很多，同步删会卡请求/超时；软删 + worker 可重入抗重启。
 type ProjectCleaner struct {
@@ -77,7 +77,7 @@ func (c *ProjectCleaner) purge(userID, projectID int64) error {
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
-	// 在事务内快照 asset 行（参考仓在事务外列，两步之间插入的行会被删掉却不标孤儿，文件永久泄漏）。
+	// 在事务内快照 asset 行（在事务外列的话，两步之间插入的行会被删掉却不标孤儿，文件永久泄漏）。
 	// 删行后还要按 object_key 跑 TryReclaim（标孤儿给 GC，sweeper 删前复核）。
 	assetList, err := listProjectAssetsTx(tx, projectID)
 	if err != nil {

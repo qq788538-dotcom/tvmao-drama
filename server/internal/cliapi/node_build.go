@@ -149,7 +149,7 @@ func BuildNodeJSON(req CreateNodeRequest) (json.RawMessage, error) {
 		"height":   size.Height,
 		"settings": settings,
 		// 未运行节点的状态必须明确是 idle，不能让调用方靠「有没有 URL」猜
-		// 它是不是正在生成（spec §19.4 第 6 条）。
+		// 它是不是正在生成。
 		"status": "idle",
 	}
 	if req.Content != "" {

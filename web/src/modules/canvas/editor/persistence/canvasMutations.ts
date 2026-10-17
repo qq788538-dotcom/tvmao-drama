@@ -280,7 +280,7 @@ type NodeDiff =
 
 /**
  * 节点相对基线的差量。语义与 patch 的**应用**规则（`../mergePatch` 的
- * `applyMergePatch`，后端对侧是 `apps/api/internal/canvasstate/state.go` 的
+ * `applyMergePatch`，后端对侧是 `server/internal/canvasstate/state.go` 的
  * `mergeRawValue`）严格对称——RFC 7386 JSON Merge Patch：
  *   - 普通对象递归比到叶子标量，只发真正变了的那条路径（发最小 patch）；
  *   - 数组和非普通对象（Date 等）整体比较、整体发送——后端对数组就是整体替换，
@@ -489,7 +489,7 @@ export function geometryPatchFromNode(node: {
 /**
  * 画布页卸载时用：先把 debounce 中的 patch 全部 flush 进队列（不 await），再 reset。
  * 入队的任务不受 reset 影响，会照常发出——sidecar 自动重启时 SidecarGate 会卸掉整棵树，
- * 这些修改此前会被静默丢掉（final-review I-1）。
+ * 不先 flush 的话这些修改会被静默丢掉。
  */
 export function retireCanvasPersistence(): void {
   // flushNodePatch 在第一个 await 之前就已同步入队，所以紧接着 reset 不会把它们作废。

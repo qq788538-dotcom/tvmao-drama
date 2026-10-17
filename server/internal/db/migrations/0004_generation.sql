@@ -1,9 +1,7 @@
--- P1c 生成链路：任务表与结果投递外发箱。
--- 列由参考仓迁移 0002/0053/0055/0080/0081/0082/0103/0105 推导；去掉 drama_project_id、
--- drama_segment_id、actor_user_id（drama 与团队额度不移植）。约定同 0001：时间 DATETIME 存 UTC
+-- 生成链路：任务表与结果投递外发箱。
+-- 约定同 0001：时间 DATETIME 存 UTC
 -- 文本，JSON 列 TEXT 且必须是 text 类型，ON UPDATE CURRENT_TIMESTAMP 用触发器实现。
--- 编号 0004：原名 0002_generation.sql，与 P1b 的 0002_library.sql 同号，P2a 已占 0003_builtin_overrides.sql，
--- 合并时改为 0004（首个正式版前改名安全；按旧名迁移过的开发库删库重建）。本文件的表与其他迁移的表没有外键依赖。
+-- 本文件的表与其他迁移的表没有外键依赖。
 
 CREATE TABLE generation_tasks (
   -- AUTOINCREMENT：id 进对象 key gen/task-<id>-<i>，删除后不得复用。
@@ -11,14 +9,14 @@ CREATE TABLE generation_tasks (
   user_id INTEGER NOT NULL,
   project_id INTEGER NULL,
   model_id TEXT NOT NULL,
-  -- queued / running / processing / retry_pending / succeeded / failed（settling 为参考仓历史值，代码仍兼容）。
+  -- queued / running / processing / retry_pending / succeeded / failed（settling 为历史值，代码仍兼容）。
   status TEXT NOT NULL DEFAULT 'queued',
   upstream_task_id TEXT NULL,
   input TEXT NOT NULL CHECK (typeof(input) = 'text'),
   output TEXT NULL CHECK (output IS NULL OR typeof(output) = 'text'),
   -- 产物类型大类 image/video/audio；NULL = 未知或纯文本。
   output_kind TEXT NULL,
-  -- 桌面端不计费（spec X3），两列保留只为与参考仓代码同形，值无业务含义。
+  -- 桌面端不计费，两列保留只为代码兼容，值无业务含义。
   frozen_cents INTEGER NOT NULL DEFAULT 0,
   cost_cents INTEGER NULL,
   audit_flag TEXT NULL,

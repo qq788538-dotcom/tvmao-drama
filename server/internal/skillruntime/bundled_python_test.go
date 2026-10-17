@@ -13,7 +13,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/skillruntime"
 )
 
-// bundledPython 用 Task 1 准备的内置 Python；没准备时跳过（CI / 未运行 fetch-python.sh 的 worktree）。
+// bundledPython 用 fetch-python.sh 准备的内置 Python；没准备时跳过（CI / 未运行 fetch-python.sh 的 worktree）。
 func bundledPython(t *testing.T) string {
 	t.Helper()
 	home := os.Getenv(skillruntime.PythonHomeEnv)

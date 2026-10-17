@@ -267,7 +267,7 @@ func ParseCanvas(payload json.RawMessage, version int64, sign func(string) strin
 	for _, raw := range doc.Nodes {
 		c.Nodes = append(c.Nodes, ToNode(raw, sign))
 	}
-	// 连线顺序即输入顺序契约（spec §9.4），遍历时不得重排。
+	// 连线顺序即输入顺序契约，遍历时不得重排。
 	for _, raw := range doc.Connections {
 		c.Edges = append(c.Edges, ToEdge(raw))
 	}

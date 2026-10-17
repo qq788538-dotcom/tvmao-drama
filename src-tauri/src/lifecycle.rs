@@ -1,7 +1,7 @@
 //! sidecar 生命周期状态机：启动中 → 就绪 / 失败。
 //! - 启动在后台进行，不阻塞主线程；前端 server_info 会等到“不再是启动中”。
 //! - 就绪后 sidecar 崩溃：自动重启一次；距上次自动重启不到 crash_window 又崩 → 失败，由用户点“重试”。
-//! - restart()：前端“重试”或 P4 切换数据目录后调用；清零自动重启计数。
+//! - restart()：前端“重试”或切换数据目录后调用；清零自动重启计数。
 //! - shutdown()：应用退出时调用，之后不再拉起。先置位 closing（不拿锁），正在进行的启动随即被取消，
 //!   所以退出不会卡在等 READY 上。
 //!
@@ -32,8 +32,8 @@ pub type ReadyHook = Arc<dyn Fn(&ServerInfo) + Send + Sync>;
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum SidecarStatus {
     Starting,
-    /// 启动前正在迁移数据目录（P4）。不是状态机的阶段：由 lib.rs 在迁移期间直接发出 / 返回。
-    /// waiting：迁移子命令正在等上一次迁移的锁（I3）。
+    /// 启动前正在迁移数据目录。不是状态机的阶段：由 lib.rs 在迁移期间直接发出 / 返回。
+    /// waiting：迁移子命令正在等上一次迁移的锁。
     Migrating { waiting: bool },
     Ready,
     Failed { reason: String },
@@ -327,7 +327,7 @@ mod tests {
     fn status_serializes_without_token() {
         assert_eq!(serde_json::to_string(&SidecarStatus::Starting).unwrap(), r#"{"status":"starting"}"#);
         assert_eq!(serde_json::to_string(&SidecarStatus::Ready).unwrap(), r#"{"status":"ready"}"#);
-        // I3：等迁移锁时带 waiting=true，前端据此显示“正在等待上一次迁移结束”
+        // 等迁移锁时带 waiting=true，前端据此显示“正在等待上一次迁移结束”
         assert_eq!(
             serde_json::to_string(&SidecarStatus::Migrating { waiting: true }).unwrap(),
             r#"{"status":"migrating","waiting":true}"#
@@ -514,7 +514,7 @@ mod manager_tests {
         m.shutdown().await;
     }
 
-    // I3：启动卡住（迟迟不 READY）时退出，不能等到 ready 超时，要在 1 秒内返回。
+    // 启动卡住（迟迟不 READY）时退出，不能等到 ready 超时，要在 1 秒内返回。
     #[tokio::test]
     async fn shutdown_during_slow_launch_returns_within_1s() {
         let (f, n) = scripted(vec![r#"read t; sleep 30"#]);
@@ -534,7 +534,7 @@ mod manager_tests {
         assert_eq!(n.load(Ordering::SeqCst), 1, "退出后不再拉起");
     }
 
-    // I3：自动重启进行中退出，同样立即返回。
+    // 自动重启进行中退出，同样立即返回。
     #[tokio::test]
     async fn shutdown_during_auto_restart_returns_within_1s() {
         let (f, n) = scripted(vec![CRASH_4003, r#"read t; sleep 30"#]);

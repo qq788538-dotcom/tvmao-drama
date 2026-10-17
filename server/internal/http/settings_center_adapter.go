@@ -1,7 +1,7 @@
 package http
 
-// 把 P2a 的 builtin 编辑服务、P5 的 Agent 仓库接到设置页接口上（P4 Task 15）。
-// 只有这个文件知道其他计划的具体类型；名称变化只改这里。
+// 把 builtin 编辑服务、Agent 仓库接到设置页接口上。
+// 只有这个文件知道其他包的具体类型；名称变化只改这里。
 
 import (
 	"context"
@@ -33,7 +33,7 @@ func mapPolicyErr(err error) error {
 
 var pathIdentRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-// modelPatchToEdits 把补丁转成 P2a 的字段路径编辑（路径语法见 P2a path.go）。
+// modelPatchToEdits 把补丁转成 builtin 的字段路径编辑（路径语法见 builtin/path.go）。
 func modelPatchToEdits(p ModelPatch) (map[string]json.RawMessage, error) {
 	out := map[string]json.RawMessage{}
 	put := func(path string, v any) {
@@ -168,7 +168,7 @@ func (a policySettingEdit) UpdateSetting(ctx context.Context, key, value string)
 	if err := json.Unmarshal([]byte(value), &next); err != nil {
 		return scValidation("value", "配置不是合法的 JSON")
 	}
-	// 白名单强制执行（审查 I7）：可改路径以外有任何变化（增删条目、改 key / rotation / direction /
+	// 白名单强制执行：可改路径以外有任何变化（增删条目、改 key / rotation / direction /
 	// styles、加新字段……）整个请求 400，一个字段都不写，而不是静默丢掉。
 	if nonEditableChanged(patterns, cur, next) {
 		return scValidation("value", "只能修改开放的字段（适用模型、模板、提示词等），不能新增或删除条目、修改其他字段")
@@ -204,7 +204,7 @@ func (a policySettingEdit) ModifiedSettings(ctx context.Context) ([]string, erro
 }
 
 // settingEdits 在 next 上展开每个可改模式的具体路径，返回与 cur 相比值有变化的那些。
-// 数组段按元素的 "key" 属性寻址（P2a 路径语法），新旧文档都按 key 取值，顺序变化不算修改。
+// 数组段按元素的 "key" 属性寻址（builtin 路径语法），新旧文档都按 key 取值，顺序变化不算修改。
 func settingEdits(patterns []string, cur, next any) (map[string]json.RawMessage, error) {
 	out := map[string]json.RawMessage{}
 	for _, pat := range patterns {
@@ -360,7 +360,7 @@ func valueAt(doc any, segs []string) (any, bool) {
 }
 
 // backboneAgentModels 列出 Agent 大模型，只供模型中心的“被引用”标注使用。
-// Agent 模型写死为内置值（2026-10-07 用户要求）：没有切换和恢复默认。
+// Agent 模型写死为内置值：没有切换和恢复默认。
 type backboneAgentModels struct {
 	list func() ([]agent.BackboneModel, error)
 }

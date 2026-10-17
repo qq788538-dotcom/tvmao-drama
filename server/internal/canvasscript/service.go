@@ -1,7 +1,7 @@
 // Package canvasscript 自由画布脚本节点的“剧本生成分镜”：用户贴剧本 + 选风格（skill）+ 主切割时长
 // → 异步跑 Skill → 产出 candidate.json 存任务表，前端轮询拿到后自行导入节点。
 //
-// 桌面端相对参考仓的改动：没有积分（X3），去掉 billing 依赖与零价闸门；单进程，
+// 桌面端：没有积分，去掉 billing 依赖与零价闸门；单进程，
 // 去掉 lifecycle 实例租约与心跳，启动时把上个进程遗留的 running 一次性回收（RecoverOnStartup）。
 package canvasscript
 
@@ -77,7 +77,7 @@ type ModelCandidate struct {
 	DisplayName string `json:"displayName"`
 }
 
-// ModelCandidateView 下发前端的候选。Credits 恒为 0：桌面端没有积分（X3），字段只为前端兼容保留。
+// ModelCandidateView 下发前端的候选。Credits 恒为 0：桌面端没有积分，字段只为前端兼容保留。
 type ModelCandidateView struct {
 	ModelID     string `json:"modelId"`
 	DisplayName string `json:"displayName"`
@@ -185,7 +185,7 @@ func (s *Service) SaveConfig(cfg Config) error {
 }
 
 // EnabledStyles 用户可见的风格 + 可选模型。模型中心查不到的候选剔除（配错 / 被删）；
-// 不再按估价剔除——桌面端所有模型都是零价，参考仓的 credits<=0 闸门会把候选剔光。
+// 不再按估价剔除——桌面端所有模型都是零价，credits<=0 闸门会把候选剔光。
 func (s *Service) EnabledStyles(userTags []string) ([]StyleEntry, []ModelCandidateView, error) {
 	cfg, err := s.LoadConfig()
 	if err != nil {
@@ -354,7 +354,7 @@ func (s *Service) claimAndRun(ctx context.Context) {
 	}
 }
 
-// claimOne 用一条 UPDATE … RETURNING 原子抢占最早的 pending（替代参考仓的 SELECT + CAS 两步）。
+// claimOne 用一条 UPDATE … RETURNING 原子抢占最早的 pending（无需 SELECT + CAS 两步）。
 func (s *Service) claimOne(ctx context.Context) (*Task, bool) {
 	row := s.db.QueryRowContext(ctx, `
 		UPDATE canvas_script_tasks
@@ -404,7 +404,7 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	// 上游地址与 Key 经 models.ResolveUpstream 解析：任务记录的模型单独配了上游就用模型的，
 	// 否则回落全局（Key 走 keyResolver）。模型行查不到时同样回落全局。
 	// 只有 ErrNotFound 才回落全局；数据库瞬时错误直接失败重试，不把剧本发到可能是另一个
-	// 计费账号的全局上游（审查 M-5）。
+	// 计费账号的全局上游。
 	var mcfg *models.ModelConfig
 	if m, merr := s.models.GetByModelID(t.Model); merr == nil {
 		mcfg = m
@@ -458,7 +458,7 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	}
 }
 
-// skillModelConfig 把模型中心那行的请求模板整份透传给上游（与参考仓一致）。m 为 nil（模型行查不到）时不透传。
+// skillModelConfig 把模型中心那行的请求模板整份透传给上游。m 为 nil（模型行查不到）时不透传。
 func skillModelConfig(baseDomain, sk, modelName string, m *models.ModelConfig) skillruntime.ModelConfig {
 	var template json.RawMessage
 	if m != nil {

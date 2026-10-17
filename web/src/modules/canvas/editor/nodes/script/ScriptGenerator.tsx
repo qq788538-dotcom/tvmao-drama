@@ -13,7 +13,7 @@ import { importCandidate } from './importCandidate';
 import { ScriptStyleSelect } from './ScriptStyleSelect';
 import { MIN_SHOT_SECONDS, DEFAULT_DURATION_SEC, MAX_SCRIPT_LEN, readScriptSettings } from './scriptData';
 
-// 「剧本生成分镜脚本」生成器：脚本节点下方的浮动输入框（对标上游图44 形态）。
+// 「剧本生成分镜脚本」生成器：脚本节点下方的浮动输入框。
 // 用户贴剧本 + 选风格（后台配置，映射 skill）+ 选最长秒数（DURATION_SEC，skill
 // 必传）→ 提交异步任务 → 轮询 → succeeded 后把 candidate.json 导入节点。
 // 没有参考图 chips——用户明确砍掉（生成只吃文字剧本）。

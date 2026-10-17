@@ -1,4 +1,4 @@
-// Package events 是 sidecar 进程内的项目变更事件中心（CLI spec 第 6 节）：CLI 写画布后发布，
+// Package events 是 sidecar 进程内的项目变更事件中心：CLI 写画布后发布，
 // 网页经 SSE 订阅，空闲时整拉快照。只保证"尽力送达"：订阅者缓冲满了直接丢，前端每次
 // （重）连上都会比较一次版本号，丢掉的事件靠这一步补回来。
 package events

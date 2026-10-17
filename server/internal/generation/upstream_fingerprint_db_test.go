@@ -13,7 +13,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/models"
 )
 
-// I-1：提交时在任务行记下上游指纹（规范化地址 + Key 的 sha256 前 16 位），重启续轮询时
+// 提交时在任务行记下上游指纹（规范化地址 + Key 的 sha256 前 16 位），重启续轮询时
 // 用当前解析出的上游重算比对；对不上立即失败退款，不拿另一个账号的 Key 去盲轮询 24 小时。
 
 func newFingerprintHarness(t *testing.T, m *models.ModelConfig, settings planSettings, key string) (*sql.DB, *Service) {

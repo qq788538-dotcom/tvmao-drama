@@ -1,5 +1,5 @@
-// Package builtin 管理内置数据（spec M8–M11）：编译进 sidecar 的种子、首次启动导入与升级合并、
-// 用户可改字段的白名单与校验、恢复默认。HTTP 接口和设置页属于 P4，它们只通过本包的 Service 写内置数据。
+// Package builtin 管理内置数据：编译进 sidecar 的种子、首次启动导入与升级合并、
+// 用户可改字段的白名单与校验、恢复默认。HTTP 接口和设置页只通过本包的 Service 写内置数据。
 package builtin
 
 import (
@@ -25,13 +25,13 @@ var seedFS embed.FS
 
 // seedFormatVersion 并入种子哈希。合并算法或可改字段白名单的语义变化时递增，
 // 让已安装的用户在升级后的首次启动重新合并一次（即使种子文件本身没变）。
-const seedFormatVersion = "p2a-4" // p2a-4：五项画布配置写死 + 用户 p2a-3 收紧合并（2026-10-07）
+const seedFormatVersion = "p2a-4" // p2a-4：五项画布配置写死为内置值
 
 // DatasetModelCenter 是本包在 builtin_seed_state 里使用的数据集名（模型中心 + 画布配置）。
-// P2b 的 Skill、Agent 工具等数据集各用自己的名字。
+// Skill、Agent 工具等数据集各用自己的名字。
 const DatasetModelCenter = "model_center"
 
-// SeedModel 是 model_configs.jsonl 的一行。字段名与参考仓生产库列名一致，JSON 列在文件里是对象。
+// SeedModel 是 model_configs.jsonl 的一行。字段名与生产库列名一致，JSON 列在文件里是对象。
 // 解码时拒绝未知字段：生产库加了新列而这里没跟上，重新导出后测试会立即失败，而不是静默丢列。
 type SeedModel struct {
 	ID               int64           `json:"id"`
@@ -200,7 +200,7 @@ func validateSeedModel(m SeedModel) error {
 	default:
 		return fmt.Errorf("模型 %s：未知 image_request_mode %q", m.ModelID, m.ImageRequestMode)
 	}
-	// 与参考仓后台保存模型时的校验一致（admin_model_handlers.go 的 validateBillingExtras）：
+	// 与后台保存模型时的校验一致：
 	// 配错的加价规则在运行期不报错、静默失效，所以必须在入库前挡住。
 	if raw := nullableRaw(m.BillingConfig); raw != nil {
 		var mb billing.ModelBilling
@@ -214,7 +214,7 @@ func validateSeedModel(m SeedModel) error {
 	return nil
 }
 
-// eachLine 逐行回调非空行。不用 bufio.Scanner：它默认单行上限 64KB，P2b 的 skills 单行更长。
+// eachLine 逐行回调非空行。不用 bufio.Scanner：它默认单行上限 64KB，skills 单行更长。
 func eachLine(data []byte, fn func(line []byte) error) error {
 	r := bufio.NewReader(bytes.NewReader(data))
 	for n := 1; ; n++ {
@@ -278,7 +278,7 @@ func rawPtr(raw json.RawMessage) *string {
 	return &s
 }
 
-// modelParts 是模型行里用户可以改的那部分列（spec M10）。合并（M11）和编辑都以它为单位，
+// modelParts 是模型行里用户可以改的那部分列。合并和编辑都以它为单位，
 // 其余列（请求/轮询模板、base_path、图片协议、计费等）永远取种子值。
 type modelParts struct {
 	Name       string

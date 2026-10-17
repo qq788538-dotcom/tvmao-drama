@@ -133,7 +133,7 @@ func (r *SQLiteItemsRepository) List(f ItemFilter) ([]Item, int64, error) {
 		args = append(args, f.FolderID)
 	}
 	if f.Search != "" {
-		// 转义 LIKE 通配符，按字面量搜索（参考仓没转义，搜 "_" 会匹配所有名字）。
+		// 转义 LIKE 通配符，按字面量搜索（不转义的话搜 "_" 会匹配所有名字）。
 		where += ` AND name LIKE ? ESCAPE '\'`
 		args = append(args, "%"+likeEscaper.Replace(f.Search)+"%")
 	}

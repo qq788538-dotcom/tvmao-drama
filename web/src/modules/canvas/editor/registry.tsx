@@ -70,7 +70,7 @@ export const nodeMenuItems: NodeMenuItem[] = [
   { type: 'gen-audio', label: 'AI 音频', icon: AudioLines, group: 'generate', hint: '调用音频模型' },
   { type: 'script', label: '脚本', icon: Clapperboard, group: 'generate', hint: '分镜脚本 → 批量生视频' },
   { type: 'director-desk', label: '3D导演台', icon: Camera, group: 'generate', hint: '3D 摆位预演 → 机位截图' },
-  // 「输出」组：「保存到本地」按 spec F2 放回菜单；「图片对比」「预览」按用户要求继续
+  // 「输出」组：「保存到本地」在菜单里；「图片对比」「预览」
   // 隐藏——只是不出现在菜单里，不是移除：仍注册在 nodeComponents，存量项目里的这些
   // 节点照常渲染。要恢复显示，取消对应行的注释即可。
   // { type: 'image-compare', label: '图片对比', icon: Split, group: 'output', hint: '滑动对比两张图片' },

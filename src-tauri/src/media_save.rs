@@ -5,9 +5,9 @@
 //! Tauri 只有在 `WebviewBuilder::on_download` 被调用时才注册 handler。本应用没注册，
 //! 所以 macOS 上点带 download 属性的锚点没有任何反应。
 //!
-//! 安全约束（spec SEC4）：
+//! 安全约束：
 //! - 写盘目标路径只来自本模块在 Rust 里弹出的保存 / 选文件夹对话框，前端拿不到“往任意路径写”的能力，
-//!   前端只有 dialog:allow-open（P4 数据目录选择，只返回路径），不授予 dialog:allow-save / fs:*。
+//!   前端只有 dialog:allow-open（数据目录选择，只返回路径），不授予 dialog:allow-save / fs:*。
 //! - 复制媒体时，源只接受 sidecar 发出的本地媒体 URL（或 `media://<key>`），key 规则与
 //!   server/internal/assets/local.go 的 ValidKey 一致，并在 canonicalize 之后再确认仍在媒体根目录内
 //!   （防符号链接逃逸；媒体根目录的上一级就是 data.db）。
@@ -505,7 +505,7 @@ pub async fn save_bytes<R: Runtime>(
         .and_then(|v| v.to_str().ok())
         .and_then(percent_decode)
         .unwrap_or_default();
-    // M9：数据目录未知时拒绝，不能跳过“不能写进数据目录 / 覆盖 data.db”的保护。
+    // 数据目录未知时拒绝，不能跳过“不能写进数据目录 / 覆盖 data.db”的保护。
     let root = Some(media_root_required(&root)?);
     let detected = sniff_media_ext(&bytes[..bytes.len().min(64)]);
     let suggested = fix_extension(&sanitize_file_name(&name), detected);
@@ -815,7 +815,7 @@ mod tests {
     fn media_root_state_roundtrip() {
         let s = MediaRoot::default();
         assert!(s.get().is_none());
-        // M9：数据目录未知（迁移中 / sidecar 未启动）时拒绝保存，不能跳过“不能写进数据目录”的保护
+        // 数据目录未知（迁移中 / sidecar 未启动）时拒绝保存，不能跳过“不能写进数据目录”的保护
         assert!(media_root_required(&s).is_err());
         s.set(media_root_of(Path::new("/data")));
         assert_eq!(s.get().unwrap(), Path::new("/data/media"));

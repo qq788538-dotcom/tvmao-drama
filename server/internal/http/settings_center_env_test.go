@@ -16,7 +16,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/settings"
 )
 
-// fakeSettingEdit 模拟 P2a 的编辑策略服务：直接写 settings，记录改过的 key。
+// fakeSettingEdit 模拟 builtin 的编辑策略服务：直接写 settings，记录改过的 key。
 type fakeSettingEdit struct {
 	repo     settings.Repository
 	defaults map[string]string

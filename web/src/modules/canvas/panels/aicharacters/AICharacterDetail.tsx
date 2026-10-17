@@ -11,7 +11,7 @@ interface Props {
   onClose: () => void;
 }
 
-// 角色详情弹框（对标上游的角色详情页，按我们的数据裁剪：每个角色只有一张立绘，
+// 角色详情弹框（按我们的数据裁剪：每个角色只有一张立绘，
 // 属性只有 性别/年龄/年龄段/职业 四项 + 人设描述全文）。
 export function AICharacterDetail({ items, index, onNavigate, onApply, onClose }: Props) {
   const c = items[index];

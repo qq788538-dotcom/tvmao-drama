@@ -17,7 +17,7 @@ import { ThumbImg } from '../../ThumbImg';
 type SectionKey = keyof ScriptAssets;
 type Tab = 'ai' | 'canvas' | 'upload';
 
-// 新增资产弹窗（对标上游）：三条配图路一次收口——AI生成 / 从当前画布选择 / 本地上传。
+// 新增资产弹窗：三条配图路一次收口——AI生成 / 从当前画布选择 / 本地上传。
 // 三条路殊途同归：最终都是「一个画布图片节点 + 一条到脚本节点的连线 + 一条带
 // linkedNodeId 的资产记录」。名称自动带出（prompt 截断/节点名/文件名），同类型
 // 内自动去重加序号；描述留给资产编辑弹窗后改。
@@ -42,12 +42,12 @@ export function AddAssetDialog({
   onBind?: (newNodeId: string) => void;
   onClose: () => void;
   /** 打开时定位到哪个 tab。「AI 生角色/场景/物品」入口传 'ai'（预填资产描述词），
-   *  其余入口默认「从当前画布选择」（用户拍板的默认项）。 */
+   *  其余入口默认「从当前画布选择」。 */
   initialTab?: Tab;
 }) {
   const { settings, patch } = useScriptSettings(nodeId);
   const nodes = useCanvasStore((s) => s.nodes);
-  // 默认停在「从当前画布选择」——对标上游：画布上现成的图是最常用的配图来源。
+  // 默认停在「从当前画布选择」：画布上现成的图是最常用的配图来源。
   const [tab, setTab] = useState<Tab>(initialTab ?? 'canvas');
   const isReplace = !!replaceAsset;
 

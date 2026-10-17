@@ -28,7 +28,7 @@ type Billing interface {
 	Freeze(ctx context.Context, userID, taskID, amountCredits int64, note string) (BillingResult, error)
 	Settle(ctx context.Context, userID, taskID, frozenCredits, actualCredits int64, note string) (BillingResult, error)
 	Refund(ctx context.Context, userID, taskID, frozenCredits int64, note string) (BillingResult, error)
-	// Tx 版三原语(v5 §5.1)：在调用方的事务里动钱，绝不内部 Commit/Rollback。
+	// Tx 版三原语：在调用方的事务里动钱，绝不内部 Commit/Rollback。
 	// 「建行与冻结同事务」「终态与收口同事务」都靠它们成立。
 	FreezeTx(ctx context.Context, tx *sql.Tx, userID, taskID, amountCredits int64, note string) (BillingResult, error)
 	SettleTx(ctx context.Context, tx *sql.Tx, userID, taskID, frozenCredits, actualCredits int64, note string) (BillingResult, error)
@@ -64,7 +64,7 @@ type AssetStorage interface {
 	SignedURL(ctx context.Context, key string, expiry time.Duration) (string, error)
 	NewKey(userID int64, filename string) string
 	// StaticKey 构造不含时间成分的确定性 key——persistOutputs 的槽位对象用它,
-	// 重放覆盖写同一 key,不产生孤儿(v5 §5.5)。
+	// 重放覆盖写同一 key,不产生孤儿。
 	StaticKey(userID int64, filename string) string
 	ExtractKey(urlOrKey string) (string, bool)
 	// GetObject 按 key 直读对象字节——inputDuration 懒探测用。走对象存储直读而不是
@@ -74,7 +74,7 @@ type AssetStorage interface {
 
 type AssetRecorder interface {
 	Insert(rec assets.AssetRecord) (int64, error)
-	// FindByTaskSlot/InsertSlotTx:槽位幂等(v5 §5.5),见 assets.Repository 注释。
+	// FindByTaskSlot/InsertSlotTx:槽位幂等,见 assets.Repository 注释。
 	FindByTaskSlot(taskID int64, outputIndex int) (*assets.AssetRecord, error)
 	InsertSlotTx(tx *sql.Tx, rec assets.AssetRecord, outputIndex int) (int64, bool, error)
 	ListForTask(taskID int64) ([]assets.AssetRecord, error)
@@ -92,16 +92,15 @@ type UserStorage interface {
 	// StorageUsage 供提交闸预检 (used, quota)——见 ensureStorageQuota 的语义注释。
 	StorageUsage(id int64) (used int64, quota int64, err error)
 	// AddStorageTx:与 asset 行插入同事务累计用量——Insert 成功 AddStorage 失败的
-	// 「永久少计存储」窗口(v5 §5.5)随事务消失。
+	// 「永久少计存储」窗口随事务消失。
 	AddStorageTx(tx *sql.Tx, id int64, delta int64) error
 }
 
-// ObjectReclaimer 是删除任务时回收产物对象的窄依赖。参考仓直接调 library.TryReclaim +
-// library.IsStillReferenced；桌面端经接口注入（实现由 P1b 的 library 包提供，装配见
-// cmd/sidecar），generation 因此不 import library。
+// ObjectReclaimer 是删除任务时回收产物对象的窄依赖。经接口注入（实现由 library 包提供，
+// 装配见 cmd/sidecar），generation 因此不 import library。
 type ObjectReclaimer interface {
 	// ReclaimTx 在 tx 的可见性下判断 objectKey 是否仍被 assets / library_items 引用；
-	// 不再被引用时登记孤儿（7 天后物理删除，spec S9）并返回 true，调用方据此回收存储用量。
+	// 不再被引用时登记孤儿（7 天后物理删除）并返回 true，调用方据此回收存储用量。
 	ReclaimTx(tx *sql.Tx, objectKey string, userID, sizeBytes int64) (freed bool, err error)
 }
 
@@ -139,7 +138,7 @@ type Service struct {
 	promptPreset func(key string, params map[string]string) (string, bool)
 	// repersist 只供测试注入；nil 时 repersistStore() 回退到 repo（SQLiteRepository 实现 UpdateOutput）。
 	repersist RepersistStore
-	// publisher 见 SetMediaPublisher（对象存储设计 §3.2）；nil 或未配置 = 参考仓原逻辑。
+	// publisher 见 SetMediaPublisher；nil 或未配置 = 用本机签名地址。
 	publisher MediaPublisher
 }
 
@@ -168,10 +167,10 @@ func NewService(
 		users:       userStorage,
 		reclaimer:   reclaimer,
 		db:          db,
-		// 600s 是整请求限时(连接+读完全部字节)。曾是 120s:资产生图一次铺几十个角色时
-		// 几十条连接同挤一个上游中转域名(Cloudflare R2),单连接带宽掉到几十 KB/s,
-		// 4.5MB 的图 120s 拉不完 → persistOutputs 静默保留上游外链 → 上游两周清文件
-		// 后永久裂图(线上 87 条)。放宽到 600s 只是止血,兜底是 RunRepersistWorker。
+		// 600s 是整请求限时(连接+读完全部字节)。资产生图一次铺几十个角色时
+		// 几十条连接同挤一个上游中转域名(Cloudflare R2),单连接带宽会掉到几十 KB/s,
+		// 限时太短 4.5MB 的图拉不完 → persistOutputs 保留上游外链 → 上游两周清文件
+		// 后永久裂图。600s 之外的兜底是手动重试(RepersistTask)。
 		httpClient:  &http.Client{Timeout: 600 * time.Second},
 		concurrency: NewConcurrencyRegistry(),
 	}
@@ -227,9 +226,9 @@ func (s *Service) staleSec() int {
 }
 
 // startHeartbeat 以持有的执行权代次续心跳,返回停止函数。**不 claim**——lease 只能
-// 来自领取/接管的 CAS(v5 §5.3 出口矩阵),执行链向下传递,中途绝不重新生成。
+// 来自领取/接管的 CAS,执行链向下传递,中途绝不重新生成。
 // 心跳影响 0 行 = 失租:立刻调 onLost(通常是执行 ctx 的 cancel),尽早中止上游调用;
-// 失租者静默退出,不退款不标失败——那次调用的成本平台承担(「设计」§5.4)。
+// 失租者静默退出,不退款不标失败——那次调用的成本平台承担。
 func (s *Service) startHeartbeat(taskID, lease int64, onLost func()) func() {
 	stop := make(chan struct{})
 	go func() {
@@ -322,13 +321,13 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 		return nil, fmt.Errorf("输入校验失败: %w", err)
 	}
 
-	// 输入数量约束（gen_control.inputLimits，spec 2026-08-12）：与 uiSchema 白名单
+	// 输入数量约束（gen_control.inputLimits）：与 uiSchema 白名单
 	// 同一梯队，违约在建行/冻结之前拒绝。未配置的模型 len==0 直接放行。
 	if err := validateInputLimits(model.InputLimits(), input.Inputs); err != nil {
 		return nil, err
 	}
 
-	// 计费时长注入（gen_control.inputDuration，spec 2026-08-12）：与 inputLimits
+	// 计费时长注入（gen_control.inputDuration）：与 inputLimits
 	// 同梯队第三步，在冻结之前注入，EstimateFreeze/SettleAmount/产物 duration_ms
 	// 全都以注入值为准。
 	if err := s.resolveInputDuration(ctx, model.InputDuration(), input.Inputs); err != nil {
@@ -344,7 +343,7 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	}
 	input.Inputs = replaced
 
-	// 带 sink → 队列模式(v5 §5.4):Submit 是 SubmitTx 的自开事务薄包装。
+	// 带 sink → 队列模式:Submit 是 SubmitTx 的自开事务薄包装。
 	// 建行与冻结同事务、行以 queued 出生;网络性准备(签图/预取)完全跳过——
 	// 那是执行期材料,队列 worker 的 prepareExecution 会重建。
 	if len(input.Sink) > 0 {
@@ -424,10 +423,10 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	}
 	inputBytes, _ := json.Marshal(inputCapture)
 
-	// sinkless → 直连(v5 §5.4):建行、置 running+owner+lease=1+heartbeat、冻结在
+	// sinkless → 直连:建行、置 running+owner+lease=1+heartbeat、冻结在
 	// 同一个事务里——pending_freeze 中间态与「冻结失败留痕行」随原子性消失:
 	// 余额不足整体回滚,任务行根本不存在,记结构化审计日志即可。
-	// 全生命周期不经过 queued,worker 结构上领不到(保证 4)。
+	// 全生命周期不经过 queued,worker 结构上领不到。
 	if s.db == nil {
 		return nil, errors.New("generation unavailable")
 	}
@@ -467,7 +466,7 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	}
 	committed = true
 	log.Printf("[gen] submit task=%d model=%s note=%q (direct)", taskID, input.ModelID, input.Note)
-	const directLease = int64(1) // 建行者即首任持有者(v5 §5.3 矩阵:直连建行 lease=1)
+	const directLease = int64(1) // 建行者即首任持有者(直连建行 lease=1)
 
 	// ForceAsync：调用方(drama 角色生图)要求 handler 不阻塞。角色用的上游是"一次 Call
 	// 同步等出图"的模型，这一调会把整个 HTTP 请求堵几十秒~几分钟。冻结积分已经同步做完
@@ -495,7 +494,7 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 	return s.callAndComplete(ctx, taskID, directLease, model, apiKey, baseDomain, payload, input.UserID, input.ProjectID, freezeAmt, normalizedInputs, preparedImages, note)
 }
 
-// TaskStatuses 批量取轻量状态，供候选图等业务在 List 时投影重试进度（v5 §4.4）。
+// TaskStatuses 批量取轻量状态，供候选图等业务在 List 时投影重试进度。
 func (s *Service) TaskStatuses(ids []int64) (map[int64]TaskStatusLite, error) {
 	return s.repo.StatusLiteByIDs(ids)
 }
@@ -526,7 +525,7 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 	// completeAsync,在其收尾时释放。这样"同一模型同时在途的生成数"被真实限住,全平台共用一把闸。
 	// 各入口都是 ForceAsync(在后台 goroutine 里跑本函数),故 acquire 阻塞等名额不会卡住 HTTP。
 	//
-	// lease 由领取/建行的 CAS 取得并传入——本函数绝不重新 claim(v5 §5.3:正常链路只用执行链
+	// lease 由领取/建行的 CAS 取得并传入——本函数绝不重新 claim(正常链路只用执行链
 	// 传下来的 lease)。心跳必须在等名额**之前**起:直连任务建行即 running,名额被占满(视频模型
 	// 整段轮询都持有名额)超过 staleSec 时,没有心跳的行会被接管器当直连孤儿判失败退款。
 	// 失租时心跳会 cancel 本 ctx，尽早中止上游调用；心跳在本函数返回时停，轮询类模型由
@@ -552,7 +551,7 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 	// 写失败必须中止：宁可这次不做，也不能在"外部副作用不可追踪"的状态下调上游。
 	if won, err := s.repo.MarkUpstreamCalled(taskID, lease, models.UpstreamFingerprint(baseDomain, apiKey)); err != nil || !won {
 		if err == nil {
-			// 失租:代次已被接管——静默退出,新持有者会走完(v5 §5.3 失租语义)。
+			// 失租:代次已被接管——静默退出,新持有者会走完。
 			log.Printf("generation: task=%d MarkUpstreamCalled 失租,静默退出", taskID)
 			return nil, fmt.Errorf("任务已被其他实例接管")
 		}
@@ -562,12 +561,11 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 		return nil, err
 	}
 
-	// 每次调用用局部 client：曾经回写 s.upstream，并发任务同写一个字段是数据竞争（M2），
-	// 且该字段无人读取。
+	// 每次调用用局部 client：并发任务共写一个字段会产生数据竞争。
 	client := upstream.NewClient(upstream.ClientOptions{BaseURL: baseDomain, TempDir: s.tempDir()})
 	result, err := s.callUpstream(ctx, client, apiKey, model, payload, preparedImages)
 	if err != nil {
-		// §2 分类:提交调用错误一律保守终败退款(权威拒绝无随机性重试无意义;
+		// 提交调用错误一律保守终败退款(权威拒绝无随机性重试无意义;
 		// 不确定错误无 ID 且已标 called 只能退款)。失租时 CAS 落空,finish 静默不动钱。
 		_, _ = s.finishFailureTx(context.Background(), taskID, lease, err.Error(), note)
 		return nil, err
@@ -656,7 +654,7 @@ func scalarMultipartFields(payload []byte) map[string]string {
 
 // finalize 结算计费、把产物持久化到 MinIO 并经 finishSuccessTx 原子收口。
 // 同步 submit 路径和异步 goroutine 共用它。幂等闸门就是 finishTx 里带 lease 的
-// 终态 CAS——settling 中间态与 ClaimSettlement 不再需要(v5 §5.2)。
+// 终态 CAS——不需要 settling 中间态与 ClaimSettlement。
 func (s *Service) finalize(ctx context.Context, taskID, lease int64, model *models.ModelConfig, userID int64, projectID *int64, frozenCredits int64, reqInputs map[string]any, result *upstream.CallResult, note string) (*SubmitResult, error) {
 	// 出结果后多退少补：按模型计费配置 + 请求/响应 map 算实际积分，
 	// 与冻结额结算。
@@ -728,9 +726,9 @@ func (s *Service) finalize(ctx context.Context, taskID, lease int64, model *mode
 	}
 	outputBytes, _ := json.Marshal(output)
 
-	// 原子收口:终态 CAS + SettleTx + 插 outbox 同一事务(v5 §5.2)。
+	// 原子收口:终态 CAS + SettleTx + 插 outbox 同一事务。
 	// persistOutputs 在其之前执行——崩在两者之间时,接管重放靠槽位幂等不产生重复资产。
-	// I3：收口不随执行 ctx 取消，瞬时错误有界重试（finishSuccessDurable）。
+	// 收口不随执行 ctx 取消，瞬时错误有界重试（finishSuccessDurable）。
 	won, err := s.finishSuccessDurable(ctx, taskID, lease, finishOutcome{
 		output:        outputBytes,
 		outputKind:    outputKind,
@@ -801,13 +799,13 @@ func (s *Service) ResumeOrphanedTasks() {
 		if err := json.Unmarshal(task.Input, &inputCapture); err == nil {
 			reqInputs = inputCapture.Inputs
 		}
-		// 接管必须先 CAS 取得新代次(v5 §5.3):抢不到 = 心跳其实还活着/别的 leader 先接了,
-		// 都不该动。ClaimLease 那种无条件覆盖已删除——「接管」现在在 DB 层面是真的。
+		// 接管必须先 CAS 取得新代次:抢不到 = 心跳其实还活着/别的 leader 先接了,
+		// 都不该动。
 		lease, won, err := s.repo.ClaimStaleRunning(task.ID, lifecycle.InstanceID(), s.staleSec())
 		if err != nil || !won {
 			continue
 		}
-		// I-1：上游配置在任务进行中被改过（换地址/换 Key/切回全局），当前凭据查不到这个上游
+		// 上游配置在任务进行中被改过（换地址/换 Key/切回全局），当前凭据查不到这个上游
 		// 任务——上游对 4xx 一律按"不确定"退避重试，会白等整个轮询窗口（最长 24h）。立即失败退款，
 		// 文案带上游任务 ID 方便用户去原账号找。旧任务没有指纹，放行。
 		if upstreamFingerprintChanged(task.UpstreamFingerprint, baseDomain, apiKey) {
@@ -863,7 +861,7 @@ func (s *Service) completeAsync(taskID, lease int64, model *models.ModelConfig, 
 	polled, err := s.pollUpstream(ctx, client, apiKey, model.PollingTemplate, upstreamTaskID, window)
 	if err != nil {
 		log.Printf("generation: pollUpstream failed task=%d: %v", taskID, err)
-		// 权威终态失败先试业务重试（v5 §4.2）：同一任务转 retry_pending 到点重排，
+		// 权威终态失败先试业务重试：同一任务转 retry_pending 到点重排，
 		// 钱不动、不投递——这不是终态。sinkless/未配重试/次数耗尽时抢不到，落终败。
 		var term *upstreamTerminalError
 		if errors.As(err, &term) {
@@ -1025,9 +1023,9 @@ func (s *Service) pollUpstream(ctx context.Context, client upstreamPollClient, a
 
 		result, err := client.Call(ctx, apiKey, cfg.Method, pollPath, nil)
 		if err != nil {
-			// §2 分类表:轮询 GET 的一切错误形态(4xx 任务不存在/参数错、EOF、5xx、
+			// 轮询 GET 的一切错误形态(4xx 任务不存在/参数错、EOF、5xx、
 			// 解析失败)都是「不确定」——上游"查不到"不等于"没在跑",保留 ID 按退避
-			// 续轮到 max poll 窗口,绝不提前终败(codex 实施审查 B2)。
+			// 续轮到 max poll 窗口,绝不提前终败。
 			// 唯一例外:本地 ctx 已死,续轮无意义。
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
@@ -1081,7 +1079,7 @@ func (s *Service) pollUpstream(ctx context.Context, client upstreamPollClient, a
 				// 最后兜底：带上原始 body，这样在没有已知路径匹配时能调试。
 				errMsg = "upstream generation failed: " + string(result.Body)
 			}
-			// 类型化标记「权威终态失败」（v5 §2 分类表第一行）——只有它能进业务重试。
+			// 类型化标记「权威终态失败」——只有它能进业务重试。
 			// transport 错/解析失败/本地超时走其他 return，天然不带此类型。
 			return nil, &upstreamTerminalError{msg: errMsg}
 		}
@@ -1220,13 +1218,13 @@ func (s *Service) List(ctx context.Context, filter ListFilter) ([]Task, int64, e
 }
 
 // Delete 删除一个**终态**任务及其产物引用——行删除、资产行删除、orphan 标记、
-// 配额回收在**同一个事务**里(codex 复核修正):任一步失败整体回滚,行还在、可重试,
+// 配额回收在**同一个事务**里:任一步失败整体回滚,行还在、可重试,
 // 不存在「行没了清理没做完」的不可恢复残留。非终态在事务内被 DeleteTx 拦下(409)。
 func (s *Service) Delete(ctx context.Context, userID, taskID int64) error {
 	if s.db == nil {
 		return errors.New("delete unavailable")
 	}
-	// 快照 assets:失败必须中止(codex 复核:没有 object key 快照就删行,
+	// 快照 assets:失败必须中止(没有 object key 快照就删行,
 	// 对象会失去一切数据库引用且永远进不了 orphan GC)。
 	var ownedAssets []assets.AssetRecord
 	if s.assets != nil {
@@ -1367,7 +1365,7 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 		if rawURL == "" {
 			continue
 		}
-		// 槽位幂等(v5 §5.5)第一步:先查 (task_id, output_index)——重放命中直接复用,
+		// 槽位幂等第一步:先查 (task_id, output_index)——重放命中直接复用,
 		// 不下载不上传。`i` 是原始 urls 下标,槽位在重放间稳定(依赖上游输出顺序稳定,
 		// 该假设仅在「终态提交后重放」的窄场景生效,乱序最坏是槽位内容互换,无资损)。
 		if s.assets != nil {
@@ -1381,15 +1379,15 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 		stored, assetID, mime, err := s.persistSlotWithRetry(ctx, userID, taskID, pid, i, rawURL, durationMs)
 		if err != nil {
 			// file:// 与 data: 都是"内容只在本进程手里"的产物：没有上游地址可留、也无从
-			// 手动重试，落盘失败只能判失败退款。data: 绝不能原样写进 output/画布（M4）：
+			// 手动重试，落盘失败只能判失败退款。data: 绝不能原样写进 output/画布：
 			// 几 MB base64 会撑大快照，且节点没有重试入口。
 			if strings.HasPrefix(rawURL, "file://") || strings.HasPrefix(rawURL, "data:") {
 				log.Printf("generation: persist local output failed task=%d idx=%d: %v", taskID, i, err)
 				return nil, nil, nil, fmt.Errorf("%w: %v", errLocalPersist, err)
 			}
 			// 抓不到(未知 scheme / 超时 / 上游 4xx)或传不上:保留原始 URL、assetId 记 0,
-			// 任务照常成功——用户看到的仍是真实生成的图。日志必须留:曾经这里全静默,
-			// 线上 87 条泄漏一条痕迹都没有。已自动重试 3 次;之后由用户在节点上点「重试」走 RepersistTask（spec S5）。
+			// 任务照常成功——用户看到的仍是真实生成的图。日志必须留,否则泄漏无迹可查。
+			// 已自动重试 3 次;之后由用户在节点上点「重试」走 RepersistTask。
 			log.Printf("generation: persist output failed task=%d idx=%d url=%s: %v (kept upstream url)", taskID, i, rawURL, err)
 			out = append(out, rawURL)
 			assetIDs = append(assetIDs, 0)
@@ -1428,7 +1426,7 @@ func (s *Service) persistSlot(ctx context.Context, userID, taskID, projectID int
 	}
 	var assetID int64
 	if s.assets != nil && s.db != nil {
-		// asset 行与存储用量同一事务(v5 §5.5):Insert 成功 AddStorage 失败的
+		// asset 行与存储用量同一事务:Insert 成功 AddStorage 失败的
 		// 「永久少计存储」窗口随事务消失;唯一键兜底并发重放,只有真正新插入才计量。
 		err := func() error {
 			tx, err := s.db.BeginTx(ctx, nil)
@@ -1473,8 +1471,8 @@ func (s *Service) persistSlot(ctx context.Context, userID, taskID, projectID int
 }
 
 // openSlotSource 按引用形态给出产物内容流。file:// 是 gpt-image b64 落盘的临时文件，
-// 直接打开、Stat 取长度、读 512 字节探测 mime 后 Seek 回头；http(s)/data: 走原来的
-// fetchMedia（它们本来就整份进内存,形态没变）。
+// 直接打开、Stat 取长度、读 512 字节探测 mime 后 Seek 回头；http(s)/data: 走
+// fetchMedia（整份进内存）。
 func (s *Service) openSlotSource(ctx context.Context, rawURL string) (io.ReadCloser, int64, string, error) {
 	if !strings.HasPrefix(rawURL, "file://") {
 		body, mime, _, err := s.fetchMedia(ctx, rawURL)

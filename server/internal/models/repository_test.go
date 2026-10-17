@@ -232,7 +232,7 @@ func TestCreateDuplicateModelIDFails(t *testing.T) {
 }
 
 // 可选 JSON 列的字面量 null / 空值写成 SQL NULL；request_template 是 NOT NULL 列，
-// 字面量 null 原样存成文本 "null"（与参考仓一致，钉住现状）。
+// 字面量 null 原样存成文本 "null"（钉住现状）。
 func TestNullJSONLiteralsBecomeSQLNull(t *testing.T) {
 	conn := openTestDB(t)
 	repo := NewSQLiteRepository(conn)

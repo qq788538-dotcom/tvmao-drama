@@ -1,5 +1,4 @@
 // 设置页与 sidecar（/api/v1/settings/*）和 Tauri 壳之间的全部调用。
-// 接口契约见 docs/superpowers/plans/2026-10-06-p4-settings.md「HTTP 接口一览」。
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { authHeaders, buildHttpUrl, getServerInfo, restartSidecar } from '@/shared/server';

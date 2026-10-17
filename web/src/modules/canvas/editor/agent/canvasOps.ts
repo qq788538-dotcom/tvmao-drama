@@ -1,9 +1,6 @@
-// apps/web/src/modules/canvas/editor/agent/canvasOps.ts
-//
 // agent「画布操作」写指令的前端执行器。后端 tools_canvas_ops.go 的五个写工具
 //（create/update/delete_node、connect_nodes/remove_connection）各 emit 一种
-// *_info artifact，经 onAgentArtifact 分流到这里执行（设计见
-// docs/2026-08-13-agent-canvas-ops-design.md）。
+// *_info artifact，经 onAgentArtifact 分流到这里执行。
 //
 // 为什么写操作必须在前端执行：画布是「浏览器持编辑锁 + 局部 mutation 上推」
 // 模型，服务端绕过浏览器直写 DB，浏览器内存里的画布不知情，下一个用户操作
@@ -222,7 +219,7 @@ export function applyCanvasOpArtifact(opts: {
       // updateNode/updateNodeSettings 本身不进 undo 栈（它们也被生成回写和
       // 拖拽每帧调用）。agent 的修改是一次性远程指令，用户没有「输入过程」
       // 可感知，这里显式 commit 一次快照，让 Ctrl+Z 能一步回退整个操作——
-      // 设计文档拍板的统一安全兜底就是 undo 栈。
+      // 统一的安全兜底就是 undo 栈。
       store.commit();
       if (Object.keys(settings).length > 0) store.updateNodeSettings(nodeId, settings);
       if (Object.keys(geo).length > 0) store.updateNode(nodeId, geo);

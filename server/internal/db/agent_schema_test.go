@@ -86,7 +86,7 @@ func TestAgentUpdatedAtTriggers(t *testing.T) {
 	}
 }
 
-// P2a builtin.Apply 升级内置数据时会删除模型行、或把模型行挪到新主键
+// builtin.Apply 升级内置数据时会删除模型行、或把模型行挪到新主键
 // （先挪到负数临时 id 再写回）。被 Agent 工具引用的模型行不能因此触发外键失败，
 // 否则 sidecar 启动直接退出。
 func TestAgentToolsFollowModelConfigDeleteAndRekey(t *testing.T) {

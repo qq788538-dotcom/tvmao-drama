@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// settingsConfigKeys 是五项内置画布配置（settings 表的 key）。2026-10-07 起写死为内置值、设置页不再展示，
+// settingsConfigKeys 是五项内置画布配置（settings 表的 key）。写死为内置值、设置页不展示，
 // 这里只用于模型中心标注模型被哪些配置引用（modelReferences）。
 var settingsConfigKeys = []string{
 	"canvas_postprocess_config",
@@ -33,7 +33,7 @@ type modelRef struct {
 }
 
 // extractModelRefs 找出一项配置里引用的全部模型（空字符串跳过）。raw 为空返回 nil。
-// 字段位置与参考仓 canvasgen / canvasscript 的配置结构一致，见计划“M10 可改字段表”。
+// 字段位置与 canvasgen / canvasscript 的配置结构一致。
 func extractModelRefs(key string, raw []byte) ([]modelRef, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, nil

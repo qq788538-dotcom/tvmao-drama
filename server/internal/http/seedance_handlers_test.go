@@ -58,7 +58,7 @@ func seedancePublicSigner(s string) string {
 func newSeedanceTestHandler(t *testing.T, configured bool, signer seedanceFakeSigner) (*SeedanceHandler, *library.SeedanceService, *sql.DB, *seedanceFakeClient) {
 	t.Helper()
 	conn := dbtest.Open(t)
-	// library_items 由 P1b 的迁移 0002 建；本任务的工作区里可能还没有，归属查询需要这张表存在。
+	// library_items 由迁移 0002 建；这里兜底建表，归属查询需要这张表存在。
 	if _, err := conn.Exec(`CREATE TABLE IF NOT EXISTS library_items (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, object_key TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)

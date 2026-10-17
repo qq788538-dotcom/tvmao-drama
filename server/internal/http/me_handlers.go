@@ -11,8 +11,8 @@ type meUserRepo interface {
 	ComputeStorageUsed(id int64) (int64, error)
 }
 
-// MeHandler 是参考仓 AuthHandler.Me 的桌面版：没有登录、邀请码、JWT（spec X4），
-// 只回本地用户的资料，响应字段与参考仓逐字一致（前端头像菜单、存储用量直接读它）。
+// MeHandler 是 /me 的桌面版：没有登录、邀请码、JWT，
+// 只回本地用户的资料（前端头像菜单、存储用量直接读它）。
 type MeHandler struct {
 	users meUserRepo
 }

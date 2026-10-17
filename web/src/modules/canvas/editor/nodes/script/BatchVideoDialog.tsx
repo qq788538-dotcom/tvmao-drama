@@ -9,7 +9,7 @@ import { LABEL_BY_KIND } from './scriptTokens';
 import { SAVE_BTN } from './cellEditors';
 import { ScriptSelect } from './ScriptSelect';
 
-// 批量生视频弹层（对标上游）：顶部提示条 + 副说明 + 每镜大行卡（勾选/提示词
+// 批量生视频弹层：顶部提示条 + 副说明 + 每镜大行卡（勾选/提示词
 // 截断/右侧时长控件）+ 底栏（全选计数 | 模型 | uiSchema 参数下拉 | 确认按钮）。
 // 只铺节点不提交生成（铁律）；底栏参数按所选模型 uiSchema 动态渲染，选择值
 // 随 spawn 写进各 gen-video 节点 settings。

@@ -80,7 +80,7 @@ func TestUpload_ImageSkipsProbe(t *testing.T) {
 	}
 }
 
-// 桌面端探测失败只是不记时长，上传照常成功（spec X3 不计费；用户机器上没有 ffprobe）。
+// 桌面端探测失败只是不记时长，上传照常成功（不计费；用户机器上没有 ffprobe）。
 func TestUpload_ProbeFailureStillStoresWithoutDuration(t *testing.T) {
 	gotDuration := int64(-1)
 	h := newTestAssetHandler(t)

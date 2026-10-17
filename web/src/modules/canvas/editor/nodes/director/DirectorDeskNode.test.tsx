@@ -67,7 +67,7 @@ it('全屏面板内右键不再穿透成画布节点「删除」菜单', async (
   expect(screen.queryByText('删除')).not.toBeInTheDocument();
 });
 
-// 阶段二：captures-sent（载荷已是签名 URL）→ 在导演台右侧铺 input-image 节点、
+// captures-sent（载荷已是签名 URL）→ 在导演台右侧铺 input-image 节点、
 // 写 content/name、persist、并从导演台连线过去。
 it('captures-sent 铺 input-image 节点并连线', async () => {
   render(<DirectorDeskNode id="dd1" />);
@@ -115,7 +115,7 @@ it('captures-sent 载荷是 dataURL 时拒收不建节点', async () => {
   expect(persistNodeById).not.toHaveBeenCalled();
 });
 
-// 阶段二持久化链路：desk 写状态 → adapter → scheduleNodePatch 落到本节点
+// 持久化链路：desk 写状态 → adapter → scheduleNodePatch 落到本节点
 // settings.directorProject（debounce/收敛 media:// 由画布链路负责，这里只验接线）。
 it('打开面板注册 adapter，writeState 走 scheduleNodePatch 写 settings.directorProject', async () => {
   const { getDirectorHostAdapter } = await import('./desk/editor/io/hostAdapter');

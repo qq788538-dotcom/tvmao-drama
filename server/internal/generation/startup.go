@@ -9,15 +9,15 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/lifecycle"
 )
 
-// 启动恢复（spec S7：照搬参考仓的恢复逻辑，去掉多实例租约）。
+// 启动恢复（去掉多实例租约）。
 //
-// 参考仓靠 Redis leader 选举跑一组单例 worker，并且故意不在启动时扫孤儿（蓝绿发布时旧实例
-// 还活着）。桌面端单实例单进程（spec S11），这两个前提都不存在：
+// 多实例部署靠 Redis leader 选举跑一组单例 worker，并且故意不在启动时扫孤儿（蓝绿发布时旧实例
+// 还活着）。桌面端单实例单进程，这两个前提都不存在：
 //   - leader 组拆成这里直接起的 goroutine；
 //   - 启动时库里所有「别的 owner」的在途行都来自已经死掉的上个进程，心跳必须立即判过期，
 //     否则要干等 LEASE_STALE_SEC（90 秒）才续跑，用户看到的是重开应用后节点卡住一分半。
 
-// recoverInterval 与参考仓 main.go 的孤儿扫描周期一致。
+// recoverInterval 是孤儿扫描周期。
 const recoverInterval = 60 * time.Second
 
 // leaseExpirer 由 SQLiteRepository 实现；做成可选接口是为了测试用 fake repo。
@@ -37,7 +37,6 @@ func (r *SQLiteRepository) ExpirePreviousLeases(instance string) (int64, int64, 
 		return 0, 0, err
 	}
 	tasks, _ := res.RowsAffected()
-	// 字面量而非 sqlSecondsOffset：本任务与 Task 4 并行，不依赖它新增的辅助函数。
 	res, err = r.db.Exec(`UPDATE generation_sink_outbox SET locked_until = datetime('now', '-1 seconds')
 		WHERE state = 'delivering' AND (locked_until IS NULL OR locked_until >= CURRENT_TIMESTAMP)`)
 	if err != nil {
@@ -74,7 +73,7 @@ func (s *Service) StartBackground(ctx context.Context) <-chan struct{} {
 	return done
 }
 
-// recoverOnce 顺序与参考仓 main.go:674-685 一致：续 poll → 接管四路分流 → 排队超时兜底。
+// recoverOnce 顺序：续 poll → 接管四路分流 → 排队超时兜底。
 func (s *Service) recoverOnce() {
 	s.ResumeOrphanedTasks()
 	s.RecoverStaleQueueTasks()
