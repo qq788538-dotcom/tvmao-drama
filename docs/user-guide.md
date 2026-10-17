@@ -48,7 +48,7 @@
 
 ## 2. 接入模型
 
-喵剧AI 不自带模型服务，需要你接入一个兼容 [New API](https://github.com/QuantumNous/new-api) 协议的模型网关。
+喵剧AI 不自带模型服务，需要你接入一个兼容 [New API](https://www.qqdao.com/) 协议的模型网关。
 
 1. 点画布右上角的「设置」，进入「模型中心」。
 2. 在「默认上游」里填写：

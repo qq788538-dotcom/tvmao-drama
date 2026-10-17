@@ -30,7 +30,7 @@
 Miaoju AI is a desktop app for macOS and Windows. You place nodes on a canvas and connect them: uploaded images, videos, audio and text feed into AI image, video and audio generation nodes, and the results appear right on the canvas, ready to trim, crop, extend, upscale or pass to the next node.
 
 - **Your data stays on your machine.** Projects, assets and generations live in a local data directory. No account, no cloud sync.
-- **Bring your own models.** The app ships no model service. Point it at any gateway compatible with [New API](https://github.com/QuantumNous/new-api), add your API key, and every built-in model works. Individual models can use their own upstream.
+- **Bring your own models.** The app ships no model service. Point it at any gateway compatible with [New API](https://www.qqdao.com/), add your API key, and every built-in model works. Individual models can use their own upstream.
 - **AI assistants can drive the canvas.** A built-in agent understands the canvas, runs skills and creates nodes for you. The bundled `miaoju` CLI lets Claude Code, Codex and other coding assistants operate the canvas from a terminal.
 
 ## How it compares to LibTV
