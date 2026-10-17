@@ -47,6 +47,20 @@ type Node struct {
 	History      []HistoryItem  `json:"history"`
 }
 
+// NodeDetail 是 `node get` 的响应：节点本体 + 运行前审计用的派生输入与已产出媒体。
+type NodeDetail struct {
+	Node
+	DerivedInputs *DerivedInputs `json:"derivedInputs,omitempty"`
+	Outputs       []string       `json:"outputs"`
+}
+
+type DerivedInputs struct {
+	Images []string `json:"images"`
+	Texts  []string `json:"texts"`
+	Videos []string `json:"videos"`
+	Audios []string `json:"audios"`
+}
+
 type Edge struct {
 	ID         string `json:"id"`
 	FromNodeID string `json:"fromNodeId"`
@@ -179,8 +193,8 @@ func (c *Client) ListNodes(ctx context.Context, projectID int64, nodeType, statu
 	return out.Data, err
 }
 
-func (c *Client) GetNode(ctx context.Context, projectID int64, nodeID string) (Node, error) {
-	var out Node
+func (c *Client) GetNode(ctx context.Context, projectID int64, nodeID string) (NodeDetail, error) {
+	var out NodeDetail
 	err := c.do(ctx, request{
 		method: http.MethodGet, path: "/projects/" + itoa(projectID) + "/nodes/" + url.PathEscape(nodeID),
 	}, &out)

@@ -560,3 +560,18 @@ func TestUploadAssetSendsFileAsMultipart(t *testing.T) {
 		t.Fatalf("name=%q bodyLen=%d", gotName, len(gotBody))
 	}
 }
+
+// node get 是运行前审计的入口：derivedInputs / outputs 必须原样带回，不能被 Node 结构吞掉。
+func TestGetNodeKeepsDerivedInputsAndOutputs(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"n-v","type":"video-generator","params":{},"history":[],
+			"derivedInputs":{"images":["u1"],"texts":[],"videos":[],"audios":[]},"outputs":["o1"]}`))
+	})
+	n, err := c.GetNode(context.Background(), 1, "n-v")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.ID != "n-v" || n.DerivedInputs == nil || len(n.DerivedInputs.Images) != 1 || len(n.Outputs) != 1 {
+		t.Fatalf("node = %+v", n)
+	}
+}
