@@ -1,6 +1,6 @@
 // 宫格切分交互约定钉死在这里：下拉四档 + 自定义 hover 选择器；选完规格进入
 // 模式（模式条 + 节点上网格逐格点选）；「创建分镜组」把 rows/cols/选中格
-// 原样交给 executeGridSplit，零选中时不调用；「生成高清图片」是 libtv 付费
+// 原样交给 executeGridSplit，零选中时不调用；「生成高清图片」是付费
 // 超分的占位——必须不可点且 hover 有「该功能未实现」提示（用户点名的行为）。
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';

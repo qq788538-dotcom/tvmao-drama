@@ -164,7 +164,7 @@ export const cliToolStatus = () => invoke<CliToolStatus>('cli_tool_status');
 export const installCliTool = () => invoke<CliToolStatus>('install_cli_tool');
 export const uninstallCliTool = () => invoke<CliToolStatus>('uninstall_cli_tool');
 /**
- * 直接使用一个已有喵剧数据的目录（I1）：只改 location.json（壳会校验它确实是喵剧数据目录），再重启本地服务，不迁移。
+ * 直接使用一个已有喵剧数据的目录：只改 location.json（壳会校验它确实是喵剧数据目录），再重启本地服务，不迁移。
  * 切换被拒绝时抛出原因；重启失败由 SidecarGate 的失败页显示（那里有“重试”和“改用默认数据目录”）。
  */
 export async function switchToExistingDataDir(path: string): Promise<void> {

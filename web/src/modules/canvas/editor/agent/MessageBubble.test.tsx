@@ -104,7 +104,7 @@ describe('tool_event 的 text_info 定位 chip', () => {
 
   it('点击 chip 按 agentMeta.artifactId 反查节点并把视口平移到它', () => {
     // 定位语义现在由 gen_*_node_info 这类 chip 承担——text_info 已改成点击
-    // 弹预览（对标用户气泡的内联段卡片，见下面两个用例）。
+    // 弹预览（同用户气泡的内联段卡片，见下面两个用例）。
     useCanvasStore.setState({
       nodes: [
         {
@@ -129,7 +129,7 @@ describe('tool_event 的 text_info 定位 chip', () => {
     expect(view.y).toBe((window.innerHeight - 56) / 2 - 780);
   });
 
-  it('text_info chip 点击：画布上找得到节点 → 开节点展开编辑弹层（对标内联段卡片）', () => {
+  it('text_info chip 点击：画布上找得到节点 → 开节点展开编辑弹层（同内联段卡片）', () => {
     useCanvasStore.setState({
       nodes: [
         {

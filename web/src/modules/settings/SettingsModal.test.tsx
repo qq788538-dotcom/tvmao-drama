@@ -85,7 +85,7 @@ describe('SettingsModal', () => {
     expect(screen.getByText('通用页内容')).toBeTruthy();
   });
 
-  it('不出现任何导入导出或新建入口（spec M7、M8、A4）', () => {
+  it('不出现任何导入导出或新建入口', () => {
     setup();
     act(() => openSettings());
     for (const banned of ['导入', '导出', '新建', '新增', 'Skill']) expect(screen.queryByText(new RegExp(banned))).toBeNull();

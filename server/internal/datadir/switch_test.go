@@ -11,7 +11,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/datadir"
 )
 
-// I1：设置页选目录时区分三种情况：空（迁移过去）/ 已有喵剧数据（直接使用）/ 非空且无关（拒绝）。
+// 设置页选目录时区分三种情况：空（迁移过去）/ 已有喵剧数据（直接使用）/ 非空且无关（拒绝）。
 func TestInspectChosenFolderStates(t *testing.T) {
 	cur := t.TempDir()
 
@@ -74,7 +74,7 @@ func TestValidateTargetRejectsExistingData(t *testing.T) {
 	}
 }
 
-// I2：迁移子进程在壳退出后把迁移做完（标记已去掉），下次启动重跑同一迁移应视为成功，不清空新副本。
+// 迁移子进程在壳退出后把迁移做完（标记已去掉），下次启动重跑同一迁移应视为成功，不清空新副本。
 func TestMigrateIsIdempotentAfterCompletedCopy(t *testing.T) {
 	from, to := t.TempDir(), filepath.Join(t.TempDir(), "dest")
 	newSourceDB(t, from)
@@ -104,7 +104,7 @@ func TestMigrateIsIdempotentAfterCompletedCopy(t *testing.T) {
 	}
 }
 
-// I4：同一数据目录只允许一个 sidecar；锁文件不影响空目录判断、不被复制。
+// 同一数据目录只允许一个 sidecar；锁文件不影响空目录判断、不被复制。
 func TestInstanceLockIsExclusive(t *testing.T) {
 	dir := t.TempDir()
 	release, err := datadir.AcquireInstanceLock(dir, 0)
@@ -133,7 +133,7 @@ func TestInstanceLockIsExclusive(t *testing.T) {
 	r2()
 }
 
-// I3：等锁超时返回可识别的错误；开始等待时通知一次（壳据此显示“正在等待上一次迁移结束”）。
+// 等锁超时返回可识别的错误；开始等待时通知一次（壳据此显示“正在等待上一次迁移结束”）。
 func TestMigrateLockTimeoutIsRecognizableAndNotifiesWait(t *testing.T) {
 	path := filepath.Join(t.TempDir(), datadir.MigrateLockFileName)
 	release, err := datadir.AcquireMigrateLock(path, 0, time.Millisecond)

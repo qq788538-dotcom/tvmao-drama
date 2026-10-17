@@ -1,7 +1,7 @@
-// 宫格切分的交互层，对标 libtv 1:1：
+// 宫格切分的交互层：
 //   1. GridSplitMenu —— 「宫格切分」下拉（4/9/16/25 宫格 + 自定义 hover 行列选择器）；
 //   2. GridSplitModeBar —— 选完规格后的模式工具条（✕ / 已选计数 / 创建分镜组 /
-//      「生成高清图片·2倍」占位——libtv 那是付费超分，本次明确不做，按用户要求
+//      「生成高清图片·2倍」占位——付费超分，暂不实现，
 //      保留按钮但禁点、hover 提示未实现）；
 //   3. GridSplitOverlay —— 叠在节点上的网格：行列编号、逐格点选/反选。
 // 状态由 ImageActionsBar 托管（模式生命周期要跨越工具条显隐，同 MultiAnglePanel）。
@@ -48,7 +48,7 @@ export function GridSplitMenu({ onPick }: { onPick: (rows: number, cols: number)
         </button>
       ))}
       <div className="h-px bg-white/15 my-1 mx-2" />
-      {/* 自定义：hover 弹右侧行列选择器（libtv 同款「表格插入」交互）。开合挂在
+      {/* 自定义：hover 弹右侧行列选择器（「表格插入」式交互）。开合挂在
           「行 + 面板」的公共容器上，鼠标从行移进面板不会中途关闭。 */}
       <div
         className="relative"
@@ -154,7 +154,7 @@ export function GridSplitModeBar({
         {busy ? '切分中…' : '创建分镜组'}
       </button>
       <div className="w-px h-4 bg-border mx-1 shrink-0" />
-      {/* 「生成高清图片 · 2倍」是 libtv 的付费超分（topaz），本次明确不实现。
+      {/* 「生成高清图片 · 2倍」是付费超分，暂不实现。
           不用原生 disabled——部分浏览器不给禁用元素弹 title，hover 提示会失效。 */}
       <span title="该功能未实现">
         <span className="h-8 px-2 rounded-lg flex items-center gap-1.5 text-[13px] whitespace-nowrap cursor-not-allowed text-foreground/30 select-none">

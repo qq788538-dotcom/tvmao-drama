@@ -78,7 +78,7 @@ export function GenVideoNode({ id }: { id: string }) {
   // 的脏 token，禁用按钮比让保存链路半途失败更直接。
   const readOnly = useCanvasStore((s) => s.readOnly);
   // 选中状态驱动浮动上传 chip 和 prompt 面板的显示/隐藏动画——用户选中节点
-  // 之前一直隐藏，对标参考站点的「聚焦时展开」行为。
+  // 之前一直隐藏（「聚焦时展开」）。
   const isSelected = useCanvasStore((s) => s.selectedIds.has(id));
   // 详情面板里参数面板要跟预览盒左右对齐（见下方定位处的注释）。
   const storyboardMode = useStoryboardMode();
@@ -592,7 +592,6 @@ export function GenVideoNode({ id }: { id: string }) {
           onChange={handleUpload}
         />
 
-        {/* 「Video」标题栏在节点上方——对标参考站点
         {/* 「Video」标题 chip 现在统一由 NodeShell 渲染在卡片上方，并支持
             重命名——不再每个节点各放一份。 */}
 
@@ -809,7 +808,7 @@ export function GenVideoNode({ id }: { id: string }) {
                 <Plus size={14} />
               </button>
               {/* 已连接的上游图片缩略图——渲染在『添加』占位钮和尾部控件之间，
-                  对标参考站点的「[⬚] [ref] [ref] [+]」模式。 */}
+                  即「[⬚] [ref] [ref] [+]」排布。 */}
               {/* 外层不做 overflow-hidden：× 是骑角圆徽章会被裁半，裁剪层
                   内移到只包媒体的 div（三排同款处理）。 */}
               {imageRefs.slice(0, 4).map((ref, i) => (
@@ -1047,7 +1046,7 @@ export function GenVideoNode({ id }: { id: string }) {
               <div className="flex-1" />
 
               {/* 装饰性麦克风——语音 prompt 不在本次范围内，所以这是个虚位，
-                  对标参考站点的右侧栏，但不凭空造功能。从 tab 顺序里隐藏。 */}
+                  只占右侧栏的位置，不凭空造功能。从 tab 顺序里隐藏。 */}
               <button
                 type="button"
                 tabIndex={-1}
@@ -1109,7 +1108,7 @@ export function GenVideoNode({ id }: { id: string }) {
           onSave={async (entries, captureFrame) => {
             const st = useCanvasStore.getState();
             const gen = st.nodes.find((n) => n.id === id);
-            // 同一次保存的多条标注拼在同一行、中文逗号分隔（用户拍板 2026-08-13）：
+            // 同一次保存的多条标注拼在同一行、中文逗号分隔：
             // 每条独占一行会把输入框撑得很长。闭包每次 onSave 新建，这个标记天然
             // 就是批次边界——部分失败后重试是新一次 onSave，仍从新行开始。
             let batchFirst = true;

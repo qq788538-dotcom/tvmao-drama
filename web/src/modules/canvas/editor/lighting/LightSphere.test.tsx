@@ -25,7 +25,7 @@ describe('directions', () => {
   });
 });
 
-describe('projection（liblib 实测相机）', () => {
+describe('projection（透视/正面相机）', () => {
   it('投影↔射线求交往返一致：可见半球方向投影后按像素反求回同一方向', () => {
     // 透视相机在 (11,8,10)（方位约 48°），取其可见侧方向；正面相机取前半球。
     const cases: Array<['persp' | 'front', number, number]> = [
@@ -82,7 +82,7 @@ describe('buildLightPresetParams（脏标记语义）', () => {
     ).toEqual({ keyLight: 'left', rimLight: 'back' });
   });
 
-  it('主光源在正后方时不发轮廓光（liblib 同款跳过）', () => {
+  it('主光源在正后方时不发轮廓光（跳过）', () => {
     expect(
       buildLightPresetParams({ ...base, sceneTouched: true, direction: 'back', rimEnabled: true }),
     ).toEqual({ keyLight: 'back' });
@@ -142,7 +142,7 @@ describe('LightSphere', () => {
     expect(onChange).toHaveBeenLastCalledWith(snapToDirection(r.yaw, r.pitch));
   });
 
-  it('按下位置不在光点附近则不进入拖拽（liblib 同款：随手点球面不改光位）', () => {
+  it('按下位置不在光点附近则不进入拖拽（随手点球面不改光位）', () => {
     const onChange = vi.fn();
     render(<LightSphere direction="front" view="front" onChange={onChange} />);
     const el = screen.getByTestId('light-sphere');

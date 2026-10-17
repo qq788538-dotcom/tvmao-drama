@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// I1：上游返回的 file:// 只能指向本服务 tempDir 里的 spill 临时文件，其余一律拒绝。
+// 上游返回的 file:// 只能指向本服务 tempDir 里的 spill 临时文件，其余一律拒绝。
 func TestPersistOutputs_RejectsFileURLOutsideTempDir(t *testing.T) {
 	tmp := t.TempDir()
 	dataDir := t.TempDir()
@@ -64,7 +64,7 @@ func TestPersistOutputs_AcceptsSpillFileInTempDir(t *testing.T) {
 	}
 }
 
-// M4：data: 产物落盘失败时不能把 base64 原样交给画布/output，按本地产物失败处理（退款）。
+// data: 产物落盘失败时不能把 base64 原样交给画布/output，按本地产物失败处理（退款）。
 func TestPersistOutputs_DataURIFailureIsErrorNotInline(t *testing.T) {
 	s := &Service{storage: &captureStorage{fail: true}}
 	urls, _, _, err := s.persistOutputs(context.Background(), 64, 1, nil,

@@ -73,7 +73,7 @@ func TestImportIsIdempotentAndKeepsUseCount(t *testing.T) {
 	}
 }
 
-// Agent 模型写死为内置值（2026-10-07 用户要求）：旧版设置页切换过的 model_name（model_name_overridden=1）
+// Agent 模型写死为内置值：旧版设置页切换过的 model_name（model_name_overridden=1）
 // 在导入时恢复为种子值并清除标记，其余参数同样回到内置值。
 func TestImportResetsOverriddenModelName(t *testing.T) {
 	conn := dbtest.Open(t)
@@ -178,7 +178,7 @@ func TestImportHandlesSwappedCategoryNames(t *testing.T) {
 }
 
 // 旧库里 model_name 仍是合并前的 canvas-agent-gpt-5.5：升级导入后变成 gpt-5.5；
-// 被用户在设置页覆盖过的行（model_name_overridden=1）同样回到种子值（Agent 模型已写死，2026-10-07）。
+// 被用户在设置页覆盖过的行（model_name_overridden=1）同样回到种子值（Agent 模型已写死）。
 // 已安装用户库里的旧名（canvas-agent-gpt-5.5、gpt-5.5）在下次启动导入时都升级为种子值 gpt-latest。
 func TestImportUpgradesOldGPTModelNames(t *testing.T) {
 	conn := dbtest.Open(t)

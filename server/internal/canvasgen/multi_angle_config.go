@@ -20,7 +20,7 @@ const SettingCanvasMultiAngle = "canvas_multi_angle"
 // **先于**绘图预设查表分流本 key，保证它永远走多角度分支。
 const MultiAnglePresetKey = "__multi_angle__"
 
-// 景别三档，key 与 liblib 对标(zoomCloseUp/zoomMedium/zoomPanorama)。
+// 景别三档（特写/中景/全景）。
 var multiAngleZoomPhrases = map[string]string{
 	"closeup":  "特写构图",
 	"medium":   "中景构图",

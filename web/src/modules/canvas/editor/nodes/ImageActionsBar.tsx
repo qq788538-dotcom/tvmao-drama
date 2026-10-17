@@ -1,4 +1,4 @@
-// 图片节点选中态的浮动操作工具条（对标参考产品），所有按钮均已接真实功能：
+// 图片节点选中态的浮动操作工具条，所有按钮均已接真实功能：
 // 预设类（全景/人像质感/九宫格下拉）铺下游节点；编辑类（多角度/打光/宫格切分/
 // 标注/旋转镜像）开各自面板或模式；查看类（下载/放大查看）纯本地零积分。
 //
@@ -114,7 +114,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
   // 把用户已选的格子清掉。
   const [splitMode, setSplitMode] = useState<GridSplitMode | null>(null);
   const [splitBusy, setSplitBusy] = useState(false);
-  // 标注模式（对标 liblib「标注」）。生命周期同 splitMode：独立于工具条显隐，
+  // 标注模式。生命周期同 splitMode：独立于工具条显隐，
   // 绘制过程中节点失去单选态不打断；状态全部在 AnnotateMode 内自持。
   const [annotateOpen, setAnnotateOpen] = useState(false);
 
@@ -412,7 +412,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
     return () => window.removeEventListener('pointerdown', close);
   }, [openMenu]);
 
-  // 多角度面板：挂在节点正下方（对标 liblib——节点仍可见，面板贴下边缘展开）。
+  // 多角度面板：挂在节点正下方（节点仍可见，面板贴下边缘展开）。
   // 定位与工具条同一套 inv-zoom 技巧（屏幕尺寸恒定、跟随节点），生命周期独立于
   // 工具条显隐：编辑期间节点失去单选态（工具条隐藏）也不打断。
   const multiAnglePanel = multiAngleOpen ? (
@@ -517,7 +517,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
     );
   }
 
-  // 面板打开期间工具条整条隐藏（用户点名对标 liblib——编辑器展开时不留一排
+  // 面板打开期间工具条整条隐藏（编辑器展开时不留一排
   // 悬浮按钮叠在节点上方），关闭面板后工具条随选中态自然回来。打光/旋转同规则。
   if (!show || !visible || multiAngleOpen || lightOpen || rotateUrl)
     return (
@@ -593,7 +593,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
             </div>
           )}
         </div>
-        {/* 宫格切分：选规格 → 节点上叠网格逐格点选 → 创建分镜组（对标 libtv）。
+        {/* 宫格切分：选规格 → 节点上叠网格逐格点选 → 创建分镜组。
             切图纯前端（canvas 裁剪 + 走统一上传口）。 */}
         <div className="relative">
           <BarButton
@@ -608,7 +608,7 @@ export function ImageActionsBar({ nodeId, visible }: { nodeId: string; visible: 
         </div>
         <Divider />
         {/* 标注：图片上画笔/矩形/文字涂鸦，保存合成新图落 input-image 节点
-            连回源（对标 liblib，纯前端合成）。 */}
+            连回源（纯前端合成）。 */}
         <BarButton title="标注" onAction={() => setAnnotateOpen(true)}>
           <Brush size={iconSize} />
         </BarButton>

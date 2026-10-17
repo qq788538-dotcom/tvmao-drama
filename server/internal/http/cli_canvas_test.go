@@ -329,7 +329,7 @@ func containsAll(s string, subs ...string) bool {
 	return true
 }
 
-// CLI 的项目列表必须**拉全量**。网页列表页 2026-08-10 加了 limit/offset 分页（无限
+// CLI 的项目列表必须**拉全量**。网页列表页有 limit/offset 分页（无限
 // 滚动），而 ListForUser 这个方法是网页 / CLI / 首页三方共用的——分页参数一旦漏进
 // CLI 这条路，`tvmao project list` 就会悄悄少东西，而且少得毫无提示。这条断言就是
 // 钉住「service 层恒传 limit=0」，别让以后有人图省事把默认页大小塞进来。

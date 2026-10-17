@@ -1,4 +1,4 @@
-// 旋转与镜像的交互侧（对标 liblib「旋转」）：点工具条按钮后在源节点右侧出现
+// 旋转与镜像的交互侧：点工具条按钮后在源节点右侧出现
 // 一个**画布内预览幽灵**——看起来是个节点（跟随源节点移动、随画布缩放），但
 // 只是本组件的本地 DOM，不进 store：真节点经 addNode 会立即广播持久化 op，
 // 临时预览要跟持久化/撤销/协同三方对抗，幽灵方案把这些全绕开；「保存」才创建
@@ -16,7 +16,7 @@ import { bakeRotateMirror, loadImage } from './bakeRotate';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 import { clampAngle, ROTATE_OFFSET_X, rotatedBox, rotatedNodeSize } from './rotateMath';
 
-// 角度符号（∠+弧线）。lucide 没有对应图标，对标图里角度框前就是这个符号。
+// 角度符号（∠+弧线）。lucide 没有对应图标，角度框前用这个符号。
 function AngleIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 text-muted-foreground">
@@ -47,7 +47,7 @@ export function RotatePreview({
   // 这里不用防御 undefined 之外的情况。
   const source = useCanvasStore((s) => s.nodes.find((n) => n.id === sourceNodeId));
 
-  // Esc 取消，对标 liblib；保存中不响应（避免上传途中卸载留下半截状态）。
+  // Esc 取消；保存中不响应（避免上传途中卸载留下半截状态）。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !saving) onClose();
@@ -141,7 +141,7 @@ export function RotatePreview({
         <circle cx={-ROTATE_OFFSET_X} cy={edgeStartY} r={4.5} fill="#60a5fa" stroke="#09090b" strokeWidth={2} />
         <circle cx={0} cy={edgeEndY} r={4.5} fill="#60a5fa" stroke="#09090b" strokeWidth={2} />
       </svg>
-      {/* 名字 chip：视觉对标真节点的标题（世界单位，随 zoom 缩放）。 */}
+      {/* 名字 chip：视觉同真节点的标题（世界单位，随 zoom 缩放）。 */}
       <div className="absolute -top-6 left-0 text-xs text-muted-foreground whitespace-nowrap">
         旋转与镜像
       </div>
@@ -160,7 +160,7 @@ export function RotatePreview({
           }}
         />
       </div>
-      {/* 四角选中把手（对标 liblib 的节点选中态；纯装饰，不可拖拽 resize）。 */}
+      {/* 四角选中把手（模拟节点选中态；纯装饰，不可拖拽 resize）。 */}
       {handleCorners.map((c) => (
         <div
           key={`${c.left}-${c.top}`}
@@ -173,7 +173,7 @@ export function RotatePreview({
         />
       ))}
       {/* 浮动工具条：预览盒上方，屏幕尺寸恒定（同 ImageActionsBar 的 inv-zoom
-          技巧）。布局对标 liblib：✕标题 │ ∠角度框° │ 顺90/水平/垂直 │ 白色保存。 */}
+          技巧）。布局：✕标题 │ ∠角度框° │ 顺90/水平/垂直 │ 白色保存。 */}
       <div
         className="absolute z-50"
         style={{

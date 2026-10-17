@@ -1,7 +1,7 @@
 // 视频节点的「智能续写」面板。store.continuationNodeId === nodeId 时浮现在
 // 节点正下方(定位方案同 VideoTrimBar,那边注释有逐行解释)。
 //
-// 交互对标 liblib 的智能续写(实机逆向 2026-08-17),架构照本仓「片段重拍」:
+// 交互架构照本仓「片段重拍」:
 // - 时间轴 filmstrip 单选区(4~30s,默认选结尾 30s)拖把手/整体平移;
 // - 一行续写内容输入框(留空=自然续写,兜底文案见 videoContinuation.ts);
 // - 确认:浏览器内切出前置片段(复用 trim 的 mediabunny 管道)→ 上传 →

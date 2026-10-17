@@ -10,7 +10,7 @@ import {
 describe('sidecarSession', () => {
   afterEach(() => resetSidecarSessionForTest());
 
-  it('会话未建立时退回参考仓的相对路径、空 token', () => {
+  it('会话未建立时退回旧版的相对路径、空 token', () => {
     expect(getSidecarSession()).toBeNull();
     expect(sidecarToken()).toBe('');
     expect(sidecarApiBaseUrl()).toBe('/api/v1');

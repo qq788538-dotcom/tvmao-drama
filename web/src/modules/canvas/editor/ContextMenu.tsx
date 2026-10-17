@@ -150,7 +150,7 @@ export function ContextMenu({ x, y, worldX, worldY, sourceNodeId, onPickFromHist
           })}
       </div>
 
-      {/* 最后一行：从生成历史选择（对标 libtv 加号菜单的「添加资源」区）。 */}
+      {/* 最后一行：从生成历史选择（「添加资源」区）。 */}
       {onPickFromHistory && (
         <div className="mt-1 pt-1 border-t border-border/70">
           <button

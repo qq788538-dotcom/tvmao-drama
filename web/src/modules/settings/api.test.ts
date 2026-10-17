@@ -56,7 +56,7 @@ describe('settings api', () => {
   });
 });
 
-// I1：直接使用已有喵剧数据的目录：只写 location.json（set_data_dir），再重启 sidecar，不迁移
+// 直接使用已有喵剧数据的目录：只写 location.json（set_data_dir），再重启 sidecar，不迁移
 describe('switchToExistingDataDir', () => {
   it('先 set_data_dir 再重启 sidecar；重启失败交给失败页，不在这里抛', async () => {
     const inv = vi.mocked(invoke);

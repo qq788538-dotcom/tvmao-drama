@@ -148,7 +148,7 @@ describe('VideoUpscaleNode', () => {
     expect(screen.getByText('4K 极清')).toBeInTheDocument();
   });
 
-  it('B. 不显示积分预估（X3）', async () => {
+  it('B. 不显示积分预估', async () => {
     seedStoreWithSource();
     renderNode();
 

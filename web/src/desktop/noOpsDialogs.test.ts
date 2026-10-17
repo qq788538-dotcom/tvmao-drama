@@ -29,7 +29,7 @@ function stripComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
-describe('运维弹窗已删除（F10、S10）', () => {
+describe('运维弹窗已删除', () => {
   it('弹窗、序列化器、超管门控文件不存在', () => {
     expect(REMOVED_FILES.filter((f) => existsSync(join(SRC, f)))).toEqual([]);
   });

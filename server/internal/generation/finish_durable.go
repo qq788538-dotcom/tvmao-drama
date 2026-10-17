@@ -19,7 +19,7 @@ var finishRetryDelays = []time.Duration{500 * time.Millisecond, 1 * time.Second,
 // 忙等先跑完再判超时。
 const finishAttemptTimeout = 15 * time.Second
 
-// finishSuccessDurable 是同步/异步 finalize 的成功收口（I3）。
+// finishSuccessDurable 是同步/异步 finalize 的成功收口。
 //
 // 走到这里时上游额度已经花掉、产物已经写盘建了 asset 行：收口失败会让任务停在 running，
 // 被接管器判成"结果无法确认"标失败。所以：

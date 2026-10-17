@@ -7,7 +7,7 @@ export interface MultiAngleSphereProps {
   rotation: number;
   /** 垂直俯仰角 -90~90，正=俯拍 */
   tilt: number;
-  /** 景别：中央图尺寸随之缩放（全景<中景<特写，对标站行为），缺省=中景 */
+  /** 景别：中央图尺寸随之缩放（全景<中景<特写），缺省=中景 */
   zoom?: 'closeup' | 'medium' | 'panorama';
   /** 中央展示的原图缩略 URL（可空，空时显示灰色占位块） */
   imageUrl?: string;
@@ -32,7 +32,7 @@ function clampTilt(t: number): number {
 }
 
 /** 球壳线框半径。比容器半径明显小——四向箭头要放在球外留白处，不压线框
- *（对标站的球体在容器里有呼吸边距，箭头是无底纯图标）。 */
+ *（球体在容器里留呼吸边距，箭头是无底纯图标）。 */
 const SHELL_R = 86;
 /** 相机指示器的投影半径——略小于球壳，让指示器贴着线框走 */
 const CAM_R = 82;
@@ -45,7 +45,7 @@ const STEP = 15;
 const LATITUDE_HEIGHTS = [0, 28, 54, 74];
 
 /**
- * 多角度编辑器的球体角度可视化控件（对标 liblib.tv 逆向结构：纯 CSS 3D）。
+ * 多角度编辑器的球体角度可视化控件（纯 CSS 3D）。
  * 球壳整体随 rotation/tilt 转动，相机指示器用正交投影贴在容器平面上。
  */
 export function MultiAngleSphere({ rotation, tilt, zoom = 'medium', imageUrl, onChange }: MultiAngleSphereProps) {
@@ -108,7 +108,7 @@ export function MultiAngleSphere({ rotation, tilt, zoom = 'medium', imageUrl, on
 
   return (
     // 故意不加 perspective：透视投影会让旋转后的线框整体偏离容器中心，
-    // 图片/相机/球心就对不齐了（liblib 的观感也是近正交——线框永远同心）。
+    // 图片/相机/球心就对不齐了（近正交观感——线框永远同心）。
     <div
       className="relative select-none rounded-2xl bg-white/[0.04]"
       style={{ width: 240, height: 240, touchAction: 'none' }}
@@ -117,7 +117,7 @@ export function MultiAngleSphere({ rotation, tilt, zoom = 'medium', imageUrl, on
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
-      {/* 线框球壳：整体随角度转动（liblib 同款——滑杆转球壳，不转相机） */}
+      {/* 线框球壳：整体随角度转动（滑杆转球壳，不转相机） */}
       <div
         className="absolute inset-0"
         style={{
@@ -219,11 +219,11 @@ export function MultiAngleSphere({ rotation, tilt, zoom = 'medium', imageUrl, on
         );
       })()}
 
-      {/* 相机指示器：CSS 3D 六面小立方体（对标站造型），**正交渲染**——此前
+      {/* 相机指示器：CSS 3D 六面小立方体，**正交渲染**——此前
           给过 perspective:120，26px 盒子在这个透视距离下面片被极端拉扯直接
           "散架"，去透视后立方体在任何角度都扎实。朝向随 rotation/tilt 联动：
-          屏幕面(贴原图缩略)始终背对球心朝向观察者一侧、镜头面朝球心——与
-          对标站"镜头指着中央图"的语义一致。z<0 = 绕到球背面，淡化 + 缩小。 */}
+          屏幕面(贴原图缩略)始终背对球心朝向观察者一侧、镜头面朝球心——即
+          "镜头指着中央图"。z<0 = 绕到球背面，淡化 + 缩小。 */}
       <div
         data-testid="camera-indicator"
         className="pointer-events-none absolute"

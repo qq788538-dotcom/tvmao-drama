@@ -14,7 +14,7 @@ import (
 // 它和指针文件一样永不复制、永不删除（Windows 上被锁住的字节区间也读不出来）。
 const MigrateLockFileName = ".miaoju-migrate.lock"
 
-// InstanceLockFileName 是服务模式 sidecar 在数据目录里持有的排他锁文件（I4）：同一数据目录同一时刻只允许
+// InstanceLockFileName 是服务模式 sidecar 在数据目录里持有的排他锁文件：同一数据目录同一时刻只允许
 // 一个 sidecar 打开 data.db。进程退出（含被强杀）即由系统释放；同样永不复制、不计入“目录非空”。
 const InstanceLockFileName = ".miaoju-instance.lock"
 

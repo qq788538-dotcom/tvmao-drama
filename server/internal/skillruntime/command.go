@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// 受限 shell 的命令语法（X6）：execute 不经过任何 shell，这里自己分词并只认两种命令：
+// 受限 shell 的命令语法：execute 不经过任何 shell，这里自己分词并只认两种命令：
 //
 //	python3 <Skill 自带 .py 脚本> [参数…]
 //	embed-text <JSON 文件> <字段名> <文本文件>

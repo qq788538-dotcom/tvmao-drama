@@ -1,8 +1,6 @@
 // 音频「截取 / 变速」的媒体处理层,全在浏览器内完成,零服务端零积分。
-// 对标 liblib 实测(2026-08-18):它两个功能都是纯前端——截取产物是重写的
-// wav,变速是**保音调** time-stretch(频谱质心比值 0.99、同频轴包络相关
-// 0.999,运行时探针只见 1 个 AudioContext、零 Worker 零 wasm,即解码后
-// 主线程纯 JS 处理)。这里同构:截取走 mediabunny 的 trim + WavOutputFormat
+// 截取产物是重写的 wav,变速是**保音调** time-stretch,解码后主线程纯 JS
+// 处理(零 Worker 零 wasm)。截取走 mediabunny 的 trim + WavOutputFormat
 // (与视频剪辑同管道);变速走 WebAudio 解码 + soundtouchjs(WSOLA 类算法,
 // 纯 JS 吃 PCM)+ 手写 wav 编码。纯函数,不碰 store。
 
@@ -10,7 +8,7 @@
 // 它和 soundtouchjs 一起落在懒加载 chunk 里,不进首屏。
 import { SimpleFilter, SoundTouch } from 'soundtouchjs';
 
-// 变速倍率的合法区间,与 liblib 一致。
+// 变速倍率的合法区间。
 export const MIN_SPEED_RATE = 0.1;
 export const MAX_SPEED_RATE = 4;
 

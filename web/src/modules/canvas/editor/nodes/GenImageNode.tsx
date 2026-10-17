@@ -303,7 +303,7 @@ export function GenImageNode({ id }: { id: string }) {
   }, [ratioValue, resolutionValue, id, updateNode, node.x, node.width, node.height]);
 
   // 只要这个 gen-image 节点持有一个进行中的异步任务，就恢复/驱动 polling。
-  // 对标 PreviewNode 的循环，但锚在 gen-image 节点自身上，这样结果落到
+  // 同 PreviewNode 的循环，但锚在 gen-image 节点自身上，这样结果落到
   // `node.content` 而不是下游预览。刷新页面会恢复进行中的 poll。
   useEffect(() => {
     if (node.status === 'generating' && node.taskId) {

@@ -21,11 +21,11 @@ export interface LightSphereProps {
   direction: string;
   /** 中央展示的原图缩略 URL（可空，空时显示灰色占位板） */
   imageUrl?: string;
-  /** 相机视角：透视=fov50@(11,8,10)，正面=fov50@(0,1,15)——liblib 实测参数 */
+  /** 相机视角：透视=fov50@(11,8,10)，正面=fov50@(0,1,15) */
   view: 'persp' | 'front';
-  /** 主光颜色（#rrggbb）：光锥与光晕跟随此色染色（对标 liblib 选蓝出蓝锥） */
+  /** 主光颜色（#rrggbb）：光锥与光晕跟随此色染色（选蓝出蓝锥） */
   lightColor?: string;
-  /** 亮度 0-100：实时驱动锥宽/锥亮/光晕/球面泛光（liblib 三档截图实测校准：
+  /** 亮度 0-100：实时驱动锥宽/锥亮/光晕/球面泛光（三档校准：
    * 0=细针、50=锥口 r2.5 基准、100=r3.8 更亮）。缺省 50。 */
   brightness?: number;
   /** 拖拽球面改光位时回调（值已吸附到 26 档） */
@@ -34,7 +34,7 @@ export interface LightSphereProps {
 
 /** 球体视觉直径（px）：正面相机下球轮廓 ≈ 172px，两视角共用一张底球 */
 const BALL_PX = 172;
-/** 拖拽起点必须落在光点这个半径内（CDP 实测 liblib：偏 14px 按下球完全不动） */
+/** 拖拽起点必须落在光点这个半径内（偏离光点按下不触发拖拽） */
 const GRAB_R = 26;
 
 /** #rrggbb → rgba 字符串（非法输入回退白色）。 */
@@ -46,10 +46,9 @@ function tint(hex: string | undefined, alpha: number): string {
 }
 
 /**
- * 打光效果的光球控件。全部几何来自对 liblib light-scene-3d 的 three devtools
- * 实测（见 projection.ts 头注释），渲染是一个小型投影管线：网格/星点/光锥走
+ * 打光效果的光球控件。几何常量见 projection.ts 头注释，渲染是一个小型投影管线：网格/星点/光锥走
  * SVG、图片板走单应矩阵、光点/光晕走投影定位——所有元素过同一台透视相机。
- * 拖拽 = 相机射线与球求交（光点贴着光标走，对标 liblib 手感）；输出永远是
+ * 拖拽 = 相机射线与球求交（光点贴着光标走）；输出永远是
  * 26 档枚举之一（吸附在 snapToDirection），连续位只存在于组件内部。
  */
 export function LightSphere({
@@ -67,7 +66,7 @@ export function LightSphere({
     const s = directionSpec(direction);
     return { yaw: s.yaw, pitch: s.pitch };
   });
-  // 图片板宽高比（加载后取自然尺寸，limbo 期用 liblib 实测的 4.84:3.18）。
+  // 图片板宽高比（加载后取自然尺寸，加载前用 4.84:3.18）。
   const [imgRatio, setImgRatio] = useState(4.84 / 3.177);
 
   // 外部（方向按钮/预设/重置）把 direction 改到了与连续位不同的档：连续位归位。
@@ -93,7 +92,7 @@ export function LightSphere({
     // 控件在画布弹层里——冒泡上去会触发画布平移/框选，必须拦下。
     e.stopPropagation();
     const { x, y } = localXY(e);
-    // 只有按在光点附近才开始拖（liblib 同款）：随手点球面不让光位跳变。
+    // 只有按在光点附近才开始拖：随手点球面不让光位跳变。
     if (Math.hypot(x - dot.x, y - dot.y) > GRAB_R) return;
     dragRef.current = { pointerId: e.pointerId };
     // jsdom 没有 setPointerCapture，可选调用。
@@ -114,7 +113,7 @@ export function LightSphere({
     if (dragRef.current?.pointerId === e.pointerId) dragRef.current = null;
   };
 
-  // 图片板：原图比例塞进 liblib 实测的最大盒，四角投影 → 单应矩阵贴图。
+  // 图片板：原图比例塞进最大盒，四角投影 → 单应矩阵贴图。
   const planeW = Math.min(PLANE_MAX_W, PLANE_MAX_H * imgRatio);
   const planeH = planeW / imgRatio;
   const corners = [
@@ -128,8 +127,8 @@ export function LightSphere({
   const boxH = planeH * 16;
   const planeMat = homographyMatrix(boxW, boxH, corners);
 
-  // 亮度联动（liblib 0/50/100 实测拟合）：锥口半径分段线性，50 档=实测基准 2.5；
-  // 浓度/光晕/泛光同步小幅增强。渐变在 75% 处完全淡出——实测 liblib 的锥在到达
+  // 亮度联动（0/50/100 三档拟合）：锥口半径分段线性，50 档=基准 2.5；
+  // 浓度/光晕/泛光同步小幅增强。渐变在 75% 处完全淡出——锥在到达
   // 图片板前就消失，收口比拉长更重要。
   const b = Math.min(100, Math.max(0, brightness));
   const coneR = b <= 50 ? 0.25 + (2.25 * b) / 50 : 2.5 + (1.3 * (b - 50)) / 50;

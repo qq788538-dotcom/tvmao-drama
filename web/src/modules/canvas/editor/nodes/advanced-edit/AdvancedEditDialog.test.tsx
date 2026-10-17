@@ -28,7 +28,7 @@ describe('AdvancedEditDialog', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  // 工具门控（用户 2026-08-12 拍板）：默认无工具选中，标注层对指针透明——
+  // 工具门控：默认无工具选中，标注层对指针透明——
   // 视频可直接点击播放/拖进度条；选中工具才拦截；再点同一工具取消选中。
   it('默认无工具选中：overlay 不拦截指针；选中工具拦截；再点取消选中', () => {
     const { container } = render(
@@ -42,7 +42,7 @@ describe('AdvancedEditDialog', () => {
     expect(overlay.style.pointerEvents).toBe('none');
   });
 
-  // 点工具即暂停播放（用户 2026-08-13 拍板）：选工具 = 要对当前帧标注了，
+  // 点工具即暂停播放：选工具 = 要对当前帧标注了，
   // 画面继续跑的话落笔对不上用户看中的帧。撤销/重做同理。
   it('播放中点工具/撤销/重做都会暂停视频', () => {
     const pause = vi
@@ -89,7 +89,7 @@ describe('AdvancedEditDialog', () => {
     expect(screen.getByRole('button', { name: '保存' })).not.toBeDisabled();
   });
 
-  // 同秒多次「添加至输入框」各自成条（用户拍板 2026-08-13）：jsdom 里 currentTime
+  // 同秒多次「添加至输入框」各自成条：jsdom 里 currentTime
   // 恒为 0，天然构造出「同一秒确认两次」的场景。
   it('同一秒两次确认生成两条独立记录，说明编辑互不串', () => {
     const { container } = render(

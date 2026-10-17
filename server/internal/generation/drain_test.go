@@ -7,7 +7,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/lifecycle"
 )
 
-// M1：关闭排空后不再领取新任务；Drain 等在途 goroutine，且有上限。
+// 关闭排空后不再领取新任务；Drain 等在途 goroutine，且有上限。
 func TestDrainStopsQueuePickup(t *testing.T) {
 	conn, svc, uid := newRecoverDBHarness(t)
 	svc.taskTracker = &lifecycle.Tracker{}

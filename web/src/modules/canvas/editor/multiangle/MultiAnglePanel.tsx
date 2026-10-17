@@ -15,7 +15,7 @@ import { persistNodeById } from '../persistence/canvasMutations';
 import { buildDynamicInputs, buildImageGenerationInputs } from '../utils/generationInputs';
 import { MultiAngleSphere } from './MultiAngleSphere';
 
-// 左=全景、右=特写（对标站方向：往右拉近景别，球体中央图随之变大）。
+// 左=全景、右=特写（往右拉近景别，球体中央图随之变大）。
 const ZOOM_ORDER: MultiAngleZoom[] = ['panorama', 'medium', 'closeup'];
 const ZOOM_LABELS: Record<MultiAngleZoom, string> = {
   closeup: '特写',
@@ -29,9 +29,9 @@ interface Props {
   onClose: () => void;
 }
 
-// 多角度编辑器面板（对标 liblib angle-editor-v3：挂在选中图片节点下方的浮动
+// 多角度编辑器面板（挂在选中图片节点下方的浮动
 // 面板，不是居中弹框；定位由 ImageActionsBar 的锚点容器负责）。
-// 点 ↑ 直接提交生成（用户拍板，对标 liblib）：铺 gen-image 节点 + 连线 + 立即
+// 点 ↑ 直接提交生成：铺 gen-image 节点 + 连线 + 立即
 // 走 /canvas-tasks——与 GenImageNode 的生成按钮同一套提交契约，轮询/写回由
 // 新节点自己的 GenImageNode 逻辑接管（status=generating + taskId 即自动轮询）。
 // 角度 → 中文提示词拼接在服务端执行层（保留 key __multi_angle__），前端只见数值。
@@ -206,7 +206,7 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
         </button>
       </div>
 
-      {/* 预设 tab：自定义 + 后台配置的预设。一行放完（对标 liblib，用户点名）：
+      {/* 预设 tab：自定义 + 后台配置的预设。一行放完：
           字号/内边距压小 + 不换行；条目再多时横向滚动兜底，不折行。 */}
       <div className="mb-4 flex flex-nowrap gap-1.5 overflow-x-auto">
         {[{ key: '', name: '自定义' }, ...(cfg?.presets ?? [])].map((p) => (
@@ -238,7 +238,7 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
         />
 
         <div className="flex flex-1 flex-col gap-3 pt-1">
-          {/* 滑杆配色对标 liblib：已滑过轨道青色填充 + 白色手柄（默认暗色轨道
+          {/* 滑杆配色：已滑过轨道青色填充 + 白色手柄（默认暗色轨道
               看不出进度）。角度值显示保证整型：state 只可能被整数写入
               （滑杆步进 1、球体 emit 已取整），Math.round 是防御性兜底。 */}
           <ConfigProvider
@@ -267,7 +267,7 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
             </div>
             <div className="flex items-center gap-3">
               <span className="w-16 shrink-0 text-sm text-foreground">景别缩放</span>
-              {/* 景别滑杆是「中点原点」双向填充（对标站）：中景=中位无填充，
+              {/* 景别滑杆是「中点原点」双向填充：中景=中位无填充，
                   往左到全景/往右到特写时青色从中点填向手柄。AntD 不支持中点
                   原点，track 置透明、把填充画在 rail 的渐变上。 */}
               <Slider
@@ -308,7 +308,7 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
         </div>
       </div>
 
-      {/* 底部：重置 + 模型下拉（左）；圆形↑提交（右，对标 liblib） */}
+      {/* 底部：重置 + 模型下拉（左）；圆形↑提交（右） */}
       <div className="mt-4 flex items-center gap-3">
         <button
           type="button"

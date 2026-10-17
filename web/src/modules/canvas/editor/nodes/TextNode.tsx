@@ -1,4 +1,4 @@
-// 文本节点——LibTV 式四态交互：
+// 文本节点——四态交互：
 //   菜单态（新建空节点，「尝试: 自己编写内容」）→ 编辑态（Tiptap + 浮动工具栏）
 //   → 失焦后按内容分流：有内容 = 只读 markdown 渲染态；无内容 = 「请编写内容」占位态。
 // 存储始终是 settings.text 里的 markdown 字符串（纯文本是合法 markdown，存量零迁移）。
@@ -24,7 +24,7 @@ import { commitTextDraft, flushTextDraft } from './text/textNodeDraft';
 import { renderTextMarkdown } from './text/renderTextMarkdown';
 import { interceptMarkdownLink } from '../utils/markdownLinks';
 
-// LibTV 空态那组「横线」示意图形。用 div 画而不是找图标：lucide 没有对应形状。
+// 空态那组「横线」示意图形。用 div 画而不是找图标：lucide 没有对应形状。
 function LinesGlyph() {
   return (
     <div className="flex flex-col items-center gap-1.5" aria-hidden>
@@ -107,9 +107,9 @@ export function TextNode({ id }: { id: string }) {
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
   const [editing, setEditing] = useState(false);
-  // 「进入过编辑又清空」与「从未编辑」的空节点长得不一样（LibTV 同款）：
+  // 「进入过编辑又清空」与「从未编辑」的空节点长得不一样：
   // 前者显示「请编写内容」占位，后者显示「尝试:」菜单。只是会话内状态，
-  // 刷新后空节点回到菜单态——与 LibTV 行为一致，不值得为此加持久化字段。
+  // 刷新后空节点回到菜单态——不值得为此加持久化字段。
   const [touched, setTouched] = useState(false);
   const [expandOpen, setExpandOpen] = useState(false);
 
@@ -181,7 +181,7 @@ export function TextNode({ id }: { id: string }) {
 
   const isGenerating = node.status === 'generating';
 
-  // 文本节点专属右键菜单（对标 LibTV，去掉媒体专属的保存资产/创建主体/复制到
+  // 文本节点专属右键菜单（去掉媒体专属的保存资产/创建主体/复制到
   // 剪贴板三项）：标配两项 + 复制文本 + 粘贴 + 删除。
   const mac = isMacLike();
   const menuItems: NodeMenuItem[] = [
@@ -307,7 +307,7 @@ export function TextNode({ id }: { id: string }) {
       </div>
       {/* AI 生成输入条：选中节点时浮在下方（同 GenImageNode 浮动 prompt 面板的
           定位方案：借 bodyOverflow=visible 溢出 + --inv-zoom 反缩放恒定屏幕尺寸）。
-          编辑态收起（LibTV 同款：编辑时只留上方工具栏）——手写和 AI 生成是互斥
+          编辑态收起（编辑时只留上方工具栏）——手写和 AI 生成是互斥
           入口，同时摆着既挡视线，生成回来还会覆盖正在手打的内容。 */}
       {!readOnly && !editing && !expandOpen && (
         <div

@@ -60,8 +60,7 @@ vi.mock('@/shared/api', async (importOriginal) => ({
   listRuntimeModels: runtimeModelsMock,
 }));
 
-// spawn 行为测试原在 useMediaNodeMenu.test.tsx（入口曾是右键菜单的「擦除字幕」
-// 「视频转高清」），2026-08-14 随入口一起迁到这里。
+// 「擦除字幕」「视频转高清」的 spawn 行为测试（入口在本工具条，不在右键菜单）。
 
 function setupStore() {
   useCanvasStore.setState({

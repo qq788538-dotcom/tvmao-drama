@@ -11,7 +11,7 @@ import { DEFAULT_SIZES, useCanvasStore } from '../../store';
 import { persistNodeById } from '../../persistence/canvasMutations';
 import { separateAudioVideo } from './videoAudioSeparate';
 
-// 布局对标 liblib:源 → _音轨 → _无声 同排从左到右,80 间距,顶边对齐
+// 布局:源 → _音轨 → _无声 同排从左到右,80 间距,顶边对齐
 // (同 trim 产物的 y: src.y)。
 const GAP = 80;
 

@@ -248,7 +248,7 @@ func (r *SQLiteRepository) SaveAuthoritative(projectID int64, payload json.RawMe
 // 有改动则回写并 version+1。事务以 BEGIN IMMEDIATE 开始（db.Open 的 _txlock=immediate），
 // 一开始就拿到库级写锁，并发的读-改-写排队执行，防丢更新;
 // version 递增逼过期网页保存收 409。
-// 对标 drama 的 MutateCandidate(那是候选 JSON 的原子改;这里是整块画布快照)。
+// 与 MutateCandidate 同一思路(那是候选 JSON 的原子改;这里是整块画布快照)。
 //
 // 快照行不存在时**建行**,不是跳过。曾经这里 return nil 静默当成功,理由是"没保存过
 // 就没节点可写"——那对生成结果回写成立(任务的节点必然已经在画布上),对 CLI 完全不成立:

@@ -12,7 +12,7 @@ export interface NodeMenuItem {
   // 篇幅超出一行 title 的说明——原生 title 撑不住多行排版。
   tip?: ReactNode;
   // 快捷键**文案**（如 ⌘C），只负责显示；真实按键处理在 CanvasEditor 的全局
-  // 监听。对标 LibTV 右键菜单右对齐的快捷键提示。
+  // 监听。显示为菜单项右对齐的快捷键提示。
   shortcut?: string;
 }
 
@@ -43,8 +43,8 @@ function TipButton({ content, label }: { content: ReactNode; label: string }) {
         // 写死同一个 label 无障碍上无法区分，测试也没法精确选中。
         aria-label={`查看「${label}」说明`}
         // 圆圈描边用 muted-foreground 而不是 border token——菜单底是 bg-muted，
-        // border-border 和它几乎同色，圆圈糊没了只剩一个孤问号（用户实测对比
-        // LibTV 的 ⓘ 圈型标记）。
+        // border-border 和它几乎同色，圆圈糊没了只剩一个孤问号（应是 ⓘ 那样的
+        // 圈型标记）。
         className="shrink-0 w-3.5 h-3.5 flex items-center justify-center rounded-full border border-solid border-muted-foreground/60 text-[9px] leading-none text-muted-foreground cursor-help select-none hover:text-foreground hover:border-foreground"
         onMouseEnter={open}
         onMouseLeave={close}
@@ -141,7 +141,7 @@ export function NodeContextMenu({
             type="button"
             disabled={it.disabled}
             title={it.hint}
-            // ? 紧跟在文字后面（对标 LibTV「复制节点 ⍰」），所以 TipButton 嵌进
+            // ? 紧跟在文字后面（「复制节点 ⍰」），所以 TipButton 嵌进
             // button 内部——它是 span（合法嵌套），自己 stopPropagation，点 ? 不会
             // 触发这一项；button 保持 flex-1，整行空白区仍可点。
             className={`flex-1 min-w-0 flex items-center gap-1.5 text-left px-3 py-2 rounded-lg text-sm border-none bg-transparent outline-none ${

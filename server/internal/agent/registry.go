@@ -1,6 +1,6 @@
 package agent
 
-// ToolRegistry 是每个具体工具 registry 都要实现的契约。Phase 1 的运行时实现是
+// ToolRegistry 是每个具体工具 registry 都要实现的契约。运行时实现是
 // registry_db.go 里的 DBRegistry，它反映 agent_tools 里已发布的行（在 admin 写入
 // 时 + 定期安全轮询时刷新）。测试用自己包内的 stub 替换它。
 type ToolRegistry interface {

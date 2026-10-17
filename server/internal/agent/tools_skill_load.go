@@ -1,8 +1,8 @@
 // Package agent — tools_skill_load.go：内置的 load_skill 工具，让 planner 在执行
-// 中途把另一个 skill 的指令加载进对话（对标 Seko 的「读取技能指令→已调用技能」帧，
+// 中途把另一个 skill 的指令加载进对话（「读取技能指令→已调用技能」，
 // 支撑「编剧→导演→分镜」这类 skill 链式协作）。
 //
-// 机制与 S1（skill 快照进历史）同一条：指令文本以 tool_result 的形式进入对话记录，
+// 机制与 skill 快照进历史同一条：指令文本以 tool_result 的形式进入对话记录，
 // 随后续每轮历史重放自然带上、持续生效——不需要任何额外的状态管理。
 package agent
 

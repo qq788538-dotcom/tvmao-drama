@@ -7,7 +7,7 @@ import {
   normalizeBodyType,
 } from "./bodyTypes";
 
-it("defines the approved LibTV-style procedural body types", () => {
+it("defines the procedural body types", () => {
   expect(BODY_TYPE_OPTIONS.map((item) => item.bodyType)).toEqual([
     "mannequin",
     "female",

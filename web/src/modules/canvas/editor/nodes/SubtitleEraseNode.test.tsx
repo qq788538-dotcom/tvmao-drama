@@ -177,7 +177,7 @@ describe('SubtitleEraseNode', () => {
     );
   });
 
-  it('E. 不显示积分预估（X3）', async () => {
+  it('E. 不显示积分预估', async () => {
     seedStoreWithSource(undefined);
     renderNode();
 

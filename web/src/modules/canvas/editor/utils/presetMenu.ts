@@ -51,7 +51,7 @@ const ITEM_DESC_EXTRA = 8;
 export const PRESET_COL_MAX_H = 388;
 
 // splitPresetColumns 把分组流式排进至多 maxCols 列：一列放不下（按高度估算）
-// 就从下一个组起换列——**组永远不从中间劈开**（对标参考产品：组标题始终跟着
+// 就从下一个组起换列——**组永远不从中间劈开**（组标题始终跟着
 // 自己的条目）。列数封顶后剩余组全部进最后一列，由弹层的 overflow-auto 兜底
 // 滚动，不让面板顶出屏幕。单个组自己就超高时独占一列，同样交给兜底滚动。
 export function splitPresetColumns(

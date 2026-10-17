@@ -135,7 +135,7 @@ func FilterModels(list []models.ModelConfig, kind, q string) []models.ModelConfi
 // ResolveModelRef 把用户给的模型引用解析成唯一模型。
 //
 // 顺序：ID 精确 → 名称精确。名称匹配到多个时报 MODEL_REF_AMBIGUOUS 并带候选，
-// **不取第一个**——LibTV 实操暴露过这个坑：展示名、供应商内部名、稳定 ID 是三样
+// **不取第一个**——展示名、供应商内部名、稳定 ID 是三样
 // 东西，混为一谈会让用户以为自己选的是 A、实际跑的是 B。
 func ResolveModelRef(list []models.ModelConfig, ref string) (models.ModelConfig, error) {
 	ref = strings.TrimSpace(ref)

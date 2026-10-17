@@ -63,7 +63,7 @@ describe('gateReducer migrating', () => {
   });
 });
 
-// I3：等上一次迁移的锁时与普通迁移区分开
+// 等上一次迁移的锁时与普通迁移区分开
 describe('gateReducer migrating waiting', () => {
   it('waiting=true 标记等待；随后 waiting=false 回到迁移中', () => {
     const s1 = gateReducer(initialGateState, { type: 'status', status: { status: 'migrating', waiting: true } });
@@ -76,7 +76,7 @@ describe('gateReducer migrating waiting', () => {
   });
 });
 
-// I4：上一个窗口仍在关闭（数据目录被占用）→ 只需稍后重试，不提供“改用默认数据目录”
+// 上一个窗口仍在关闭（数据目录被占用）→ 只需稍后重试，不提供“改用默认数据目录”
 describe('isDataDirBusy', () => {
   it('识别壳给出的“上一个窗口仍在关闭”原因', () => {
     expect(isDataDirBusy('本地服务启动失败：上一个窗口仍在关闭，数据目录暂时被它占用。请稍后点“重试”。')).toBe(true);

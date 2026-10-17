@@ -1,7 +1,7 @@
 // 旋转与镜像的纯计算侧（可单测，不碰 DOM/store）：外接矩形与结果节点显示
 // 尺寸。交互与烘焙分别在 RotatePreview.tsx / bakeRotate.ts。
 //
-// 角度语义：顺时针、0–360 整数（对标 liblib 的输入框）。CSS rotate() 与
+// 角度语义：顺时针、0–360 整数。CSS rotate() 与
 // canvas ctx.rotate() 在 y 轴向下的坐标系里正角度都是顺时针，预览（CSS）和
 // 烘焙（canvas）共用同一个角度值即可，无需换算。
 

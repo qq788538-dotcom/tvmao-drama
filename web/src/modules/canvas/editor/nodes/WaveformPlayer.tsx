@@ -84,7 +84,7 @@ export function WaveformPlayer({
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const waveRef = useRef<HTMLDivElement>(null);
-  // 播放头拖动中。用户拍板 2026-08-18：**只有按住红色播放头线才能拖动改进度**；
+  // 播放头拖动中。**只有按住红色播放头线才能拖动改进度**；
   // 波形其他位置完全不拦事件——点击走节点选中（工具条弹出）、按住拖动就是拖节点，
   // 和节点身体的其他区域一致。
   const draggingRef = useRef(false);
@@ -108,7 +108,7 @@ export function WaveformPlayer({
   // 编辑把手拖动中的初始选区（pointer capture 期间的基准）。
   const editDragRef = useRef<{ kind: 'left' | 'right'; startX: number; sel: { start: number; end: number } } | null>(null);
 
-  // 进入编辑会话时回填时长 + 给截取一个默认选区（前 1/3，对标 liblib）。
+  // 进入编辑会话时回填时长 + 给截取一个默认选区（前 1/3）。
   // duration 只有这里知道（metadata 预载/解码后），模式条在拿到前禁用提交。
   useEffect(() => {
     if (!audioEdit || audioEdit.duration != null || duration == null) return;
@@ -375,7 +375,7 @@ export function WaveformPlayer({
       </div>
 
       <div className="relative shrink-0 h-8 mt-1 flex items-center justify-center">
-        {/* 变速预览中时长按倍率换算显示（对标 liblib：调到 2x 时 02:16 即显 01:08）。 */}
+        {/* 变速预览中时长按倍率换算显示（调到 2x 时 02:16 即显 01:08）。 */}
         <span className="absolute left-1 text-[10px] font-mono text-white/70 pointer-events-none">
           {formatClock(currentTime / previewRate)} /{' '}
           {effectiveDuration != null ? formatClock(effectiveDuration / previewRate) : '--:--'}

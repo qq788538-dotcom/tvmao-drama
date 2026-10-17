@@ -25,7 +25,7 @@ export async function pickDataDir(
   return check(picked);
 }
 
-/** 按所选目录的状态决定确认框（I1）：空目录 → 迁移；已有喵剧数据 → 直接使用（不迁移）。 */
+/** 按所选目录的状态决定确认框：空目录 → 迁移；已有喵剧数据 → 直接使用（不迁移）。 */
 export function dataDirChangeDialog(t: DataDirCheck): {
   mode: 'migrate' | 'use-existing';
   title: string;

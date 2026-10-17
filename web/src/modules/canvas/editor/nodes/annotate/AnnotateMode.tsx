@@ -1,12 +1,12 @@
-// 图片标注的交互层，对标 liblib 实测 1:1（见 docs/2026-08-15-image-annotate-design.md）：
+// 图片标注的交互层：
 //   - 模式工具条顶掉常规工具条：✕退出 | 画笔 | 矩形 | 文字 | 颜色 | 线宽 |
 //     撤销/重做 | 保存；
 //   - 节点图片上叠透明 canvas 绘制层（底图就是节点里已渲染的 <img>，绘制层
 //     只画笔画——不 drawImage 就不存在预览期的跨域污染）；
-//   - 文字 = 点击处挂隐藏 textarea 收键盘输入实时绘制（liblib 同款 Excalidraw
+//   - 文字 = 点击处挂隐藏 textarea 收键盘输入实时绘制（Excalidraw
 //     套路）；IME 用 input 事件读全量 value 重绘，composition 期间画拼音过程串、
 //     compositionend 自然变汉字，无需特判；
-//   - ✕ / ESC / 点节点外任意处 = 直接丢弃全部未保存标注，无确认（对标拍板）。
+//   - ✕ / ESC / 点节点外任意处 = 直接丢弃全部未保存标注，无确认。
 // 状态自持：进入模式后节点可能失去单选态（工具条隐藏），标注不能被打断——
 // 生命周期由 ImageActionsBar 只管一个布尔（同 splitMode 先例）。
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -268,7 +268,7 @@ export function AnnotateMode({ nodeId, onClose }: { nodeId: string; onClose: () 
 
   const handleSave = async () => {
     if (!image || busy) return;
-    // 保存前先定格未提交的文字草稿（对标：liblib 保存时也会带上正在输入的字）。
+    // 保存前先定格未提交的文字草稿（保存时带上正在输入的字）。
     let all = strokes;
     if (draft) {
       all = commitTextDraft(strokes, draft);
@@ -477,7 +477,7 @@ export function AnnotateMode({ nodeId, onClose }: { nodeId: string; onClose: () 
           onPointerCancel={onPointerUp}
         />
         {draft && draftPos && (
-          // liblib 同款：1×1 透明 textarea 只负责收键盘输入（含 IME），
+          // 1×1 透明 textarea 只负责收键盘输入（含 IME），
           // 内容实时绘到 canvas 上；blur = 点了别处，定格草稿。
           <textarea
             ref={textareaRef}

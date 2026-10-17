@@ -354,7 +354,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(fu
           }
         }}
         onKeyDown={(e) => {
-          // 回车不再发送（用户 2026-08-31 拍板）：聊天里回车想换行的概率远大于想发送，
+          // 回车不发送：聊天里回车想换行的概率远大于想发送，
           // 误发一条就白跑一轮 agent。发送只走右下角按钮。
           // 这里不能直接放行默认行为：Chrome 对纯 Enter 会把后续内容包进 <div> 块，
           // 而 serialize 只对 <br> 出 '\n'，块边界会被拼成一行——所以统一

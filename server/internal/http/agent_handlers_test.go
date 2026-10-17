@@ -275,7 +275,7 @@ func TestAgentWS_LargeMessageReachesRunner(t *testing.T) {
 	}
 }
 
-// 桌面端没有多人协作（X2）：canvas_transient 帧被静默丢弃，同项目的其他连接收不到任何东西。
+// 桌面端没有多人协作：canvas_transient 帧被静默丢弃，同项目的其他连接收不到任何东西。
 func TestAgentWS_IgnoresCanvasTransient(t *testing.T) {
 	hub := agent.NewHub()
 	h := &AgentHandler{Hub: hub, Repo: stubThreadRepo{}, Runner: &capturingRunner{called: make(chan string, 1)}}

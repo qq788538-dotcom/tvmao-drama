@@ -25,7 +25,7 @@ func TestModelsListHidesBillingAndShowsReferences(t *testing.T) {
 	}
 	for _, banned := range []string{"billingConfig", "priceNote", "adminNote", "10积分", "内部备注"} {
 		if strings.Contains(body, banned) {
-			t.Errorf("响应不应包含 %q（spec X3）", banned)
+			t.Errorf("响应不应包含 %q", banned)
 		}
 	}
 	list := decodeTo[struct{ Data []modelViewResp }](t, body).Data

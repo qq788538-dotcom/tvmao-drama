@@ -1,6 +1,6 @@
 package http
 
-// 2026-10-07 用户要求：视频后处理、绘图预设、多角度、打光、剧本生成分镜五项配置与 Agent 模型写死为内置值。
+// 视频后处理、绘图预设、多角度、打光、剧本生成分镜五项配置与 Agent 模型写死为内置值。
 // /api/v1/settings 下这些页面的读写接口全部注销（只有设置页在用）；画布运行时的读取接口另见 TestRuntimeConfigRoutesStillServed。
 
 import (

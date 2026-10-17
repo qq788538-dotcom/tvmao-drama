@@ -1,15 +1,12 @@
-// 视频节点选中态的浮动操作工具条（对标参考产品），是 ImageActionsBar 的
-// 视频版。已接功能：「高清」「白模」「智能去字幕」——原是右键菜单里的
-// 「视频转高清」「擦除字幕」（2026-08-14 迁到这里，菜单里已删），点击在
-// 源节点右侧新建对应后处理节点并连线；「下载」「放大查看」（2026-08-17）
-// 照抄 ImageActionsBar 同款——saveMediaToDisk + 全局 Lightbox，纯本地零积分；
-// 「裁剪」（2026-08-17）空间裁剪，进 crop 模式由 VideoCropOverlay 接管（设计
-// docs/2026-08-17-video-crop-design.md）；「音频分离」（2026-08-17）点击直接
-// 执行音视频分离——纯前端拆轨出 音轨wav+无声视频 两个节点，零积分（对标实测
-// docs/2026-08-17-liblib-audio-separation-analysis.md；v1 只有这一项所以不用
-// 下拉，「人声分离」要服务端跑分离模型，暂不做，接入时再改回下拉形态）。
+// 视频节点选中态的浮动操作工具条，是 ImageActionsBar 的
+// 视频版。已接功能：「高清」「白模」「智能去字幕」——点击在
+// 源节点右侧新建对应后处理节点并连线；「下载」「放大查看」
+// 同 ImageActionsBar——saveMediaToDisk + 全局 Lightbox，纯本地零积分；
+// 「裁剪」空间裁剪，进 crop 模式由 VideoCropOverlay 接管；「音频分离」点击直接
+// 执行音视频分离——纯前端拆轨出 音轨wav+无声视频 两个节点，零积分（目前
+// 只有这一项所以不用下拉，「人声分离」要服务端跑分离模型，暂不做，接入时再改回下拉形态）。
 // 其余按钮仍是占位、点击不触发功能。
-// 2026-08-17 用户要求：未接功能的占位按钮先藏起来不给用户看（避免点了没反应），
+// 未接功能的占位按钮先藏起来不给用户看（避免点了没反应），
 // 由 SHOW_PLACEHOLDER_ACTIONS 统一控制，接入功能时翻回 true 即可，代码不删。
 //
 // 定位方案与 ImageActionsBar 完全一致（那边注释有逐行解释）：借 NodeShell
@@ -48,8 +45,8 @@ import { CONTINUATION_MODEL_ID } from './continuation/videoContinuation';
 
 const iconSize = 14;
 
-// 占位按钮（逐帧拉片/画面编辑）的显示开关。片段重拍/智能续写/音频分离已于
-// 2026-08-17 接入真功能,不再受此开关控制。
+// 占位按钮（逐帧拉片/画面编辑）的显示开关。片段重拍/智能续写/音频分离已接入
+// 真功能,不受此开关控制。
 // 声明成宽类型 boolean，避免字面量 false 触发 lint 的常量条件告警。
 const SHOW_PLACEHOLDER_ACTIONS: boolean = false;
 
@@ -256,7 +253,7 @@ export function VideoActionsBar({
               message.warning('模型目录加载中,请稍后再试');
               return;
             }
-            // 报错只在模型中心没配写死的重拍模型时出现(用户拍板 2026-08-17)。
+            // 报错只在模型中心没配写死的重拍模型时出现。
             if (!modelsQuery.data.some((m) => m.modelId === RESHOOT_MODEL_ID)) {
               message.warning(`模型中心未配置 ${RESHOOT_MODEL_ID},无法使用片段重拍`);
               return;
@@ -288,7 +285,7 @@ export function VideoActionsBar({
         >
           <HdBadge />
         </BarButton>
-        {/* 与「高清」同形态：只新建节点并连线，档位与提交在节点里完成（用户拍板 2026-09-11）。 */}
+        {/* 与「高清」同形态：只新建节点并连线，档位与提交在节点里完成。 */}
         <BarButton
           label="白模"
           title="新建转白模节点并连线"
@@ -324,7 +321,7 @@ export function VideoActionsBar({
         >
           <AlarmClockPlus size={iconSize} />
         </BarButton>
-        {/* 只有「擦除字幕」一项功能，不用下拉形态（用户拍板 2026-08-14）。 */}
+        {/* 只有「擦除字幕」一项功能，不用下拉形态。 */}
         <BarButton
           label="智能去字幕"
           title="新建擦除字幕节点并连线"
@@ -332,8 +329,8 @@ export function VideoActionsBar({
         >
           <RemoveFormatting size={iconSize} />
         </BarButton>
-        {/* v1 只有「音视频分离」一项功能,不用下拉形态(用户拍板 2026-08-17,
-            同「智能去字幕」先例);「人声分离」要服务端分离模型,暂不做,
+        {/* 只有「音视频分离」一项功能,不用下拉形态(
+            同「智能去字幕」);「人声分离」要服务端分离模型,暂不做,
             将来接入时再改回下拉。 */}
         <BarButton
           label="音频分离"

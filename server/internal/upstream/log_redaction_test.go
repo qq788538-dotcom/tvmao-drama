@@ -24,7 +24,7 @@ const (
 	secretPreset = "PRESET-BODY-CONFIDENTIAL"
 )
 
-// I2：请求体、成功响应体都不进日志；失败响应体只留折叠 data URI 后的前 512 字节。
+// 请求体、成功响应体都不进日志；失败响应体只留折叠 data URI 后的前 512 字节。
 func TestCallLogsNoBodiesOrSecrets(t *testing.T) {
 	big := strings.Repeat("A", 20000)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -106,8 +106,8 @@ export function StoryboardDetail({ nodeId, onClose }: { nodeId: string; onClose:
     // 视觉上应该还是"浮在暗底上的一块面板"，不能变成一片和背景齐平的区域。
     <div className="h-full flex flex-col rounded-lg border border-border bg-[#262626] overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
-        {/* 返回箭头与右侧的 ✕ 功能相同（都是收起详情、回到三栏），并存是对标
-            产品的做法：左上角「返回」符合从列表进详情的心智，右上角「关闭」
+        {/* 返回箭头与右侧的 ✕ 功能相同（都是收起详情、回到三栏），并存是有意的：
+            左上角「返回」符合从列表进详情的心智，右上角「关闭」
             符合浮层的心智，用户从哪个方向想都能找到出口。 */}
         <button
           type="button"

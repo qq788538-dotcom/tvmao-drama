@@ -1,8 +1,7 @@
-// 所有画布节点右键菜单的**标配两项**（对标 LibTV，用户拍板 2026-08-13）：
+// 所有画布节点右键菜单的**标配两项**：
 //   复制节点 ⌘C —— 剪贴板级复制，仅节点本身，可跨画布项目粘贴；
 //   创建副本 ⌘D —— 原地副本并连着同样的上游输入（store.duplicateNodes 本就只复制入边）。
 // 新写自定义节点菜单时引入这两项，别各自再造文案/快捷键；改文案只改这里。
-// 曾经 useMediaNodeMenu 里叫「拷贝节点」，按 LibTV 统一改名「创建副本」。
 import type { NodeMenuItem } from './NodeContextMenu';
 import { useCanvasStore } from '../store';
 import { copyNodeOrSelection } from '../utils/nodeClipboard';
@@ -26,7 +25,7 @@ export function standardNodeMenuItems(nodeId: string, closeMenu: () => void): No
       tip: '仅复制节点本身。复制到画布剪贴板，可在本画布或其他项目里粘贴；对外部应用不可见。',
       onPick: () => {
         closeMenu();
-        // 剪贴板复制（对标 libtv）：可在本画布或其他项目粘贴，外部应用不可见。
+        // 剪贴板复制：可在本画布或其他项目粘贴，外部应用不可见。
         copyNodeOrSelection(nodeId);
       },
     },

@@ -55,7 +55,7 @@ describe('DiagPage', () => {
     expect(await screen.findByText(/复制失败/)).toBeInTheDocument();
   });
 
-  it('独立页面显示返回链接和标题；嵌进设置页时不显示（M-2）', async () => {
+  it('独立页面显示返回链接和标题；嵌进设置页时不显示', async () => {
     const { unmount } = renderPage();
     expect(await screen.findByText('← 返回画布')).toBeInTheDocument();
     expect(screen.getByText('喵剧AI · 环境诊断')).toBeInTheDocument();

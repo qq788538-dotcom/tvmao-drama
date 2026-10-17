@@ -140,7 +140,7 @@ func TestModelsListHidesNotesAndEstimatesAreZero(t *testing.T) {
 		t.Fatalf("got %d: %s", rec.Code, rec.Body.String())
 	}
 	if strings.Contains(rec.Body.String(), "内部备注") || strings.Contains(rec.Body.String(), "100积分") {
-		t.Fatalf("spec X3：不得返回备注与价格说明: %s", rec.Body.String())
+		t.Fatalf("不得返回备注与价格说明: %s", rec.Body.String())
 	}
 	if rec := serve(t, routes, nethttp.MethodPost, "/api/v1/models/estimate", `{"modelId":"m1","inputs":{}}`); !strings.Contains(rec.Body.String(), `"credits":0`) {
 		t.Fatalf("估价恒为 0: %s", rec.Body.String())

@@ -109,7 +109,7 @@ func TestSeedModelPartsMapsNullJSONToNil(t *testing.T) {
 	}
 }
 
-// 图片改为内嵌（对象存储设计 D1/D2）：除 edits 模式（multipart 读本地字节）和
+// 图片内嵌：除 edits 模式（multipart 读本地字节）和
 // 模板按裸 base64 编写的模型外，不得再有 url。
 func TestSeedImagesAreInline(t *testing.T) {
 	s, err := Load()

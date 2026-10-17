@@ -1,6 +1,6 @@
 // 标注保存的执行侧：加载原图 → 原图分辨率 canvas 上「底图 + 笔画重放」合成
 // PNG → 建 input-image 节点（连回源）→ 上传。纯前端合成，零后端改动、零积分
-// ——与宫格切分同性质（liblib 实测也是本地合成后直传对象存储 + 建新节点连线，
+// ——与宫格切分同性质（本地合成后直传对象存储 + 建新节点连线，
 // 原节点不动）。
 import { useCanvasStore } from '../../store';
 import { uploadFileIntoNode } from '../../utils/uploadIntoNode';

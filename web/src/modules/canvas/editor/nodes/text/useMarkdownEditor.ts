@@ -11,10 +11,10 @@ import CharacterCount from '@tiptap/extension-character-count';
 import { Markdown } from 'tiptap-markdown';
 
 // 文本节点的字数「提示」阈值——只用来把 CharCount 徽标标红,不拦输入、不截断、
-// 不拦保存（2026-08-27 用户拍板：宁可红着也不许丢字）。曾经它同时是 Tiptap
+// 不拦保存（宁可红着也不许丢字）。曾经它同时是 Tiptap
 // CharacterCount 的 limit,超限的粘贴被 filterTransaction 直接吃掉,用户以为贴
 // 进去了、实际只存了前一万字。
-// 数值沿革：2026-08-18 用户拍板从 5000 提到 1 万,与脚本生成器的 MAX_SCRIPT_LEN
+// 阈值 1 万,与脚本生成器的 MAX_SCRIPT_LEN
 // 解耦。脚本生成器仍是 5000(前端 ScriptGenerator 自查 + 后端
 // canvasscript.MaxScriptRunes 权威拦截)——超长文本节点连过去时由生成器在自己的
 // 边界上报错,不会静默截断。
@@ -33,7 +33,7 @@ export function useMarkdownEditor({ value, onChange, onBlur, autoFocus }: Markdo
   const editorRef = useRef<Editor | null>(null);
   const editor = useEditor({
     extensions: [
-      // 工具栏只暴露 H1-H3，层级跟 LibTV 对齐；其余 StarterKit 默认项（引用/代码块
+      // 工具栏只暴露 H1-H3；其余 StarterKit 默认项（引用/代码块
       // 等）保留 markdown 解析能力但不给按钮——agent 写入的内容可能带这些语法，
       // 解析器砍掉的话会原样露出符号。
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),

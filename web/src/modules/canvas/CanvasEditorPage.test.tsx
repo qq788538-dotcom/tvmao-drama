@@ -492,7 +492,7 @@ describe('CanvasEditorPage 视图切换（工作流 / 故事板）', () => {
   });
 });
 
-describe('CanvasEditorPage 桌面端（spec F9、X1–X4）', () => {
+describe('CanvasEditorPage 桌面端', () => {
   beforeEach(() => {
     messageError.mockReset();
     localStorage.clear();

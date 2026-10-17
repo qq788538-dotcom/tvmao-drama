@@ -153,11 +153,11 @@ func isLoopbackURL(raw string) bool {
 }
 
 // Submit 是用户在画布上点「Seedance2.0 合规校验」的入口：同步调用内置模型
-// seedance-asset 注册素材，拿到 asset_id 即通过（seedance-asset 设计 A2）。
+// seedance-asset 注册素材，拿到 asset_id 即通过。
 // 已 active 的直接返回；其余状态（含 pending、failed_permanent）一律重新注册。
 // assetType 是上游 AssetType 原值。
 //
-// 注册前先写一条临时 pending 行（终审 I3）：同步调用可能长达数分钟，期间节点角标
+// 注册前先写一条临时 pending 行：同步调用可能长达数分钟，期间节点角标
 // 靠它显示「正在进行」并触发前端 5 秒轮询，生成侧 Resolve 也据此报「请稍候」，
 // 而不是把未校验的签名 URL 原样透传。注册调用免费，不做在途去重；应用崩溃遗留的
 // pending 行再点一次校验即可覆盖。

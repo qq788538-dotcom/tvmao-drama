@@ -93,7 +93,7 @@ describe('VideoCropOverlay', () => {
 
   it('量出内容区后进入编辑态:像素标签 576 x 1024、8 个手柄', async () => {
     renderOverlay();
-    // 初始框 80% × (720,1280) = 576×1024(与 liblib 实测一致)
+    // 初始框 80% × (720,1280) = 576×1024
     expect(await screen.findAllByText('576 x 1024')).not.toHaveLength(0);
     for (const k of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
       expect(screen.getByRole('button', { name: `resize-${k}` })).toBeInTheDocument();

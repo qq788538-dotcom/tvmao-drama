@@ -1,11 +1,10 @@
 // 音频节点选中态的浮动操作工具条，是 VideoActionsBar 的音频版复制适配。
-// 对标参考产品的音频工具条，砍掉「智能切分」「自定义切分」（用户拍板
-// 2026-08-18），保留：截取 / 变速 / 下载。
+// 按钮：截取 / 变速 / 下载。
 //
-// 截取/变速都是纯前端零积分（对标 liblib 实测，见 audioedit/audioEdit.ts
+// 截取/变速都是纯前端零积分（见 audioedit/audioEdit.ts
 // 头注）：选区/倍率在模式条上定，提交后 转码/time-stretch → 上传 wav →
 // 落 preview 音频产物节点并连回源。模式条顶掉工具条位置（同宫格切分先例）
-// 而不是对标产品的节点下方——gen-audio 宿主的下方已被提示词面板占用。
+// 而不是节点下方——gen-audio 宿主的下方已被提示词面板占用。
 // 截取的选区把手画在 WaveformPlayer 的波形上，会话状态在 store.audioEdit。
 //
 // 定位方案与 ImageActionsBar 完全一致（那边注释有逐行解释）：借 NodeShell
@@ -61,7 +60,7 @@ function Divider() {
   return <div className="w-px h-4 bg-border mx-1 shrink-0" />;
 }
 
-// 分:秒都补零的时间格式（00:45）。模式条对标 liblib 的显示形态；播放器里的
+// 分:秒都补零的时间格式（00:45）。模式条用这种形态；播放器里的
 // 0:45 形态是另一处（WaveformPlayer.formatClock），别混用。
 function formatClockPadded(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '00:00';
@@ -70,7 +69,7 @@ function formatClockPadded(sec: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// 截取/变速模式条的悬浮容器：**节点下方**（对标 liblib 的位置；gen-audio 宿主
+// 截取/变速模式条的悬浮容器：**节点下方**（gen-audio 宿主
 // 下方的提示词面板在编辑会话期间由 GenAudioNode 自己让位隐藏）。反缩放锚点
 // 同文件头注释那套。
 function FloatBelowNode({ children }: { children: React.ReactNode }) {
@@ -230,7 +229,7 @@ export function AudioActionsBar({
     });
   };
 
-  // ── 截取模式条（对标 liblib）：✕ 截取 ｜ [00:00 - 00:45] ｜ [生成] ──
+  // ── 截取模式条：✕ 截取 ｜ [00:00 - 00:45] ｜ [生成] ──
   if (audioEdit?.mode === 'trim') {
     const ready = audioEdit.duration != null && audioEdit.end - audioEdit.start >= MIN_TRIM_DURATION;
     return (
@@ -268,7 +267,7 @@ export function AudioActionsBar({
     );
   }
 
-  // ── 变速模式条（对标 liblib）：✕ 变速 ｜ 0.1x —滑杆— 4.0x ｜ [1.00x ▲▼] ｜ [↑] ──
+  // ── 变速模式条：✕ 变速 ｜ 0.1x —滑杆— 4.0x ｜ [1.00x ▲▼] ｜ [↑] ──
   if (audioEdit?.mode === 'speed') {
     const setRate = (raw: number) => {
       if (!Number.isFinite(raw)) return;
@@ -317,7 +316,7 @@ export function AudioActionsBar({
             className="w-10 bg-transparent border-none outline-none text-[14px] font-mono text-foreground text-right"
           />
           <span className="text-[12px] text-muted-foreground">x</span>
-          {/* 自定义 ▲▼ 步进（原生 spinner 已隐藏，样式对不上 liblib）。 */}
+          {/* 自定义 ▲▼ 步进（原生 spinner 已隐藏，样式与面板不协调）。 */}
           <div className="flex flex-col">
             <button
               type="button"

@@ -1,21 +1,19 @@
 // 片段重拍的纯逻辑层:多选区(≤5 段)的增删拖拽钳制 + 时间标签。
-// 对标 liblib 的「片段重拍」(实机逆向见 docs/2026-08-17-segment-reshoot-design.md),
-// 但架构走本项目自己的路:liblib 是单节点单任务(服务端按段调上游再缝合),
-// 我们是「每段切片 → 各铺一个 gen-video 节点」,一节点一任务一次上游调用,
+// 架构是「每段切片 → 各铺一个 gen-video 节点」,一节点一任务一次上游调用,
 // generation 管道零改动。纯函数,不碰 store,便于单测钉住边界。
 //
 // 与 trim/videoTrim.ts 的单选区工具是两套:那边是 [0,duration] 内的一个区间,
 // 这边每段的活动范围还受相邻段夹挤(段与段不许重叠),钳制规则不同,硬套会把
 // 两边都搞复杂。
 
-// 单段时长下限。上游 seedance edit 对过短片段没意义,liblib 同款取 4 秒。
+// 单段时长下限。上游 seedance edit 对过短片段没意义,取 4 秒。
 export const RESHOOT_MIN_RANGE_SEC = 4;
 // 单段时长上限。seedance 2.5 edit 单次输入最长 30s(用户拍板按 30s 做,
 // 未实测上游校验;如果上游素材校验拒 >15s,收这个常量即可,交互不用改)。
 export const RESHOOT_MAX_RANGE_SEC = 30;
-// 最多可选段数,liblib 同款。
+// 最多可选段数。
 export const RESHOOT_MAX_RANGES = 5;
-// 源视频时长下限,低于它不给进重拍(liblib 同款文案:仅支持 ≥4 秒)。
+// 源视频时长下限,低于它不给进重拍(文案:仅支持 ≥4 秒)。
 export const RESHOOT_MIN_SOURCE_SEC = 4;
 // 「整段重拍」(不选段)时源视频的上限——超过它模型单次吃不下,必须选段。
 export const RESHOOT_WHOLE_MAX_SEC = 30;
@@ -26,7 +24,7 @@ export const RESHOOT_DEFAULT_RANGE_SEC = 10;
 // 路径,不为重拍开洞),「留空=原样重跑」的语义靠这句固定文案落地。
 export const RESHOOT_REROLL_PROMPT = '按原视频内容重新生成一次，保持画面主体、场景与运镜不变';
 
-// 重拍固定使用的视频编辑模型,用户拍板写死(2026-08-17):不做后台配置层,
+// 重拍固定使用的视频编辑模型,写死:不做后台配置层,
 // 模型中心没配这个 modelId 时入口才报错提示。改用别的模型=改这一处 + 发版。
 export const RESHOOT_MODEL_ID = 'doubao-seedance-2-5-260628-edit';
 
@@ -123,7 +121,7 @@ export function updateRangeIntent(
   return ranges.map((r) => (r.id === id ? { ...r, intent } : r));
 }
 
-// mm:ss 标签(liblib 同款展示口径,秒向下取整)。
+// mm:ss 标签(秒向下取整)。
 export function formatTimeLabel(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
   const m = Math.floor(s / 60);

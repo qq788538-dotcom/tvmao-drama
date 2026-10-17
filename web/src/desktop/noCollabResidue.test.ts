@@ -31,7 +31,7 @@ function stripComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
-describe('协作残留已清理（X2）', () => {
+describe('协作残留已清理', () => {
   it('协作专用模块已删除', () => {
     expect(REMOVED_FILES.filter((f) => existsSync(join(SRC, f)))).toEqual([]);
   });

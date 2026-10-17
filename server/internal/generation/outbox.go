@@ -200,7 +200,7 @@ func (s *Service) pumpOutboxOnce(ctx context.Context) {
 			_, _ = repo.failOutbox(row.ID, row.DeliveryVersion, outboxMaxAttempt, "payload 损坏: "+err.Error())
 			continue
 		}
-		// M3：成功结果投递前用任务当前 output 覆盖产物地址。首投失败退避期间用户可能已手动
+		// 成功结果投递前用任务当前 output 覆盖产物地址。首投失败退避期间用户可能已手动
 		// 「保存到本地」（RepersistTask 改写了 output），payload 里还是收口时的上游外链。
 		if p.Err == "" && len(p.OutputURLs) > 0 {
 			if urls, ids, ok := repo.currentTaskOutputs(row.TaskID); ok && len(urls) == len(p.OutputURLs) {

@@ -34,7 +34,7 @@ describe('connectionChecks WebSocket 回显', () => {
   });
 });
 
-describe('诊断结果脱敏（I2）', () => {
+describe('诊断结果脱敏', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('检查抛出的错误里带 token 的 URL：detail 和 formatReport 都不含 token 明文', async () => {

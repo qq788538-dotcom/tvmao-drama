@@ -352,7 +352,7 @@ func (h *forkAgentHub) Get(ctx context.Context, name string, opts *skill.AgentHu
 
 // toolErrorFeedbackHandler 把工具执行失败降级为普通 tool 结果喂回模型，让模型自纠。
 // Eino 默认把工具错误当致命 NodeRunError——模型偶发一次 ls("/") 这类越界调用，
-// 跑了 20+ 分钟的 Run 就整场报废重跑（2026-07-21/22 两天生产 60 次，占提取失败大头）。
+// 跑了 20+ 分钟的 Run 就整场报废重跑（曾是提取失败的大头）。
 // 三类错误必须原样传播、不能吞：
 //   - context 取消/超时——整场 Run 就该停；
 //   - Eino interrupt 哨兵——框架靠它做中断续跑；
@@ -423,7 +423,7 @@ type activationModel struct{ inner model.BaseChatModel }
 
 // 激活阶段曾用 ToolChoiceForced+工具名（渲染成 {"type":"function","function":{"name":"skill"}}）
 // 硬逼模型先调 skill 工具，但 qqdao 等上游对这个 forced 形态直接回 400「Upstream request
-// failed」（2026-08-17 测试环境 curl 实测：同请求 tool_choice 换成 "auto" 即通过）。
+// failed」（同请求 tool_choice 换成 "auto" 即通过）。
 // 改为显式 "auto"（ToolChoiceAllowed 无白名单的渲染结果）：先调 skill 的约束退回由
 // system prompt 承担——在必挂的 forced 和偶尔不调 skill 之间，选后者。
 func (m *activationModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {

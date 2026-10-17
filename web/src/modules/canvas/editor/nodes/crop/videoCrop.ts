@@ -1,6 +1,5 @@
 // 视频空间裁剪(crop)核心——工具条「裁剪」按钮的转码层与几何层,是
-// videoTrim.ts 的空间版。全部基于 mediabunny(WebCodecs),对标 liblib 实测
-// (docs/2026-08-17-video-crop-design.md)。
+// videoTrim.ts 的空间版。全部基于 mediabunny(WebCodecs)。
 //
 // 与 trim 的关键差异:改了像素必然全程重编码,不存在 mp4→mp4 stream copy
 // 快路径,8s 720p 也要数秒——进度回调不是锦上添花而是必须。
@@ -27,17 +26,17 @@ export interface PixelRect {
 
 export type HandleKind = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'move';
 
-// 最小裁剪框(源视频像素)。防误拖出无意义产物;liblib 未观测到明确下限,
+// 最小裁剪框(源视频像素)。防误拖出无意义产物;
 // 64 取自「再小编码器也稳、缩略图也还认得出内容」的经验值。
 export const MIN_CROP_PX = 64;
 
-// 初始框:居中 80%(对标 liblib 实测的 left/top 10% + 80%×80%)。
+// 初始框:居中 80%(left/top 10% + 80%×80%)。
 export const INITIAL_RECT: FracRect = { left: 0.1, top: 0.1, width: 0.8, height: 0.8 };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-// 四舍五入到最近偶数——WebCodecs 编码器(H.264)要求偶数尺寸;liblib 实测
-// 产物/标签全是偶数,同一原因。
+// 四舍五入到最近偶数——WebCodecs 编码器(H.264)要求偶数尺寸,
+// 产物/标签因此全是偶数。
 export function roundEven(n: number): number {
   return Math.round(n / 2) * 2;
 }
@@ -62,7 +61,7 @@ export function moveRect(r: FracRect, dx: number, dy: number): FracRect {
   };
 }
 
-// 手柄拖拽(对标 liblib 实测规则):角手柄锁比例、边手柄单轴自由。
+// 手柄拖拽规则:角手柄锁比例、边手柄单轴自由。
 // dx/dy 是从 pointerdown 起的累计分数增量,r 是拖拽起点的 rect(不是上一帧
 // 的——增量算法在快速拖动下会漂移,绝对算法怎么拖都可逆)。
 // minW/minH 是分数化的最小框(MIN_CROP_PX / 视频像素)。
@@ -96,7 +95,7 @@ export function resizeRect(
   }
 
   // 角手柄:锁比例缩放,锚点是对角。缩放系数取主导轴(位移绝对值大的那根),
-  // 次轴跟随——liblib 实测角拖宽高分数同步变,就是这个行为。
+  // 次轴跟随——角拖时宽高分数同步变。
   // 系数 clamp 三重约束:不小于最小框、不越出锚点到画面边界的可用空间。
   const sx = kind === 'ne' || kind === 'se' ? (r.width + dx) / r.width : (r.width - dx) / r.width;
   const sy = kind === 'sw' || kind === 'se' ? (r.height + dy) / r.height : (r.height - dy) / r.height;

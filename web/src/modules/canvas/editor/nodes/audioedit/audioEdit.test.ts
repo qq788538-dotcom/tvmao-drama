@@ -1,7 +1,7 @@
 // 变速核心(stretchBuffer)与 wav 编码的行为钉死在这里。截取本体走 mediabunny
 // (WebCodecs),jsdom 不测(同 trim/crop/audiosep 先例)。
 //
-// 变速的验收标准就是当初对标分析的两条:时长 ≈ 1/rate,音高(过零率/秒)不变。
+// 变速的验收标准是两条:时长 ≈ 1/rate,音高(过零率/秒)不变。
 import { describe, expect, it } from 'vitest';
 import { encodeWavPCM16, stretchBuffer, type AudioBufferLike } from './audioEdit';
 

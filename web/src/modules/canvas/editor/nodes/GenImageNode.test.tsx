@@ -207,7 +207,7 @@ describe('GenImageNode lightbox', () => {
 
   // 桌面端不计费。哪怕模型配置里带着 priceNote（单价说明），节点上也不出现
   // 任何估价/积分文案。
-  it('选中后不显示估价或积分文案（X3）', async () => {
+  it('选中后不显示估价或积分文案', async () => {
     vi.mocked(listRuntimeModels).mockResolvedValue([{ ...imageModel, priceNote: '100积分/分钟' }]);
     useCanvasStore.setState({ selectedIds: new Set(['image-1']) });
     renderNode();
@@ -706,7 +706,7 @@ describe('GenImageNode 故事板参考区连线编辑', () => {
   });
 });
 
-describe('GenImageNode 生成成功清掉上次的未保存标记（I-2）', () => {
+describe('GenImageNode 生成成功清掉上次的未保存标记', () => {
   const REMOTE = 'https://upstream.example.com/out/old.png?sig=a';
   const LOCAL = 'http://127.0.0.1:5123/media/gen/new.png?token=t';
 

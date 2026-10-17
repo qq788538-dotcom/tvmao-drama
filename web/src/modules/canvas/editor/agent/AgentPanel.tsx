@@ -904,7 +904,7 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
       {/* （附件预览行已移除——上传的文件现在作为原子 @ chip 直接插到
           MentionInput 的光标处。） */}
 
-      {/* 输入 + 控件（Lovart 风格的堆叠布局——输入在上、操作栏在下，
+      {/* 输入 + 控件（堆叠布局——输入在上、操作栏在下，
           都放在同一个圆角卡片里）。 */}
       <div className="border-t border-border px-3 py-2 shrink-0 relative">
         {/* 发送失败（WS 未连通）的内联报错。连接恢复或下次发送成功时清除。 */}

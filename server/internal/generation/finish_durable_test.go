@@ -20,7 +20,7 @@ func zeroFinishRetryDelays(t *testing.T) {
 	t.Cleanup(func() { finishRetryDelays = old })
 }
 
-// I3：执行 ctx 已取消（关闭/队列超时）时，成功收口仍要落库——上游钱已花、产物已在盘上。
+// 执行 ctx 已取消（关闭/队列超时）时，成功收口仍要落库——上游钱已花、产物已在盘上。
 func TestFinishSuccessDurableIgnoresCanceledCtx(t *testing.T) {
 	conn, svc, uid := newRecoverDBHarness(t)
 	res, _ := conn.Exec(`INSERT INTO generation_tasks

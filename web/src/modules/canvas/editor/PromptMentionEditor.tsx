@@ -2,8 +2,8 @@
 // canonical = 字符串，内嵌 @[图片:<nodeId>]/@[视频:<nodeId>]/@[音频:<nodeId>] 标记。
 // 用 nodeId 而非序号绑定身份：连线增删时序号会漂移（删掉图片1后原图片2变成图片1），
 // id 稳定——断线清理精准、chip 显示的序号(图片 2)在渲染时按当前连线顺序实时计算。
-// 图片/视频/音频各自独立计数（用户明确要求，区别于参考产品的全局 @1/@2/@3）。
-// 机制对标项目管理的 StoryboardPromptEditor（contentEditable 非受控 + chip span +
+// 图片/视频/音频各自独立计数（不用全局统一的 @1/@2/@3）。
+// 机制同项目管理的 StoryboardPromptEditor（contentEditable 非受控 + chip span +
 // canonical 字符串），但按模块隔离原则独立实现，不跨模块 import。
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';

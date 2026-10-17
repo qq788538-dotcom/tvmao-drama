@@ -86,7 +86,7 @@ describe('AddAssetDialog', () => {
     expect(assets.scenes.map((a) => a.name)).toEqual(['角色 1', '角色 12']);
   });
 
-  it('AI 生成 tab 不显示 ⚡ 积分估价（X3）', async () => {
+  it('AI 生成 tab 不显示 ⚡ 积分估价', async () => {
     renderDialog();
     fireEvent.click(screen.getByTestId('add-asset-tab-ai'));
     fireEvent.change(screen.getByTestId('asset-gen-prompt'), { target: { value: '赛博朋克修理铺' } });

@@ -40,7 +40,7 @@ export function gateReducer(s: GateState, e: GateEvent): GateState {
   }
 }
 
-/** “启动中”页面的文案：普通启动 / 迁移数据目录 / 等上一次迁移结束（I3）。 */
+/** “启动中”页面的文案：普通启动 / 迁移数据目录 / 等上一次迁移结束。 */
 export function startingMessage(view: GateView): string {
   if (view.kind !== 'starting') return '';
   if (view.waitingLock) {

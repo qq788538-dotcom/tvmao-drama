@@ -81,7 +81,7 @@ describe('GenVideoNode', () => {
     });
   });
 
-  it('选中后不显示估价或积分文案（X3）', async () => {
+  it('选中后不显示估价或积分文案', async () => {
     vi.mocked(listRuntimeModels).mockResolvedValue([{ ...videoModel, priceNote: '480p:70积分/秒|720p:150积分/秒' }]);
     renderNode();
 
@@ -548,7 +548,7 @@ describe('GenVideoNode 高级编辑入口', () => {
     }
   });
 
-  // 同一次保存的多条标注拼同一行、中文逗号分隔（用户拍板 2026-08-13）：
+  // 同一次保存的多条标注拼同一行、中文逗号分隔：
   // 每条独占一行会把输入框撑得很长。批次边界 = 一次 onSave 闭包。
   it('保存多条标注：同一行中文逗号分隔，不是一条一行', async () => {
     vi.mocked(uploadAsset).mockResolvedValue({

@@ -34,7 +34,7 @@ type RestrictedShellConfig struct {
 	Timeout time.Duration // 单条命令墙钟上限，<=0 用 30s
 }
 
-// RestrictedShell 是桌面端唯一的 Skill execute 实现（X6）：不经过任何 shell，
+// RestrictedShell 是桌面端唯一的 Skill execute 实现：不经过任何 shell，
 // 只用内置 Python 执行原始 Skill 目录里的脚本，文件参数限定在本次 Run 工作区内，环境从零构造。
 type RestrictedShell struct {
 	workspace string // EvalSymlinks 后的 Run 工作区

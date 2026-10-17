@@ -1,13 +1,12 @@
 // 视频节点的剪辑(trim)裁剪条。store.trimmingNodeId === nodeId 时浮现在节点
-// 正下方(对齐 liblib;gen-video 的 prompt 面板在 trim 期间隐藏让位,
+// 正下方(gen-video 的 prompt 面板在 trim 期间隐藏让位,
 // 见 GenVideoNode 里的 trimming 判断)。
 // 交互:缩略图条 + 拖拽选区(左右把手/整体平移)+ 时长气泡 + 选区循环预览
 // + 整数秒吸附开关 + 全套键盘快捷键(←→ 平移 / ↑↓ 缩放 / I·O 设入出点 /
 // Shift 精确 / ⌘·Ctrl 快速 / Space 播放暂停 / Enter 确认 / Esc 取消,说明
 // 面板见键盘图标按钮)。确认后:浏览器内转码 → uploadAsset 上传 → 在源
 // 节点右侧新建 preview 节点写入产物 URL 并连线(用户拍板:要连线上游)。
-// 设计依据 docs/2026-08-14-canvas-video-trim-design.md。
-// 对标 liblib 但砍掉「循环播放开关」——我们的选区预览常开循环,用户拍板不需要。
+// 没有「循环播放开关」——选区预览常开循环。
 //
 // 定位方案同 VideoActionsBar(inv-zoom 反缩放,屏幕尺寸恒定),那边注释有
 // 逐行解释。
@@ -163,7 +162,7 @@ export function VideoTrimBar({ nodeId, url }: { nodeId: string; url: string }) {
     }
   }, [phase, url, sel.start, sel.end, nodeId, message]);
 
-  // 快捷键(对标 liblib 的快捷键面板)。挂 window:焦点通常不在裁剪条里
+  // 快捷键。挂 window:焦点通常不在裁剪条里
   // (用户刚拖完画布)。capture + stopPropagation 挡住画布自己的快捷键——
   // trim 期间是模态语义。
   useEffect(() => {

@@ -55,7 +55,7 @@ func exitCodeOf(err error) int {
 	return 1
 }
 
-// lockDataDir 在打开 data.db 前锁住数据目录（I4）。被占用时返回 exitDataDirBusy。
+// lockDataDir 在打开 data.db 前锁住数据目录。被占用时返回 exitDataDirBusy。
 func lockDataDir(dir string) (func(), error) {
 	release, err := datadir.AcquireInstanceLock(dir, instanceLockWait)
 	if errors.Is(err, datadir.ErrDataDirBusy) {
@@ -71,7 +71,7 @@ var (
 )
 
 // abortOnStdinEOF：壳把子进程的 stdin 接成管道并一直开着；壳退出或崩溃时管道关闭，这里读到 EOF 就中止，
-// 迁移子进程不会变成孤儿（I2）。Windows 上壳另外用 Job Object 兜底。
+// 迁移子进程不会变成孤儿。Windows 上壳另外用 Job Object 兜底。
 func abortOnStdinEOF() {
 	go func() {
 		_, _ = io.Copy(io.Discard, subcommandStdin)

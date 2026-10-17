@@ -1,4 +1,4 @@
-// 文本节点的 AI 生成输入条（LibTV 图11 同款交互）：选文本/视觉模型 + 输入指令，
+// 文本节点的 AI 生成输入条：选文本/视觉模型 + 输入指令，
 // 连了上游图片节点时自动作为视觉输入（图片反推提示词场景）。提交走 /canvas-tasks
 // 统一 DB 队列，结果由后端 sink 权威写回 settings.text，轮询在 TextNode 里。
 import { useState } from 'react';

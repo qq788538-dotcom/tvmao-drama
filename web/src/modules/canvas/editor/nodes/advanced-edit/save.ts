@@ -24,7 +24,7 @@ export interface SaveResult {
 export async function saveAnnotations(
   entries: FrameAnnotation[], deps: SaveDeps,
 ): Promise<SaveResult> {
-  // 说明文字可选（用户拍板 2026-08-12）：画面标注本身已经携带意图，留空不拦。
+  // 说明文字可选：画面标注本身已经携带意图，留空不拦。
   let ok = 0;
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
@@ -32,7 +32,7 @@ export async function saveAnnotations(
       const blob = await deps.captureFrame(e);
       const nodeId = await deps.materialize(blob, `frame-${formatTime(e.timeSec).replace(':', '-')}.png`, i);
       deps.connect(nodeId);
-      // 追加行形态对齐 jimeng：「@图片 mm:ss 视频帧标注 [说明]」——「视频帧标注」
+      // 追加行形态：「@图片 mm:ss 视频帧标注 [说明]」——「视频帧标注」
       // 是固定标记词，让上游把这张参考图理解为帧级编辑指令而不是普通参考；说明
       // 留空时行尾干净不留悬空空格。提交时 serializeMentionPrompt 展开成
       // 「图片N mm:ss 视频帧标注 …」，编号与 images 数组下标天然对齐。

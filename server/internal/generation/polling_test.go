@@ -183,7 +183,7 @@ func TestPollCtxTimeoutAddsBufferAndClamps(t *testing.T) {
 	}
 	// clamp 必须比窗口上限（24h）大，否则 ctx 越权成了真正的限流者——
 	// 曾经它是 4h，把后台配的 24h 静默压成 4h，用户看到的是莫名其妙的
-	// 「生成超时」退款（2026-07-29 生产 mini-mg 实证）。
+	// 「生成超时」退款。
 	if got := pollCtxTimeout(24 * time.Hour); got != 24*time.Hour+2*time.Minute {
 		t.Fatalf("pollCtxTimeout(24h) = %v，24h 窗口的友好文案必须先于 ctx 触发", got)
 	}

@@ -6,7 +6,7 @@ describe('mediaCrossOrigin', () => {
     expect(mediaCrossOrigin('http://127.0.0.1:51234/media/u1/2026/10/a.png?token=t')).toBe('anonymous');
   });
 
-  it('参考仓的对象存储签名 URL 照旧', () => {
+  it('对象存储签名 URL 照旧按 CORS 模式加载', () => {
     expect(mediaCrossOrigin('https://b.tos.example/a.png?X-Tos-Signature=1')).toBe('anonymous');
     expect(mediaCrossOrigin('https://s3.example/a.png?X-Amz-Signature=1')).toBe('anonymous');
   });

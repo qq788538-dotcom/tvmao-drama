@@ -1,5 +1,5 @@
 // Package agent — tools_text.go：内置的 create_text_node 工具，让 LLM 能把
-// 剧本/文案这类长文本产物落到画布上（对标 Seko 的「文本节点创建」帧）。
+// 剧本/文案这类长文本产物落到画布上，以文本节点的形式呈现。
 // 没有它，编剧类 skill 的产出只能整段堆在聊天气泡里——聊天是流式的、不可编辑、
 // 不参与画布工作流；文字节点才是后续「@ 引用 / 改写 / 接生成」的锚点。
 //
@@ -80,8 +80,8 @@ func (t *CreateTextNodeTool) InvokableRun(ctx context.Context, argsJSON string, 
 		Source:       CreateTextNodeToolName,
 	})
 
-	// 返回值是给 LLM 看的：确认成功 + 明确要求别在聊天里复读全文（Seko 的行为
-	// 也是「我已将剧本正文写入画布，请查阅」）。
+	// 返回值是给 LLM 看的：确认成功 + 明确要求别在聊天里复读全文（只需告诉用户
+	// 「已将剧本正文写入画布，请查阅」）。
 	if truncated {
 		return fmt.Sprintf("已创建文本节点《%s》（正文超长，截断到 %d 字）。请告知用户内容已写入画布节点，不要在聊天里重复正文。", title, maxTextNodeRunes), nil
 	}

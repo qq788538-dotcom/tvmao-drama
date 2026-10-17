@@ -7,7 +7,7 @@ export interface GridPreset {
   label: string;
 }
 
-// 下拉菜单的四个固定档（对标 libtv 文案），自定义走 hover 选择器（上限同 5×5）。
+// 下拉菜单的四个固定档，自定义走 hover 选择器（上限同 5×5）。
 export const GRID_PRESETS: GridPreset[] = [
   { rows: 2, cols: 2, label: '4宫格 (2×2)' },
   { rows: 3, cols: 3, label: '9宫格 (3×3)' },

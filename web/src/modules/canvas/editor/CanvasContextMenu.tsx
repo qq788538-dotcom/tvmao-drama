@@ -38,7 +38,7 @@ interface CanvasContextMenuProps {
 }
 
 /**
- * 画布背景右键菜单（对标 libtv）：上传 / 添加节点 / 撤销 / 重做 / 粘贴。
+ * 画布背景右键菜单：上传 / 添加节点 / 撤销 / 重做 / 粘贴。
  * 双击背景仍直接弹添加节点菜单（ContextMenu），两个入口分工不同。
  */
 export function CanvasContextMenu({

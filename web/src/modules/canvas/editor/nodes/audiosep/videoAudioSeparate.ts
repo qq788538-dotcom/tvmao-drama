@@ -1,6 +1,5 @@
 // 「音视频分离」核心:把视频拆成 音轨 wav + 无声视频 mp4,全在浏览器内完成。
-// 对标 liblib 实测(docs/2026-08-17-liblib-audio-separation-analysis.md 第一节):
-// 它的产物就是 解码 PCM 重写的 wav + stream copy 的无声 mp4,零服务端零积分。
+// 产物是 解码 PCM 重写的 wav + stream copy 的无声 mp4,零服务端零积分。
 //
 // 两个 Conversion 都不重编码视频:
 //   - 无声视频:audio.discard → 视频轨 mp4→mp4 stream copy,秒级;

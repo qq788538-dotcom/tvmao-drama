@@ -48,7 +48,7 @@ func wireAgent(ctx context.Context, d agentWiringDeps) (*agentWiring, error) {
 	// 存储接了一半（有 Signer/Objects 没 Keys）时，LocalMediaResolver 认不出本机图片，
 	// 只能报错不发图；这一定是装配漏传，直接拒绝启动比运行时悄悄失效好查。
 	if d.Keys == nil && (d.Signer != nil || d.Objects != nil) {
-		return nil, errors.New("wireAgent: 已接入存储但缺少 Keys（应传 P1b 的 assets.Storage）")
+		return nil, errors.New("wireAgent: 已接入存储但缺少 Keys（应传 assets.Storage）")
 	}
 	// 内置数据同步失败不阻止启动：已有数据仍可用，日志里能看到原因。
 	if res, err := agentseed.Import(d.DB); err != nil {

@@ -1,12 +1,11 @@
-// 光球的 3D 投影管线。所有常量来自对 liblib light-scene-3d 的 three devtools
-// 实测（场景图与相机参数直接读出，见 docs/2026-08-15-liblib-light-control-analysis.md）：
+// 光球的 3D 投影管线。几何常量：
 // 球半径 6、图片板原图比例零旋转居中、透视相机 fov50@(11,8,10)、正面相机
 // fov50@(0,1,15)、光锥锥口 r2.5 开到球心、星点三环（赤道+俯仰±35°）。
 // 网格/星点/光锥/图片板/光点全部过同一台相机投影——数学上不可能互相漂移。
 
 export type Vec3 = [number, number, number];
 
-/** 球半径（liblib 世界单位） */
+/** 球半径（世界单位） */
 export const SPHERE_R = 6;
 /** 控件画布边长（CSS px） */
 export const VIEW_SIZE = 200;
@@ -14,7 +13,7 @@ export const VIEW_SIZE = 200;
 const FOV_DEG = 50;
 /** 焦距（px）：画布半高 / tan(fov/2) */
 export const FOCAL = VIEW_SIZE / 2 / Math.tan(((FOV_DEG / 2) * Math.PI) / 180);
-/** 图片板最大盒（世界单位，liblib 横图实测 4.84×3.18；竖图按同宽缩入） */
+/** 图片板最大盒（世界单位，横图 4.84×3.18；竖图按同宽缩入） */
 export const PLANE_MAX_W = 4.84;
 export const PLANE_MAX_H = 3.5;
 /** 光锥缺省锥口半径（亮度 50 的实测值；亮度联动时由调用方传入） */
@@ -99,7 +98,7 @@ export function directionToWorld(yawDeg: number, pitchDeg: number): Vec3 {
 
 /**
  * 画布像素 → 相机射线与球求交 → 球面 (yaw,pitch)。拖拽的核心：光点永远落在
- * 光标指到的球面处（对标 liblib 的 raycast 拖拽手感）。射线打不中球（光标在
+ * 光标指到的球面处（raycast 拖拽手感）。射线打不中球（光标在
  * 轮廓外）时取最近逼近点方向贴着轮廓滑动。命中取近侧表面（可见半球）。
  */
 export function rayToSphere(view: 'persp' | 'front', sx: number, sy: number) {

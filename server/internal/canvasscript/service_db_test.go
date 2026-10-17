@@ -189,7 +189,7 @@ func TestSubmitRejectsMissingModelAndSkill(t *testing.T) {
 	}
 }
 
-// 桌面端没有积分（X3）：零价模型必须保留，只剔除模型中心查不到的候选。
+// 桌面端没有积分：零价模型必须保留，只剔除模型中心查不到的候选。
 func TestEnabledStylesKeepsZeroPriceCandidates(t *testing.T) {
 	cfg := testConfig()
 	cfg.ModelCandidates = append(cfg.ModelCandidates, ModelCandidate{ModelID: "deleted-model", DisplayName: "已删除"})

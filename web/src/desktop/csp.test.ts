@@ -17,7 +17,7 @@ function directive(name: string): string[] {
   return part!.split(/\s+/).slice(1);
 }
 
-describe('tauri CSP（I-4）', () => {
+describe('tauri CSP', () => {
   it('img-src 与 media-src 放行 https:', () => {
     expect(directive('img-src')).toContain('https:');
     expect(directive('media-src')).toContain('https:');

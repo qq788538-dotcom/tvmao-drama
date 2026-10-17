@@ -1,6 +1,6 @@
 // 宫格切分的执行侧：加载原图 → 逐格 canvas 裁剪 → 批量建 input-image 节点
-// （连回源）→ 逐格上传。纯前端切图，零后端改动、零积分——与 libtv 同构
-// （它也是本地裁剪后直传对象存储）。
+// （连回源）→ 逐格上传。纯前端切图，零后端改动、零积分
+// （本地裁剪后直传对象存储）。
 import { useCanvasStore } from '../../store';
 import { uploadFileIntoNode } from '../../utils/uploadIntoNode';
 import { mediaCrossOrigin } from '../../utils/mediaCrossOrigin';

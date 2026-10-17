@@ -97,7 +97,7 @@ describe('GenAudioNode', () => {
     });
   });
 
-  it('选中后不显示估价或积分文案（X3）', async () => {
+  it('选中后不显示估价或积分文案', async () => {
     vi.mocked(listRuntimeModels).mockResolvedValue([{ ...audioModel, priceNote: '100积分/分钟' }, imageModel]);
     renderNode();
 

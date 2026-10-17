@@ -1,5 +1,5 @@
-// 打光方向的几何真源：26 档枚举（8 水平方位 × 3 高度 + top/bottom，对标 liblib
-// UI_KeyLight 词表）与球面吸附。key 与服务端 lightDirectionPhrases 一一对应——
+// 打光方向的几何真源：26 档枚举（8 水平方位 × 3 高度 + top/bottom）
+// 与球面吸附。key 与服务端 lightDirectionPhrases 一一对应——
 // 两侧词表漂移会让「拖到的位置」和「拼出的文案」说两回事，加档位必须两端同步。
 
 /** 每档的球面坐标（度）。yaw：0=正前，向右为正；pitch：0=赤道，正=偏上。 */
@@ -20,7 +20,7 @@ const RING: Array<[string, number]> = [
   ['front-left', 315],
 ];
 
-/** 高/低环的俯仰角。35°=liblib 星点环的实测俯仰（y=3.452 / r=6.018）。 */
+/** 高/低环的俯仰角。35°=星点环的俯仰（y=3.452 / r=6.018）。 */
 const ELEVATED_PITCH = 35;
 
 export const LIGHT_DIRECTIONS: LightDirectionSpec[] = [
@@ -53,7 +53,7 @@ const VECTORS = LIGHT_DIRECTIONS.map((d) => ({
 
 /**
  * 连续 (yaw, pitch) 吸附到最近的方向档（余弦最近邻）。拖拽期间连续值在控件内部
- * 保持，只有吸附结果对外——对标 liblib：球面拖到哪都落到 26 档之一。
+ * 保持，只有吸附结果对外：球面拖到哪都落到 26 档之一。
  */
 export function snapToDirection(yaw: number, pitch: number): string {
   const v = directionVector(yaw, pitch);

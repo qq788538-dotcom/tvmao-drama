@@ -9,10 +9,10 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
 )
 
-// 一期兼容金测试：canvas_changed 的 type 与既有字段一个都不许变（一期前端只认
+// 兼容金测试：canvas_changed 的 type 与既有字段一个都不许变（旧版前端只认
 // type=="canvas_changed"，还在按 version/source_mark 判回声）；op 是**新增可选**
-// 字段，不带 op 时帧的字节形态与一期逐字相同。
-func TestHub_CanvasChangedKeepsPhaseOneShapeAndAddsOptionalOp(t *testing.T) {
+// 字段，不带 op 时帧的字节形态与旧格式逐字相同。
+func TestHub_CanvasChangedKeepsLegacyShapeAndAddsOptionalOp(t *testing.T) {
 	w := &recordingWriter{}
 	hub := NewHub()
 	hub.conns[1] = []*hubConn{{ws: w, userID: 1, projectID: 10, ctx: context.Background()}}
@@ -31,12 +31,12 @@ func TestHub_CanvasChangedKeepsPhaseOneShapeAndAddsOptionalOp(t *testing.T) {
 	}
 	legacy := string(w.frames[0])
 	if legacy != `{"type":"canvas_changed","project_id":10,"version":7,"source_mark":"abcd1234"}` {
-		t.Fatalf("无 op 时帧形态变了（一期前端会失聪）: %s", legacy)
+		t.Fatalf("无 op 时帧形态变了（旧版前端会失聪）: %s", legacy)
 	}
 	withOp := string(w.frames[1])
 	if !strings.Contains(withOp, `"type":"canvas_changed"`) || !strings.Contains(withOp, `"version":8`) ||
 		!strings.Contains(withOp, `"source_mark":"abcd1234"`) {
-		t.Fatalf("带 op 的帧丢了一期字段: %s", withOp)
+		t.Fatalf("带 op 的帧丢了既有字段: %s", withOp)
 	}
 	if !strings.Contains(withOp, `"op":{"kind":"patchNode","node_id":"n1","patch":{"settings":{"prompt":"x"}}}`) {
 		t.Fatalf("op 摘要序列化不对: %s", withOp)

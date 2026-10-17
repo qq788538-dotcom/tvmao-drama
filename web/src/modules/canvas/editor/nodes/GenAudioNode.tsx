@@ -58,7 +58,7 @@ export function GenAudioNode({ id }: { id: string }) {
   const linked = useConnectedInputs(id);
   const addNode = useCanvasStore((s) => s.addNode);
   const isSelected = useCanvasStore((s) => s.selectedIds.has(id));
-  // 截取/变速模式条挂节点正下方（对标 liblib 的位置），与提示词面板抢同一块
+  // 截取/变速模式条挂节点正下方，与提示词面板抢同一块
   // 空间——编辑会话期间面板让位隐藏，退出后随选中态自然回来。
   const audioEditing = useCanvasStore((s) => s.audioEdit?.nodeId === id);
   const promptPanelVisible = isSelected && !audioEditing;

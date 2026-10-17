@@ -45,7 +45,7 @@ func (s *Service) RunQueueWorker(ctx context.Context) {
 // 否则一个慢任务会拖住整轮领取。
 func (s *Service) pumpQueueOnce() {
 	if s.draining() {
-		return // 正在关闭：不再领取（M1）
+		return // 正在关闭：不再领取
 	}
 	// 到点的 retry_pending 先放回 queued（v5 §4.2：并入同一次 pump，不新增 worker），
 	// 本轮领取立刻能把它们抢走。
@@ -188,7 +188,7 @@ func (s *Service) RecoverStaleQueueTasks() {
 // SweepStuckQueued 兜底：排队太久仍没被领取的任务判失败退款。
 //
 // 没有这道兜底，模型被删/上限配成 0/队列永远排不上的任务会永久卡在 queued，
-// 冻结的钱再也回不来——生产上那条 2026-06-15 至今未动的任务就是这么来的。
+// 冻结的钱再也回不来。
 func (s *Service) SweepStuckQueued() {
 	// 先兜住"根本没进队列"的那批：它们连下面这条扫描都够不着。
 	s.sweepSinklessQueued()

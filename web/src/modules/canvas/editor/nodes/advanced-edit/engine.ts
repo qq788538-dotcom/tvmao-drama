@@ -23,7 +23,7 @@ export const STROKE_DISPLAY_PX = 3;
 export const FONT_DISPLAY_PX = 15;
 export const PIN_RADIUS_DISPLAY_PX = 9;
 
-// 调色板（对标 jimeng 的六色）。白色排最后——深色画面用白、浅色画面用黑，
+// 调色板（六色）。白色排最后——深色画面用白、浅色画面用黑，
 // 两个极端色都得有，否则总有画面标不清楚。
 export const ANNO_COLORS = ['#ff3b30', '#ffcc00', '#34c759', '#0a84ff', '#111111', '#ffffff'] as const;
 export const DEFAULT_ANNO_COLOR: string = ANNO_COLORS[0];
@@ -120,7 +120,7 @@ export function renderOps(ctx: CanvasRenderingContext2D, ops: AnnoOp[]): void {
   for (const op of ops) {
     // 屏幕像素基准 × 落笔时烘焙的换算比 = 原始空间下的实际粗细。用户的视频
     // 分辨率千差万别（480p 到 4K），按帧宽算会导致小窗口里线细得看不见——
-    // 统一观感的锚点只能是屏幕像素（用户拍板 2026-08-12）。
+    // 统一观感的锚点只能是屏幕像素。
     const s = op.px
       ? { lineWidth: Math.max(1.5, STROKE_DISPLAY_PX * op.px), font: Math.max(10, FONT_DISPLAY_PX * op.px) }
       : legacy;

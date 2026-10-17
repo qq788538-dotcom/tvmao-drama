@@ -44,7 +44,7 @@ describe('MultiAnglePanel', () => {
   });
 
   // 桌面端不计费：底栏不显示「⚡ 预扣积分」或 priceNote 计费说明。
-  it('底栏不显示预扣积分或计费说明（X3）', async () => {
+  it('底栏不显示预扣积分或计费说明', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>

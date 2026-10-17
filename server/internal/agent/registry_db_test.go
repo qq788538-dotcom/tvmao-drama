@@ -63,7 +63,7 @@ func TestDBRegistry_LoadsFromRepo(t *testing.T) {
 		t.Fatal("ByName missed")
 	}
 	if _, ok := reg.ByName(OutputSkillDefinitionToolName); ok {
-		t.Fatal("output_skill_definition 不应出现在工具目录（spec A4）")
+		t.Fatal("output_skill_definition 不应出现在工具目录")
 	}
 }
 

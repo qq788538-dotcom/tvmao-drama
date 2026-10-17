@@ -6,8 +6,7 @@
 // 半套本地校验会给人「按钮能点就一定合规」的错觉，而权威判定始终在上游，
 // 不合规会以 failed_permanent 回到节点角标上。
 export const SEEDANCE_DURATION_MIN_SEC = 2;
-// 上限按类型分:视频 2026-08-17 从 15s 放宽到 30s(用户确认上游已放宽),
-// 音频维持 15s 不动。
+// 上限按类型分:视频 30s,音频 15s。
 export const SEEDANCE_DURATION_MAX_SEC: Record<'video' | 'audio', number> = {
   video: 30,
   audio: 15,

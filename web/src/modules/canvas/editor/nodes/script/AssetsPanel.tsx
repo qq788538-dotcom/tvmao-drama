@@ -23,8 +23,8 @@ const SECTIONS: { key: SectionKey; label: string; kind: TokenKind }[] = [
 ];
 
 // 第二步「准备资产」：角色/场景/物品三分区卡片流。图片本体永远归画布节点
-// （linkedNodeId），本面板只管指针与资产条目。单击卡片 → 右侧抽屉编辑（对标
-// 上游）；卡片右上角 🔍 预览 + ··· 菜单（菜单紧贴按钮，不锚整卡）。
+// （linkedNodeId），本面板只管指针与资产条目。单击卡片 → 右侧抽屉编辑；
+// 卡片右上角 🔍 预览 + ··· 菜单（菜单紧贴按钮，不锚整卡）。
 export function AssetsPanel({
   nodeId,
   onClose,

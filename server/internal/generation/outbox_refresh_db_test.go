@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// M3：outbox 首投失败进退避后，用户手动「保存到本地」成功（任务 output 已改成 media://），
+// outbox 首投失败进退避后，用户手动「保存到本地」成功（任务 output 已改成 media://），
 // 重投必须用任务当前的产物，不能把节点改回上游外链。
 func TestOutboxRedeliveryUsesCurrentTaskOutput(t *testing.T) {
 	resetSinksForTest()

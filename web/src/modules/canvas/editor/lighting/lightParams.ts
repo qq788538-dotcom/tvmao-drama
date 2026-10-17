@@ -1,6 +1,6 @@
 // 打光面板 → PresetParams 的组装（纯函数，独立成文件为了可测）。
 // 契约与服务端 ComposeLightControlText 一一对应：**缺 key = 用户没碰该组 = 不拼**
-// （对标 liblib 的脏标记语义 sceneActive/brightnessActive/colorActive——缺省交给
+// （脏标记语义 sceneActive/brightnessActive/colorActive——缺省交给
 // 模型自由发挥，不发默认值捆住模型）。
 
 export interface LightFormState {
@@ -19,7 +19,7 @@ export function buildLightPresetParams(s: LightFormState): Record<string, string
   const params: Record<string, string> = {};
   if (s.sceneTouched) {
     params.keyLight = s.direction;
-    // 主光源在正后方时轮廓光无意义（光已经从背面来了）——liblib 同款跳过。
+    // 主光源在正后方时轮廓光无意义（光已经从背面来了），跳过。
     if (s.rimEnabled && s.direction !== 'back') params.rimLight = 'back';
   }
   if (s.brightnessTouched) params.brightness = String(s.brightness);
@@ -29,7 +29,7 @@ export function buildLightPresetParams(s: LightFormState): Record<string, string
   return params;
 }
 
-/** 有没有任何可提交的内容（↑ 按钮的禁用判定，对标 liblib：全默认时不可提交）。 */
+/** 有没有任何可提交的内容（↑ 按钮的禁用判定：全默认时不可提交）。 */
 export function hasLightDirtyState(s: LightFormState, prompt: string): boolean {
   return (
     s.sceneTouched ||

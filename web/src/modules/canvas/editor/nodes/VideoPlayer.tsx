@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { Maximize, Minimize, MoreVertical, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 
-// 自绘视频控制条（对标 Chrome 原生样式）。
+// 自绘视频控制条（仿 Chrome 原生样式）。
 //
 // 为什么不用 <video controls>：桌面端跑在 WKWebView（Safari 内核），原生控制条
 // 按元素的**布局宽度**排版——画布节点布局宽只有 ~280px，WebKit 进紧凑模式把

@@ -1,6 +1,5 @@
 // 视频剪辑(trim)的媒体处理层:抽缩略图条 + 浏览器内转码截取选区。
-// 全部基于 mediabunny(WebCodecs),对标 liblib 的同名实现(实机逆向见
-// docs/2026-08-14-canvas-video-trim-design.md)。纯函数,不碰 store。
+// 全部基于 mediabunny(WebCodecs)。纯函数,不碰 store。
 //
 // mediabunny 用动态 import:它只在用户点「剪辑」后才需要,静态引入会把
 // ~200KB 的编解码逻辑打进首屏 chunk。

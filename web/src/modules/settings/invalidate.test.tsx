@@ -37,7 +37,7 @@ afterEach(() => {
   queryClient.clear();
 });
 
-describe('设置页与画布共用全局 queryClient（final-review I-3）', () => {
+describe('设置页与画布共用全局 queryClient', () => {
   it('SettingsModal 里的页面拿到的就是全局 queryClient', () => {
     render(<SettingsModal />);
     expect(screen.getByText('通用页内容')).toBeTruthy();

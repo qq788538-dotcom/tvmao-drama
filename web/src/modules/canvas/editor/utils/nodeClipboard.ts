@@ -3,7 +3,7 @@ import { useCanvasStore } from '../store';
 import type { CanvasNode, Connection } from '../types';
 
 /**
- * 「复制节点」的剪贴板层（对标 libtv）。
+ * 「复制节点」的剪贴板层。
  *
  * 机制：节点 JSON 以**自定义 MIME** 写进系统剪贴板——外部应用（微信/备忘录）
  * 只认 text/plain、图片等标准格式，看不见这个格式，所以外面什么都粘不出；

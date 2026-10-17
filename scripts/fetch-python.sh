@@ -64,7 +64,7 @@ esac
 rm -rf "$LIB"/test "$LIB"/idlelib "$LIB"/tkinter "$LIB"/turtledemo "$LIB"/ensurepip \
        "$LIB"/lib2to3 "$LIB"/pydoc_data "$LIB"/site-packages/pip*
 
-# macOS：每个 Mach-O 补一个 ad-hoc 签名（E5）。arm64 上未签名的可执行文件根本无法运行，
+# macOS：每个 Mach-O 补一个 ad-hoc 签名。arm64 上未签名的可执行文件根本无法运行，
 # 外层 .app 的签名也会因内部有未签名代码而失败。
 case "$TARGET" in
   *apple-darwin)

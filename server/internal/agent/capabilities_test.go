@@ -1,8 +1,6 @@
-// apps/api/internal/agent/capabilities_test.go
-//
-// 对标 Seko 的能力补齐（G1/G3/G4/3.1）的行为契约：
+// agent 内置能力的行为契约：
 //   - create_text_node：文本产物以 text_info artifact 落画布，聊天里不复读全文；
-//   - load_skill：技能指令以 tool_result 进历史，跨轮持续生效（与 S1 同机制）；
+//   - load_skill：技能指令以 tool_result 进历史，跨轮持续生效（与 skill 快照进历史同机制）；
 //   - @ 视频/音频：不再挂成 image part（上游只认图片），转成文本引用；
 //   - 流式块序号：整个 action 内单调递增，多轮回复不再实时互相覆盖。
 package agent
@@ -38,7 +36,7 @@ func TestCreateTextNodeTool_EmitsTextArtifact(t *testing.T) {
 	if a.ArtifactID == "" {
 		t.Fatal("artifact id required（前端定位 chip 靠它找节点）")
 	}
-	// 返回值必须引导 LLM 不在聊天里复读全文（Seko 行为：「已写入画布，请查阅」）。
+	// 返回值必须引导 LLM 不在聊天里复读全文（只说「已写入画布，请查阅」）。
 	if !strings.Contains(out, "不要在聊天里重复正文") {
 		t.Fatalf("tool result should instruct no-repeat, got %q", out)
 	}

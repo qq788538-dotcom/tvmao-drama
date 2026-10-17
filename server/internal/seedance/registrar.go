@@ -34,7 +34,7 @@ type ModelLookup interface {
 	GetByModelID(modelID string) (*models.ModelConfig, error)
 }
 
-// UpstreamError 携带上游错误原文，界面原样显示（设计 A2）。
+// UpstreamError 携带上游错误原文，界面原样显示。
 type UpstreamError struct {
 	Status  int
 	Message string

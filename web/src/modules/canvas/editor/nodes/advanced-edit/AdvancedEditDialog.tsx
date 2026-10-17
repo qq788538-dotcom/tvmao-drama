@@ -1,5 +1,5 @@
 // 高级编辑弹框：视频播放器叠加矢量标注画布。
-// 交互模型（用户 2026-08-12 拍板，对标 jimeng）：
+// 交互模型：
 //   - 默认无工具选中——标注层不拦截指针，视频完全可交互（播放/暂停/拖进度条）；
 //   - 选中工具进入标注态，画的内容先进「待确认」缓冲，工具栏出现「取消/添加至输入框」；
 //   - 「添加至输入框」才把这批标注落成该时间点的记录（缩略图+说明输入），「取消」整批丢弃；
@@ -241,7 +241,7 @@ export function AdvancedEditDialog({ videoUrl, onSave, onClose }: Props) {
     setTextDraft(null);
   };
 
-  // 「添加至输入框」：每次都新增一条**独立**记录（用户拍板 2026-08-13）——
+  // 「添加至输入框」：每次都新增一条**独立**记录——
   // 同一秒的多次确认各自成条（独立缩略图/说明/图片节点/提示词行），不再按
   // timeSec 合并进已有记录。缩略图用当前视频帧合成——正常流程里确认发生在
   // 标注的同一暂停帧上；若用户中途拖了进度条，缩略图会是新帧+旧标注，仅影响
@@ -449,7 +449,7 @@ export function AdvancedEditDialog({ videoUrl, onSave, onClose }: Props) {
               // 尺寸必须给**显式**宽高（w-full h-full），不能用 inset 双边钉住
               // 期望拉伸：canvas 是替换元素，绝对定位下宽高为 auto 时直接用自己
               // 的内在尺寸（width/height 属性，即视频原始分辨率），left+right 并
-              // 不会像普通 div 那样把它撑开（2026-08-12 实机 DOM 取证定案）。
+              // 不会像普通 div 那样把它撑开。
               // 必须**全高贴合视频、1:1 零压缩**：曾为让出底部原生 controls 裁掉
               // 40px 高，但缓冲区仍是完整帧——完整帧压进矮盒子显示，纵向出现
               // (h-40)/h 的系数错位，顶部无感、越往下漂移越大（实机踩中）。
@@ -555,7 +555,7 @@ export function AdvancedEditDialog({ videoUrl, onSave, onClose }: Props) {
             <Redo2 size={15} />
           </button>
 
-          {/* 待确认操作区：有未确认标注时出现（对标 jimeng 的「取消/添加至输入框」） */}
+          {/* 待确认操作区：有未确认标注时出现（「取消/添加至输入框」） */}
           {hasPending && (
             <div className="flex items-center gap-1 ml-3">
               <span className="text-[11px] text-muted-foreground mr-1">

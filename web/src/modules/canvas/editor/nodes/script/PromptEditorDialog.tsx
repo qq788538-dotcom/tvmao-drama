@@ -6,7 +6,7 @@ import { parseTokens, LABEL_BY_KIND } from './scriptTokens';
 import { ScriptPromptEditor, type ScriptAssetOption } from './ScriptPromptEditor';
 
 // 分镜提示词大编辑器：row.prompt 的唯一编辑入口（skill 语义层）。
-// 编辑体验对标 AI 生视频节点的 @ 方式：token 渲染为「缩略图+资产名」chip
+// 编辑体验同 AI 生视频节点的 @ 方式：token 渲染为「缩略图+资产名」chip
 // （ScriptPromptEditor，复制适配自 PromptMentionEditor），输入 @ 弹资产菜单。
 // 关闭路径（遮罩 mousedown/ESC/X/卸载）统一 flush 草稿再关，防丢稿根因与修法
 // 见 cellEditors.tsx 的 PopoverShell 注释。

@@ -207,7 +207,7 @@ describe('agentStore 懒加载', () => {
     });
   });
 
-  it('F3：RFC3339Nano 裁尾零不破坏时间序（裸字典序会反）', () => {
+  it('RFC3339Nano 裁尾零不破坏时间序（裸字典序会反）', () => {
     // Go 的 marshaller 会把 .000 裁掉：同一秒内 "05Z" 字典序 > "05.123Z"，
     // 但时间上更早。timestampSortKey 归一化后必须比出正确顺序。
     const whole = srv('a', '2026-01-01T00:00:05Z');
@@ -224,7 +224,7 @@ describe('agentStore 懒加载', () => {
     expect(isOrderedBefore(q, p)).toBe(false);
   });
 
-  it('F2：tail 与现有窗口无交集（中间有缺行）→ 整窗重置不留洞', () => {
+  it('tail 与现有窗口无交集（中间有缺行）→ 整窗重置不留洞', () => {
     const s = useAgentStore.getState();
     s.hydrateTail('thr_1', [srv('m1', '2026-01-01T00:00:01Z'), srv('m2', '2026-01-01T00:00:02Z')], true);
     // 服务端在窗口外新落了一整页以上，对账 tail 与旧窗口完全不重叠
@@ -247,7 +247,7 @@ describe('agentStore 懒加载', () => {
     expect(isOrderedBefore(a, local)).toBe(true);
   });
 
-  it('R1：tail 对账保留已上拉加载的更早前缀', () => {
+  it('tail 对账保留已上拉加载的更早前缀', () => {
     const s = useAgentStore.getState();
     // 窗口 = 上拉出来的旧页 [m1,m2] + 当前尾页 [m3,m4]
     s.prependOlderMessages('thr_1', [srv('m3', '03'), srv('m4', '04')], false);
@@ -276,7 +276,7 @@ describe('agentStore 懒加载', () => {
     expect(useAgentStore.getState().messages['thr_1']).toEqual([]);
   });
 
-  it('R9：merge 按 id 去重（前缀与 tail 交叠的脏数据兜底）', () => {
+  it('merge 按 id 去重（前缀与 tail 交叠的脏数据兜底）', () => {
     const s = useAgentStore.getState();
     s.hydrateTail('thr_1', [srv('m1', '01'), srv('m2', '02')], false);
     // 脏数据：m2 出现在 tail 里、同时又以更早的 createdAt 残留在现有列表

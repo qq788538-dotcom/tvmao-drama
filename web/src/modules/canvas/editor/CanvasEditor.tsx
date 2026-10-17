@@ -56,7 +56,7 @@ interface ContextMenuState {
   worldY: number;
   /** 设置后，选中的节点会自动从这个 source 节点连过来 */
   sourceNodeId?: string;
-  /** actions=右键动作菜单（上传/添加节点/撤销/重做/粘贴，对标 libtv）；
+  /** actions=右键动作菜单（上传/添加节点/撤销/重做/粘贴）；
    *  add-node=添加节点菜单（双击背景、拖连线松手、右键菜单点「添加节点」）。 */
   kind: 'actions' | 'add-node';
 }
@@ -444,7 +444,7 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
         return;
       }
       // ⌘/Ctrl + '='(即 +)、'-'、'0'：缩放与适应画布。preventDefault 把浏览器
-      // 自己的整页缩放快捷键在画布页里让位给画布（Lovart 同款取舍）。
+      // 自己的整页缩放快捷键在画布页里让位给画布。
       if ((e.metaKey || e.ctrlKey) && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
         keyboardZoom(1.2);
@@ -607,7 +607,7 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
     [message, projectId],
   );
 
-  // 粘贴的「文字」分支：建文字节点（对标 libtv）。
+  // 粘贴的「文字」分支：建文字节点。
   const pasteTextAsNode = useCallback(
     (text: string, world: { x: number; y: number }) => {
       const id = addNode('text-node', world);
@@ -725,8 +725,8 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
   return (
     <div
       ref={viewportRef}
-      // 画布底色不用全局 bg-background(纯黑)：纯黑上节点/连线对比过强，参考
-      // Lovart 画布取 #141414 的深灰。只影响画布视口，不动全局主题。
+      // 画布底色不用全局 bg-background(纯黑)：纯黑上节点/连线对比过强，
+      // 取 #141414 的深灰。只影响画布视口，不动全局主题。
       className="absolute inset-0 bg-[#141414] overflow-hidden"
       onMouseDown={onMouseDown}
       onDragOver={(e) => {

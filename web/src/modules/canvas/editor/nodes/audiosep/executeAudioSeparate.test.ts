@@ -1,5 +1,5 @@
 // 音视频分离落地侧的行为约定:拆轨产物双上传后,画布落 音频+无声视频 两个
-// preview 节点(kind 各自自报/无声视频抄源尺寸/liblib 同排布局),都连回源;
+// preview 节点(kind 各自自报/无声视频抄源尺寸/同排布局),都连回源;
 // 拆轨失败(含无音轨)不落任何节点。转码本体在 videoAudioSeparate 里,
 // 依赖 WebCodecs,jsdom 不测(同 trim/crop 先例)。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -56,7 +56,7 @@ describe('executeAudioSeparate', () => {
     setStore();
   });
 
-  it('产物落 音频+无声视频 两个 preview 节点,连回源,liblib 同排布局', async () => {
+  it('产物落 音频+无声视频 两个 preview 节点,连回源,同排布局', async () => {
     separateMock.mockResolvedValue({
       audio: new Blob(['a'], { type: 'audio/wav' }),
       video: new Blob(['v'], { type: 'video/mp4' }),

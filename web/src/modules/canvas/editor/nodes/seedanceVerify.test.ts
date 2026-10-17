@@ -8,7 +8,7 @@ vi.mock('@/shared/api', () => ({
 
 import { verifySeedanceAndRefresh } from './seedanceVerify';
 
-// 终审 I2：重拍/续写里不等待结果的校验调用，结束后（无论成败）都要让节点状态刷新。
+// 重拍/续写里不等待结果的校验调用，结束后（无论成败）都要让节点状态刷新。
 describe('verifySeedanceAndRefresh', () => {
   it('失败时也刷新该素材的状态查询，并把错误抛回调用方', async () => {
     const qc = new QueryClient();

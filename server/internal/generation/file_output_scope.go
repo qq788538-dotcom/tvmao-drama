@@ -14,7 +14,7 @@ var errFileOutputOutOfScope = errors.New("上游返回的本地文件路径不�
 // spillFilePrefix 与 upstream.spillOneString 的 os.CreateTemp(dir, "out-*.png") 对应。
 const spillFilePrefix = "out-"
 
-// resolveSpillOutputPath 校验 file:// 产物路径（I1）：只接受 tempDir 里、直接位于目录
+// resolveSpillOutputPath 校验 file:// 产物路径：只接受 tempDir 里、直接位于目录
 // 第一层、按 spill 命名的普通文件。符号链接逐级解析后再比较，防止软链/".." 越界读到
 // data.db、~/.ssh 之类的本机文件。返回解析后的真实路径。
 func (s *Service) resolveSpillOutputPath(raw string) (string, error) {

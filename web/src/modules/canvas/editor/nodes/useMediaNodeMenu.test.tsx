@@ -84,7 +84,7 @@ function spyMediaCreation(collected: HTMLMediaElement[]) {
   });
 }
 
-// 「擦除字幕」「视频转高清」两个入口 2026-08-14 迁到了 VideoActionsBar 工具条
+// 「擦除字幕」「视频转高清」两个入口在 VideoActionsBar 工具条
 // （spawn 行为测试也在 VideoActionsBar.test.tsx），右键菜单里不该再出现。
 describe('useMediaNodeMenu 后处理入口已迁走', () => {
   beforeEach(() => {
@@ -177,7 +177,7 @@ describe('useMediaNodeMenu 合规校验（图片/视频/音频）', () => {
     expect(item.getAttribute('title')).toContain('已通过校验');
   });
 
-  // 终审 I2：失败也要刷新状态，否则后端刚写下的 failed_permanent 角标要等到
+  // 失败也要刷新状态，否则后端刚写下的 failed_permanent 角标要等到
   // 无关的重新拉取才出现。
   it('校验失败后重新拉取状态，角标显示不合规', async () => {
     loadSeedanceStatusMock.mockReset();
@@ -274,7 +274,7 @@ describe('useMediaNodeMenu 「删除」', () => {
   });
 });
 
-describe('useMediaNodeMenu 在访达中显示（S3）', () => {
+describe('useMediaNodeMenu 在访达中显示', () => {
   const LOCAL = 'http://127.0.0.1:5123/media/u/1/a.png?token=t';
 
   beforeEach(() => {
@@ -344,7 +344,7 @@ describe('useMediaNodeMenu 在访达中显示（S3）', () => {
   });
 });
 
-describe('useMediaNodeMenu 「未保存到本地」角标（S5）', () => {
+describe('useMediaNodeMenu 「未保存到本地」角标', () => {
   it('生成结果还是上游外链时，badge 里有「未保存到本地」和「重试」', () => {
     useCanvasStore.setState({
       nodes: [{

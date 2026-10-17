@@ -203,7 +203,7 @@ func TestSignedURLRoundTripsThroughExtractKey(t *testing.T) {
 		}
 		thumb, _ := s.SignedThumbURL(context.Background(), key, time.Hour, 400)
 		if thumb != u {
-			t.Fatalf("缩略图应等于原图（spec S8）: %q vs %q", thumb, u)
+			t.Fatalf("缩略图应等于原图: %q vs %q", thumb, u)
 		}
 	}
 	if _, err := s.SignedURL(context.Background(), "../x", time.Hour); !errors.Is(err, ErrInvalidKey) {

@@ -25,7 +25,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** 主光源六个快捷按钮（liblib 同款两行三列），值是 26 档枚举里的六个正方向。 */
+/** 主光源六个快捷按钮（两行三列），值是 26 档枚举里的六个正方向。 */
 const KEY_LIGHT_BUTTONS: Array<Array<{ key: string; label: string }>> = [
   [
     { key: 'left', label: '左侧' },
@@ -49,9 +49,9 @@ function HelpDot({ tip }: { tip: string }) {
   );
 }
 
-// 打光效果面板（对标 liblib light-editor：挂在选中图片节点下方的浮动面板；
+// 打光效果面板（挂在选中图片节点下方的浮动面板；
 // 定位由 ImageActionsBar 的锚点容器负责——与 MultiAnglePanel 同一套宿主）。
-// 点 ↑ 直接提交生成（用户拍板，对标 liblib）：铺 gen-image 节点 + 连线 + 立即
+// 点 ↑ 直接提交生成：铺 gen-image 节点 + 连线 + 立即
 // 走 /canvas-tasks——就是替用户按了一次 AI 绘图节点的生成键，不是新生成通道；
 // 轮询/写回由新节点自己的 GenImageNode 逻辑接管（status=generating + taskId）。
 // 参数 → 中文打光文案的拼接在服务端执行层（保留 key __light_control__），
@@ -76,7 +76,7 @@ export function LightPanel({ sourceNodeId, onClose }: Props) {
   });
 
   const cfg = configQuery.data;
-  // 模型取后台配置第一个（对标站面板没有模型选择；要换模型可在生成后的节点上换）。
+  // 模型取后台配置第一个（面板不提供模型选择；要换模型可在生成后的节点上换）。
   const effectiveModelId = cfg?.models[0] || '';
   const selectedModel = (modelsQuery.data ?? []).find((m) => m.modelId === effectiveModelId);
 
@@ -110,7 +110,7 @@ export function LightPanel({ sourceNodeId, onClose }: Props) {
     lightColor,
     colorTouched,
     presetKey,
-    // 参考图是智能模式的一部分：开关关掉即不随提交（liblib 同款语义），
+    // 参考图是智能模式的一部分：开关关掉即不随提交，
     // 但面板状态保留——再打开还在。
     hasReferenceImage: smartMode && Boolean(refImage),
   };
@@ -131,7 +131,7 @@ export function LightPanel({ sourceNodeId, onClose }: Props) {
     setSceneTouched(true);
   };
 
-  // 点预设 = 先清参数再套预设字段（liblib 同款覆盖式：伦勃朗光点下去不残留上一个
+  // 点预设 = 先清参数再套预设字段（覆盖式：伦勃朗光点下去不残留上一个
   // 预设的亮度/颜色）；保密 prompt 不下发，靠 preset key 在服务端追加。
   const applyPreset = (p: LightControlPresetPublic) => {
     setDirection(p.direction || 'front');
@@ -295,7 +295,7 @@ export function LightPanel({ sourceNodeId, onClose }: Props) {
             direction={direction}
             imageUrl={sourceImageUrl}
             view={view}
-            // 光锥/光晕跟随主光颜色（对标 liblib：选蓝出蓝锥）；未激活颜色时白光。
+            // 光锥/光晕跟随主光颜色（选蓝出蓝锥）；未激活颜色时白光。
             lightColor={colorTouched ? lightColor : '#ffffff'}
             // 亮度实时驱动光球观感（滑条不用等提交）；脏标记语义不变——没碰过
             // 滑条时这里恒为 50，也不会进生成参数。
@@ -351,7 +351,7 @@ export function LightPanel({ sourceNodeId, onClose }: Props) {
                 setColorTouched(true);
               }}
             >
-              {/* 未激活时显示「白底红斜杠」（liblib 同款的「未设置」态） */}
+              {/* 未激活时显示「白底红斜杠」（「未设置」态） */}
               <button
                 type="button"
                 aria-label="选择主光颜色"
@@ -400,14 +400,14 @@ export function LightPanel({ sourceNodeId, onClose }: Props) {
               checked={rimEnabled}
               onChange={(v) => {
                 setRimEnabled(v);
-                // 开轮廓光即视为动过光位组（liblib 同款：payload 会同时带主光方向）。
+                // 开轮廓光即视为动过光位组（payload 会同时带主光方向）。
                 if (v) setSceneTouched(true);
               }}
             />
           </div>
         </div>
 
-        {/* 智能模式列：prompt + 参考图 + 预设网格（开关打开才出现，liblib 同款） */}
+        {/* 智能模式列：prompt + 参考图 + 预设网格（开关打开才出现） */}
         {smartMode && (
           <div className="flex w-[300px] shrink-0 flex-col gap-3 pt-1">
             <span className="text-base text-foreground">智能模式</span>
@@ -491,7 +491,7 @@ export function LightPanel({ sourceNodeId, onClose }: Props) {
         )}
       </div>
 
-      {/* 底部：重置（左）；圆形↑提交（右，对标 liblib） */}
+      {/* 底部：重置（左）；圆形↑提交（右） */}
       <div className="mt-4 flex items-center gap-3">
         <button
           type="button"

@@ -25,7 +25,7 @@ function stripComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
-describe('估价与积分代码已删除（X3）', () => {
+describe('估价与积分代码已删除', () => {
   it('相关文件不存在', () => {
     expect(REMOVED_FILES.filter((f) => existsSync(join(SRC, f)))).toEqual([]);
   });

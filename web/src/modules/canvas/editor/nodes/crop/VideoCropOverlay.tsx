@@ -1,6 +1,6 @@
 // 视频节点的空间裁剪(crop)交互层。store.croppingNodeId === nodeId 时由
 // VideoActionsBar 渲染(工具条让位,同 trim 先例):节点上叠裁剪框,节点
-// 正下方浮确认条。对标 liblib 实测(docs/2026-08-17-video-crop-design.md):
+// 正下方浮确认条:
 // 初始居中 80% 框、角手柄锁比例、边手柄单轴、框身拖动、三分线、实时像素
 // 标签、框外 9999px box-shadow 遮罩。
 //
@@ -30,7 +30,7 @@ import {
   type HandleKind,
 } from './videoCrop';
 
-// 8 个手柄的定位 class(白底圆点,对标 liblib)。key 与 HandleKind 一致。
+// 8 个手柄的定位 class(白底圆点)。key 与 HandleKind 一致。
 const HANDLES: Array<{ kind: Exclude<HandleKind, 'move'>; cls: string }> = [
   { kind: 'nw', cls: '-left-1.5 -top-1.5 cursor-nwse-resize' },
   { kind: 'n', cls: 'left-1/2 -top-1.5 -translate-x-1/2 cursor-ns-resize' },
@@ -251,7 +251,7 @@ export function VideoCropOverlay({ nodeId, url }: { nodeId: string; url: string 
               height: `${frame.height}%`,
             }}
           >
-            {/* 裁剪框:百分比定位;框外遮罩 = 自身 9999px box-shadow(liblib 同款,
+            {/* 裁剪框:百分比定位;框外遮罩 = 自身 9999px box-shadow(
                 一行 CSS 免掉四块暗片的拼接)。 */}
             <div
               className="absolute z-[2] cursor-move border border-solid border-white shadow-[0_0_0_1px_rgba(0,0,0,0.35),0_0_0_9999px_rgba(0,0,0,0.45)]"

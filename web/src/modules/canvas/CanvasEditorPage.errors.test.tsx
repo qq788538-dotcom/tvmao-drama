@@ -1,4 +1,4 @@
-// 画布页的错误分支与失权提示（终审 I1 / M2 / M3）。与 CanvasEditorPage.test.tsx 分开放：
+// 画布页的错误分支与失权提示。与 CanvasEditorPage.test.tsx 分开放：
 // 这里用真实的 canvasMutations，好触发 owner 失权事件。
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

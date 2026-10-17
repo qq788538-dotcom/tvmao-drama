@@ -1,4 +1,4 @@
-// 裁剪几何层的行为约定(全部分数空间,对标 liblib 实测规则):
+// 裁剪几何层的行为约定(全部分数空间):
 // 角手柄锁比例、边手柄单轴、框身平移 clamp、像素换算 round-to-even + 最小框。
 // 转码本体(cropVideo)依赖 WebCodecs,jsdom 跑不了,与 trim 同理不测编码路径。
 import { describe, expect, it } from 'vitest';
@@ -21,7 +21,7 @@ describe('roundEven / toPixelRect', () => {
     expect(roundEven(576)).toBe(576);
   });
 
-  it('像素换算:尺寸偶数、位置取整(720×1280 的 80% 框 = 576×1024,对标 liblib 实测值)', () => {
+  it('像素换算:尺寸偶数、位置取整(720×1280 的 80% 框 = 576×1024)', () => {
     expect(toPixelRect(base, 720, 1280)).toEqual({ left: 72, top: 128, width: 576, height: 1024 });
   });
 
@@ -89,7 +89,7 @@ describe('resizeRect 边手柄(单轴自由)', () => {
 });
 
 describe('resizeRect 角手柄(锁比例,锚对角)', () => {
-  it('se:宽高同比例缩放(liblib 实测:80%→61% 两轴同步)', () => {
+  it('se:宽高同比例缩放(两轴同步)', () => {
     const r = resizeRect(base, 'se', -0.2, -0.1, 0.01, 0.01);
     // 主导轴是 dx(-0.2):s = 0.6/0.8 = 0.75
     expect(r.width).toBeCloseTo(0.6);
@@ -125,7 +125,7 @@ describe('resizeRect 角手柄(锁比例,锚对角)', () => {
 });
 
 describe('INITIAL_RECT', () => {
-  it('居中 80%(对标 liblib 初始框)', () => {
+  it('居中 80% 初始框', () => {
     expect(INITIAL_RECT).toEqual({ left: 0.1, top: 0.1, width: 0.8, height: 0.8 });
   });
 });

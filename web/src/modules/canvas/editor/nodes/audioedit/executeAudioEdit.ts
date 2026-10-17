@@ -26,7 +26,7 @@ export async function deliverAudioEditProduct(
   if (!src) throw new Error('源节点不存在');
   const srcW = src.width ?? 320;
   const size = DEFAULT_SIZES['preview'];
-  // 反复截取/变速的产物竖向排队(对标 liblib):数这个源已有的音频产物下游,
+  // 反复截取/变速的产物竖向排队:数这个源已有的音频产物下游,
   // 整节点高度往下错开,不然第二次操作的产物会精确压在第一次上。
   const count = store.connections.filter((c) => {
     if (c.from !== nodeId) return false;

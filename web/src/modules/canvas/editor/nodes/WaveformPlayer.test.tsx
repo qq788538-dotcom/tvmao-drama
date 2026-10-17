@@ -71,7 +71,7 @@ describe('WaveformPlayer', () => {
     expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
   });
 
-  // 用户拍板 2026-08-18：只有按住播放头才能拖动改进度；波形其他位置不拦事件，
+  // 只有按住播放头才能拖动改进度；波形其他位置不拦事件，
   // 点击/拖动走 NodeShell 的节点选中/拖动。
   it('waveform lets mousedown propagate (node click/drag), playhead does not', () => {
     const outerMouseDown = vi.fn();

@@ -267,7 +267,7 @@ func TestRuntimeArtifactSubmissionFailureDoesNotFallBackToAssistantText(t *testi
 
 // TestRuntimeFeedsToolErrorBackToModel 复现生产事故：模型偶发调 ls("/")（绝对路径越界），
 // Eino 默认把工具错误当致命 NodeRunError，20+ 分钟的 Run 整场报废重跑
-// （2026-07-21/22 生产日志 60 次 path escapes skill root）。期望：错误文本作为
+// （生产日志里的 path escapes skill root）。期望：错误文本作为
 // 普通 tool 结果回给模型，模型自纠后 Run 正常完成。
 func TestRuntimeFeedsToolErrorBackToModel(t *testing.T) {
 	root := t.TempDir()

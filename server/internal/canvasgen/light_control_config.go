@@ -19,7 +19,7 @@ const SettingCanvasLightControl = "canvas_light_control"
 // Enqueue 与 resolver 都必须**先于**绘图预设查表分流本 key。
 const LightControlPresetKey = "__light_control__"
 
-// lightDirectionPhrases 26 方向 → 中文打光短语（对标 liblib UI_KeyLight 词表：
+// lightDirectionPhrases 26 方向 → 中文打光短语（词表：
 // 8 水平方位 × 3 高度 + top/bottom）。key 用小写连字符，与前端球面吸附枚举一致。
 // 文案面向通用图生图模型的指令跟随写（摄影术语+方位），跑图不满意直接改这里，
 // 排队中的任务执行时即生效（resolver 每次现读 settings，但短语表在代码里——
@@ -54,9 +54,9 @@ var lightDirectionPhrases = map[string]string{
 	"bottom":           "主光源来自正下方，底光，戏剧化阴影",
 }
 
-// lightRimPhrases 轮廓光方向 → 中文短语。对标 liblib UI_RimLight：词表只有背面
-// 9 向（轮廓光的物理意义就是从背面勾边）。当前前端只发 "back"（开关无方向选择，
-// 与 liblib 默认行为一致），其余键位为将来放开方向选择留的词——收到未知值按缺省
+// lightRimPhrases 轮廓光方向 → 中文短语。词表只有背面
+// 9 向（轮廓光的物理意义就是从背面勾边）。当前前端只发 "back"（开关无方向选择），
+// 其余键位为将来放开方向选择留的词——收到未知值按缺省
 // back 容错，不让任务失败。
 var lightRimPhrases = map[string]string{
 	"back":            "正后方",
@@ -129,7 +129,7 @@ const lightRefPhrase = "参考另一张输入图片的打光风格，将其光�
 
 // LightControlPreset 一条打光预设(如「伦勃朗光」)。参数部分（direction/brightness/
 // lightColor/referenceImage/thumbnail）会下发给前端（点预设时表单跳位/带图），
-// 不属于保密内容——liblib 的同款预设参数同样明文可见；只有 Prompt 保密。
+// 不属于保密内容——这些参数本就体现在界面上；只有 Prompt 保密。
 // 一条预设可任意组合三类内容：纯参数（伦勃朗光）、纯保密词（赛博朋克）、
 // 参数+词混合（过曝胶片）、参考图（落日迷幻），字段留空即「该维度不动」。
 type LightControlPreset struct {
@@ -183,7 +183,7 @@ func (c LightControlConfig) Preset(key string) (LightControlPreset, bool) {
 
 // ComposeLightControlText 把打光参数拼成发往上游的中文前置文本。
 // params 契约（全 string，走 PresetParams 通道，**缺 key = 用户没碰该组 = 不拼**，
-// 这是对标 liblib 的脏标记语义：缺省交给模型自由发挥，不发默认值捆住模型）：
+// 这是脏标记语义：缺省交给模型自由发挥，不发默认值捆住模型）：
 //   - "keyLight"   26 方向枚举（未知值跳过不报错——执行层没有把错误退给用户的通道）
 //   - "brightness" "0"~"100"（非法值跳过）
 //   - "lightColor" "#rrggbb"（非法值跳过）

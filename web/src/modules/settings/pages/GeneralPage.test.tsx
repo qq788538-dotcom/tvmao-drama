@@ -51,7 +51,7 @@ describe('GeneralPage', () => {
   });
 });
 
-// I1：按校验状态给出不同的按钮和文案
+// 按校验状态给出不同的按钮和文案
 describe('dataDirChangeDialog', () => {
   it('空目录：迁移', () => {
     const d = dataDirChangeDialog({ path: '/X/MiaojuData', state: 'empty' });

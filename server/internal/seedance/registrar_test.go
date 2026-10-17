@@ -107,7 +107,7 @@ func TestRegisterErrorRedactsKey(t *testing.T) {
 	}
 }
 
-// 终审 Ruling 5：Key 横跨 500 字截断点时，必须先脱敏再截断，否则会漏出半截 Key。
+// Key 横跨 500 字截断点时，必须先脱敏再截断，否则会漏出半截 Key。
 func TestRegisterRedactsKeyBeforeTruncate(t *testing.T) {
 	r := newReg(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(502)

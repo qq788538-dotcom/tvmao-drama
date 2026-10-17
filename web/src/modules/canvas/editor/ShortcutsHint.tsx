@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { Keyboard } from 'lucide-react';
 
 // 画布右下角的快捷键提示：一行速览 + 行头键盘图标 hover 即弹出完整面板
-// （对标 Lovart 的快捷键弹层，栏间竖线分割）。清单与
-// apps/web/src/modules/canvas/README.md 同源，改任一侧记得同步另一侧。
+// （栏间竖线分割）。
 // 按键名按操作系统显示：Mac 用 ⌘/⇧，Windows 用 Ctrl/Shift。
 
 type Platform = 'mac' | 'win';

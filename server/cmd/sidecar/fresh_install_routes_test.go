@@ -10,7 +10,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
 )
 
-func p1dGet(t *testing.T, port, path string) (int, map[string]any) {
+func getAuthedJSON(t *testing.T, port, path string) (int, map[string]any) {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+port+path, nil)
 	req.Header.Set("Authorization", "Bearer "+testToken)
@@ -28,7 +28,7 @@ func p1dGet(t *testing.T, port, path string) (int, map[string]any) {
 }
 
 // 新装的应用：用户端接口全部可用，且“未配置”状态如实反映。
-func TestP1dRoutesOnFreshInstall(t *testing.T) {
+func TestUserRoutesOnFreshInstall(t *testing.T) {
 	bin := buildSidecar(t)
 	_, _, port := startSidecar(t, bin, t.TempDir())
 
@@ -42,7 +42,7 @@ func TestP1dRoutesOnFreshInstall(t *testing.T) {
 		"/api/v1/director/library":          {"categories"},
 		"/api/v1/director/models":           {"items"},
 	} {
-		code, body := p1dGet(t, port, path)
+		code, body := getAuthedJSON(t, port, path)
 		if code != http.StatusOK {
 			t.Fatalf("%s: code=%d body=%v", path, code, body)
 		}
@@ -52,11 +52,11 @@ func TestP1dRoutesOnFreshInstall(t *testing.T) {
 			}
 		}
 	}
-	if _, body := p1dGet(t, port, "/api/v1/seedance/config"); body["configured"] != false {
+	if _, body := getAuthedJSON(t, port, "/api/v1/seedance/config"); body["configured"] != false {
 		t.Fatalf("新装应为未配置: %v", body)
 	}
 	// 形象图内置在 sidecar：新装即可用，不需要配任何在线地址，也不走外网。
-	_, chars := p1dGet(t, port, "/api/v1/canvas/ai-characters")
+	_, chars := getAuthedJSON(t, port, "/api/v1/canvas/ai-characters")
 	if chars["imageConfigured"] != true {
 		t.Fatalf("新装形象图应为可用: %v", chars)
 	}

@@ -104,7 +104,7 @@ describe('AgentClient', () => {
     });
   });
 
-  it('sendUserMessage returns false and drops payload when socket not open (M2)', () => {
+  it('sendUserMessage returns false and drops payload when socket not open', () => {
     const client = new AgentClient({ url: '/api/v1/agent/ws', token: 't' });
     client.connect();
     // 不触发 onopen——readyState 保持 0
@@ -116,7 +116,7 @@ describe('AgentClient', () => {
     expect(FakeWS.instances[0].sent).toHaveLength(0);
   });
 
-  it('sendUserMessage returns true when the socket is open (M2)', () => {
+  it('sendUserMessage returns true when the socket is open', () => {
     const client = new AgentClient({ url: '/api/v1/agent/ws', token: 't' });
     client.connect();
     FakeWS.instances[0].onopen?.(new Event('open'));
@@ -152,7 +152,7 @@ describe('AgentClient', () => {
     }
   });
 
-  it('falls back to a slow retry loop after fast retries are exhausted (M3)', () => {
+  it('falls back to a slow retry loop after fast retries are exhausted', () => {
     vi.useFakeTimers();
     try {
       const client = new AgentClient({ url: '/api/v1/agent/ws', token: 't' });
@@ -180,7 +180,7 @@ describe('AgentClient', () => {
     }
   });
 
-  it('resets the retry counter only after the connection stays open for 30s (L5)', () => {
+  it('resets the retry counter only after the connection stays open for 30s', () => {
     vi.useFakeTimers();
     try {
       const client = new AgentClient({ url: '/api/v1/agent/ws', token: 't' });

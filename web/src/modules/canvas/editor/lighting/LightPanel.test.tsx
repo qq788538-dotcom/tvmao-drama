@@ -44,7 +44,7 @@ describe('LightPanel', () => {
     });
   });
 
-  it('底栏不显示预扣积分或计费说明（X3）', async () => {
+  it('底栏不显示预扣积分或计费说明', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>

@@ -1,12 +1,11 @@
 // 图片标注的纯计算侧（可单测，不碰 DOM/store）：坐标空间换算与笔画重放。
 // 交互与执行分别在 AnnotateMode.tsx / executeAnnotateSave.ts。
 //
-// 核心约定：**所有笔画一律存原图像素空间**（对标 liblib 实测：它绘制期用
-// 显示分辨率、导出时放大重放；我们在采集时就换算到原图空间，效果相同，但
-// 画布 zoom 中途变化不影响已存笔画，导出重放零二次换算）。预览与导出走同
+// 核心约定：**所有笔画一律存原图像素空间**（采集时就换算到原图空间，而不是绘制期用
+// 显示分辨率、导出时放大重放——这样画布 zoom 中途变化不影响已存笔画，导出重放零二次换算）。预览与导出走同
 // 一个 replayStrokes——两边只差 ctx 的 transform，不可能画得不一样。
 
-// 7 个固定标注色，顺序与默认值照抄 liblib 实测（黄/橙/粉/红/紫/蓝/白，默认红）。
+// 7 个固定标注色（黄/橙/粉/红/紫/蓝/白，默认红）。
 export const ANNOTATE_COLORS = [
   '#facc15',
   '#f97316',
@@ -18,14 +17,14 @@ export const ANNOTATE_COLORS = [
 ] as const;
 export const DEFAULT_ANNOTATE_COLOR = '#ef4444';
 
-// 线宽滑杆的档位范围与默认值（对标 liblib：默认 4）。滑杆值的语义是「节点
+// 线宽滑杆的档位范围与默认值（默认 4）。滑杆值的语义是「节点
 // 内容区世界单位下的像素」——世界单位不随画布 zoom 变，同一档位在任何缩放
 // 下导出的观感一致。
 export const MIN_STROKE_WIDTH = 2;
 export const MAX_STROKE_WIDTH = 20;
 export const DEFAULT_STROKE_WIDTH = 4;
 
-// 文字字号 = 线宽滑杆值 × 固定倍率（liblib 亦是线宽驱动字号，无独立字号控件）。
+// 文字字号 = 线宽滑杆值 × 固定倍率（线宽驱动字号，无独立字号控件）。
 export const TEXT_FONT_RATIO = 6;
 
 export type AnnotateStroke =

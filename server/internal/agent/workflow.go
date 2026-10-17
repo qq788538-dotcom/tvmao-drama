@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// WorkflowStep 是一个顺序 workflow skill（L3）里的一个节点。每个 step 用一个静态的
+// WorkflowStep 是一个顺序 workflow skill 里的一个节点。每个 step 用一个静态的
 // input map 调用单个工具。Inputs 里的字符串值可以包含 `{{step.<step_name>.<var>}}`
 // 或 `{{input.<key>}}` 占位符，会在工具运行前一刻被替换：
 //

@@ -140,7 +140,7 @@ export function PreviewNode({ id }: { id: string }) {
               </div>
             )}
             {/* 音频态不渲染角落下载：音频工具条（AudioActionsBar）已有下载，
-                两个下载图标叠着出现（用户点名去掉 2026-08-18）。 */}
+                避免两个下载图标叠着出现。 */}
             {!isAudio && (
               <button
                 type="button"

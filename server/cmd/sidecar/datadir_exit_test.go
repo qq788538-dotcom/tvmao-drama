@@ -13,7 +13,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/datadir"
 )
 
-// I3：等锁超时 → 专用退出码（壳据此保留待办），等待开始时 stdout 打一行 WAITING_MIGRATE_LOCK。
+// 等锁超时 → 专用退出码（壳据此保留待办），等待开始时 stdout 打一行 WAITING_MIGRATE_LOCK。
 func TestSubcommandLockTimeoutExitCodeAndWaitingLine(t *testing.T) {
 	old := migrateLockWait
 	migrateLockWait = 80 * time.Millisecond
@@ -35,7 +35,7 @@ func TestSubcommandLockTimeoutExitCodeAndWaitingLine(t *testing.T) {
 	}
 }
 
-// I4：迁移源目录还被一个 sidecar 占着（上一个窗口仍在关闭）时不开始复制，返回“数据目录忙”退出码。
+// 迁移源目录还被一个 sidecar 占着（上一个窗口仍在关闭）时不开始复制，返回“数据目录忙”退出码。
 func TestMigrateRefusesWhileSourceInUse(t *testing.T) {
 	old := sourceLockWait
 	sourceLockWait = 50 * time.Millisecond
@@ -60,7 +60,7 @@ func TestMigrateRefusesWhileSourceInUse(t *testing.T) {
 	}
 }
 
-// I2：--exit-on-stdin-eof 时 stdin 关闭（壳退出 / 崩溃）就中止子命令，迁移子进程不会变成孤儿。
+// --exit-on-stdin-eof 时 stdin 关闭（壳退出 / 崩溃）就中止子命令，迁移子进程不会变成孤儿。
 func TestSubcommandAbortsOnStdinEOF(t *testing.T) {
 	r, w := io.Pipe()
 	aborted := make(chan struct{})
@@ -104,7 +104,7 @@ func TestExitCodeOf(t *testing.T) {
 	}
 }
 
-// I4：服务模式下数据目录被占用 → exitDataDirBusy，提示明确。
+// 服务模式下数据目录被占用 → exitDataDirBusy，提示明确。
 func TestLockDataDirBusy(t *testing.T) {
 	dir := t.TempDir()
 	release, err := datadir.AcquireInstanceLock(dir, 0)

@@ -20,7 +20,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/canvasgen"
 )
 
-// ── I1：坏配置降级 ─────────────────────────────────────────────
+// ── 坏配置降级 ─────────────────────────────────────────────
 
 // 存量坏数据（例如旧版本无校验时写入的）不能让用户端接口全部 500：按“未配置”处理。
 func TestPostprocessCorruptConfigDegrades(t *testing.T) {
@@ -51,7 +51,7 @@ func TestPostprocessCorruptConfigDegrades(t *testing.T) {
 	}
 }
 
-// ── I2：下载超时、本地 /media 直接读文件、峰值内存 ──────────────────────────────
+// ── 下载超时、本地 /media 直接读文件、峰值内存 ──────────────────────────────
 
 // fakeObjects 按 key 打开磁盘上的文件，模拟 assets.LocalStorage.GetObject（返回 *os.File）。
 type fakeObjects struct {

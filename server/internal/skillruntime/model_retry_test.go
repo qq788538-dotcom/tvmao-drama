@@ -10,8 +10,8 @@ import (
 	openai "github.com/cloudwego/eino-ext/components/model/openai"
 )
 
-// 生产 2026-07-21/22 的真实死法:429(用户并发满)/524(代理 120s 读超时)只重试
-// 2 次、亚秒退避,烧完把跑了十几分钟的 Run 整场判死。这里锁住重试分类与退避节奏。
+// 生产上的真实死法:429(用户并发满)/524(代理 120s 读超时)若只重试
+// 2 次、亚秒退避,重试很快烧完,跑了十几分钟的 Run 会被整场判死。这里锁住重试分类与退避节奏。
 
 func TestIsRetryableModelErrorByStatusCode(t *testing.T) {
 	cases := []struct {

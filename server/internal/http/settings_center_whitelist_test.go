@@ -1,7 +1,7 @@
 package http
 
 // 用真实库 + 真实内置种子 + 真实 builtin.Service 挂设置接口的测试环境。
-// 画布配置的白名单用例已随五项配置写死（2026-10-07）删除，见 settings_hardcoded_test.go。
+// 画布配置的五项已写死，其用例见 settings_hardcoded_test.go。
 
 import (
 	"bytes"

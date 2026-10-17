@@ -1,4 +1,4 @@
-// 标注交互约定钉死在这里（对标 liblib 实测，见 docs/2026-08-15-image-annotate-design.md）：
+// 标注交互约定钉死在这里：
 // 点「标注」进入模式（模式条顶掉常规工具条）；✕ / ESC / 点节点外 = 直接丢弃
 // 退出、无确认；保存把 sourceId + 已加载原图 + 笔画交给 executeAnnotateSave；
 // 无图节点进入即警告退出。
@@ -114,7 +114,7 @@ describe('ImageActionsBar 标注', () => {
     expect(screen.queryByRole('button', { name: '保存标注' })).not.toBeInTheDocument();
   });
 
-  it('点节点外任意处退出丢弃（对标 liblib，无确认）', async () => {
+  it('点节点外任意处退出丢弃（无确认）', async () => {
     renderBar();
     await enterAnnotate();
     act(() => {

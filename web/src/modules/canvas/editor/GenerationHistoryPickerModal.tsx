@@ -26,7 +26,7 @@ function nodeTypeFor(kind: PickKind): NodeType {
   return 'input-audio';
 }
 
-/** 一格 = 一个产物（按图平铺，对标 libtv），不是一个任务——多产物任务拆开展示。 */
+/** 一格 = 一个产物（按图平铺），不是一个任务——多产物任务拆开展示。 */
 interface OutputEntry {
   taskId: number;
   outputIndex: number;

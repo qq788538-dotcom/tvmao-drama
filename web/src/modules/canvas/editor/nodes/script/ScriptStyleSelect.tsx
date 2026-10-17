@@ -1,6 +1,6 @@
 // 画布脚本生成器的风格选择——彩色 chip + name/version 两级 Cascader。
-// 复制适配自 project-management/WorkStyleSelect.tsx（用户要求 UI 1:1 对标项目
-// 管理步骤①的作品风格），但按「平级独立原则」不 import 那边的代码：数据源换成
+// 复制适配自 project-management/WorkStyleSelect.tsx（UI 与项目
+// 管理步骤①的作品风格一致），但按「平级独立原则」不 import 那边的代码：数据源换成
 // 画布自己的 /canvas-script/styles（由 ScriptGenerator 传入，避免二次请求）。
 // AntD Cascader 弹层 portal 到 body——顺带绕开画布 transform 容器里 fixed 定位
 // containing block 错乱的问题（自绘 PopoverShell 在缩放画布内会飘）。
