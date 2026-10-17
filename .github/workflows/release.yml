@@ -1,0 +1,191 @@
+name: Release
+
+# 推 v<版本> 标签时构建三个安装包并发布到 GitHub Releases：
+#   喵剧AI_<版本>_aarch64.dmg / 喵剧AI_<版本>_x64.dmg（macOS runner 上跑 scripts/release-macos.sh）
+#   miaoju-windows-x64-<版本>.zip（Linux runner 上用 cargo-xwin 跑 scripts/package-windows.sh）
+# 改动本文件的 PR 和手动触发只构建、把产物留在 Actions 里，不发 Release。
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Version & data guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Version
+        id: v
+        run: |
+          bash scripts/version.sh check
+          v="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_TYPE}" = tag ] && [ "${GITHUB_REF_NAME}" != "v$v" ]; then
+            echo "标签 ${GITHUB_REF_NAME} 与 package.json 版本 $v 不一致（应为 v$v）" >&2
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      # AI 角色库数据包没有分发权，不能进安装包（见 seed/README.md）
+      - name: No character data in tree
+        run: |
+          found="$( { find server/internal/aicharacters/images -type f ! -name README.md
+                      find server/internal/aicharacters/seeddata -type f ! -name README.md
+                      ls seed/seedance_characters.jsonl 2>/dev/null; } | head)"
+          if [ -n "$found" ]; then echo "发现不应分发的角色库数据：" >&2; echo "$found" >&2; exit 1; fi
+
+  macos:
+    name: macOS (aarch64 + x64)
+    needs: check
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          # cli/go.mod 要求的 Go 版本不低于 server/go.mod，装它两边都能编
+          go-version-file: cli/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            cli/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: release-macos
+      - name: Install tauri-cli
+        run: cargo tauri --version 2>/dev/null || cargo install tauri-cli --version '^2.12.1' --locked
+      - run: pnpm install --frozen-lockfile
+      - name: Build dmg
+        run: bash scripts/release-macos.sh all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: out/*.dmg
+          if-no-files-found: error
+          compression-level: 0
+
+  windows:
+    name: Windows x64
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang lld llvm
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            cli/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: release-windows
+      - name: Install tauri-cli and cargo-xwin
+        run: |
+          cargo tauri --version 2>/dev/null || cargo install tauri-cli --version '^2.12.1' --locked
+          cargo xwin --version 2>/dev/null || cargo install cargo-xwin --locked
+      - run: pnpm install --frozen-lockfile
+      - name: Build zip
+        run: bash scripts/package-windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: Publish GitHub Release
+    if: github.ref_type == 'tag'
+    needs: [check, macos, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums and notes
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          cd dist
+          sha256sum *.dmg *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          cat > ../notes.md <<EOF
+          ## 下载
+
+          | 系统 | 安装包 | 要求 |
+          |---|---|---|
+          | macOS（Apple 芯片 M1/M2/M3/M4） | \`喵剧AI_${VERSION}_aarch64.dmg\` | macOS 14 及以上 |
+          | macOS（Intel） | \`喵剧AI_${VERSION}_x64.dmg\` | macOS 14 及以上 |
+          | Windows | \`miaoju-windows-x64-${VERSION}.zip\` | Windows 10 / 11 64 位 |
+
+          ## 首次打开
+
+          安装包没有购买代码签名证书，第一次打开时系统会拦截，放行一次即可。安装包里附有《首次打开说明.txt》。
+
+          **macOS**：把“喵剧AI”拖进“应用程序”后双击，被拦截时点“完成”；打开“系统设置 → 隐私与安全性”，在最下面点“仍要打开”并输入开机密码，再双击打开。如果提示“已损坏，无法打开”，在终端运行：
+
+          \`\`\`
+          sudo xattr -dr com.apple.quarantine /Applications/喵剧AI.app
+          \`\`\`
+
+          **Windows**：先右键 zip“全部解压缩”，再双击解压出来的 \`miaoju.exe\`，不要在压缩包里直接运行。出现“Windows 已保护你的电脑”时点“更多信息 → 仍要运行”。缺少 WebView2 时按提示安装即可。
+
+          完整说明：[macOS](https://github.com/${REPO}/blob/v${VERSION}/packaging/首次打开说明-macOS.txt) · [Windows](https://github.com/${REPO}/blob/v${VERSION}/packaging/首次打开说明-Windows.txt)
+
+          文件校验值见 \`SHA256SUMS.txt\`。
+          EOF
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: 喵剧AI v${{ needs.check.outputs.version }}
+          body_path: notes.md
+          files: |
+            dist/*.dmg
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true

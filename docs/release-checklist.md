@@ -67,7 +67,7 @@
 
 ## 6. 发出
 
-- [ ] 上传三个安装包和 sha256 到 GitHub Releases，说明里提醒首次打开请看包内《首次打开说明.txt》
+- [ ] 推送标签 `git tag v<ver> && git push origin v<ver>`：`.github/workflows/release.yml` 会在 GitHub Actions 上重新构建三个安装包，连同 `SHA256SUMS.txt` 和首次打开说明一起发布到 GitHub Releases。标签必须与 package.json 版本一致，否则工作流报错退出
 
 ## 结果记录模板
 
