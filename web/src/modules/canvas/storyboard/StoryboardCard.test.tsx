@@ -47,7 +47,7 @@ describe('StoryboardCard', () => {
     expect(screen.getByText('待生成')).toBeInTheDocument();
   });
 
-  // 图片/视频卡片可拖到详情面板参考区建连线；文本卡不参与（用户拍板）。
+  // 图片/视频卡片可拖到详情面板参考区建连线；文本卡不参与。
   it('媒体卡片可拖拽，dragstart 写入节点 id', () => {
     const setData = vi.fn();
     render(

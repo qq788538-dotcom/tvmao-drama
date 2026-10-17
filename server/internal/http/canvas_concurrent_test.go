@@ -17,7 +17,7 @@ func teamCanvasRequest(t *testing.T, method, path string, body []byte, params ma
 	return req.WithContext(withActorUserID(req.Context(), actor))
 }
 
-// 二期核心分流：团队身份（actor>0）写画布**不过编辑锁**。锁值就算是空的、过期的、
+// 核心分流：团队身份（actor>0）写画布**不过编辑锁**。锁值就算是空的、过期的、
 // 别人的，也照写不误——服务端的串行化由 MutateClientSnapshot 的 SELECT…FOR UPDATE
 // 行锁承担。这条如果回归，多人同时编辑会立刻退化回「一个人写、其他人被 409 顶住」。
 func TestCanvasMutationTeamIdentitySkipsOwnerLock(t *testing.T) {
@@ -48,7 +48,7 @@ func TestCanvasMutationTeamIdentitySkipsOwnerLock(t *testing.T) {
 	}
 }
 
-// 个人身份（actor==0）逐字保持一期行为：锁校验必须仍然生效，失锁就是 409。
+// 个人身份（actor==0）逐字保持旧版行为：锁校验必须仍然生效，失锁就是 409。
 // 这条是「个人路径零回归」承诺的钉子。
 func TestCanvasMutationPersonalIdentityStillRequiresOwnerLock(t *testing.T) {
 	repo := &fakeProjectRepository{
@@ -76,7 +76,7 @@ func TestCanvasMutationPersonalIdentityStillRequiresOwnerLock(t *testing.T) {
 	}
 }
 
-// 空 ownerToken 的个人请求同样必须被拒——「没带凭据」不能因为二期改动变成放行。
+// 空 ownerToken 的个人请求同样必须被拒——「没带凭据」不能因为并发编辑改动变成放行。
 func TestCanvasMutationPersonalIdentityRejectsEmptyToken(t *testing.T) {
 	repo := &fakeProjectRepository{
 		project:       &projects.Project{ID: 42, UserID: 7},

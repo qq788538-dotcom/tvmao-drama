@@ -430,7 +430,7 @@ export function ViewportToolbar({
   // 用户级云端「我的模型」目录（宿主在场时的数据源）。null=尚未加载。
   // 只在面板打开时拉取，上传/删除后各自主动 refresh。
   const [userModels, setUserModels] = useState<DirectorUserModel[] | null>(null);
-  // 平台预置目录（阶段三·后台配置的分类+模型）。分类 tab 按它动态渲染，
+  // 平台预置目录（后台配置的分类+模型）。分类 tab 按它动态渲染，
   // 上游写死的四个分类只在无宿主独立运行时回落使用。
   const [presetLibrary, setPresetLibrary] = useState<DirectorPresetCategory[] | null>(null);
 
@@ -489,7 +489,7 @@ export function ViewportToolbar({
     libraryLocalModelInputRef.current?.click();
   }
 
-  // 宿主在场：「我的模型」= 用户级云端目录（跨项目共享，用户拍板）；
+  // 宿主在场：「我的模型」= 用户级云端目录（跨项目共享）；
   // 独立运行回落：仍列当前场景 project.assets 里的本地导入资产。
   const myModelLibraryItems: ModelLibraryItem[] = getDirectorHostAdapter()
     ? (userModels ?? []).map(

@@ -9,7 +9,7 @@ import (
 
 // 文本生成任务的写回：产物落 settings.text（浏览器 TextNode.tsx 读写的字段），
 // 不碰 content（画布语义里那是媒体 URL），不并 genHistory（条目形状 {url,...}
-// 与前端逐字同构，文本不进历史是拍板过的第一版边界）。
+// 与前端逐字同构，文本不进历史是约定的第一版边界）。
 
 func TestOnGenerationResult_TextWritesSettingsText(t *testing.T) {
 	snap := `{"nodes":[{"id":"A","type":"text-node","status":"generating","taskId":7,

@@ -61,7 +61,7 @@ func (s *Service) writeNode(userID, projectID int64, nodeID string, mutate func(
 				return nil, false, err
 			}
 			// 摘要序列化失败不该毁掉一次成功的回写：置空即可，收端见不到 op 就退回
-			// 整拉快照（一期行为）。
+			// 整拉快照（旧版行为）。
 			changedNode, _ = json.Marshal(node)
 			changed = true
 			return next, true, nil
@@ -78,8 +78,8 @@ func (s *Service) writeNode(userID, projectID int64, nodeID string, mutate func(
 		var op *canvasstate.CanvasOpSummary
 		if len(changedNode) > 0 {
 			// 出帧前补签：节点里的 content 是 canonical `media://<key>`，浏览器不认
-			// 这个协议。一期同伴走 GET 快照，那条路上有 SignJSON（唯一签名出口）；
-			// 二期本地合并绕开了它，不补签就会「出图那一刻同伴画布上的图整块裂开，
+			// 这个协议。旧版同伴走 GET 快照，那条路上有 SignJSON（唯一签名出口）；
+			// 新版本地合并绕开了它，不补签就会「出图那一刻同伴画布上的图整块裂开，
 			// 刷新才好」，且零报错。落库的字节保持 canonical（签名 URL 会过期）。
 			node := changedNode
 			if s.signer != nil {

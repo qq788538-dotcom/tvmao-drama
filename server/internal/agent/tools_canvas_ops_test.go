@@ -108,7 +108,7 @@ func TestCanvasOpTools_EmitStructuredPayloads(t *testing.T) {
 	}
 }
 
-// 用户拍板规则：操作 chip 有名称显示名称，没名称才显示 id。删除类 chip 渲染
+// 约定规则：操作 chip 有名称显示名称，没名称才显示 id。删除类 chip 渲染
 // 时节点已不在画布上，名字必须在执行时从服务端快照定格进 payload 落库——
 // 这里钉死 delete / connect / remove 三个工具都带定格名（update 同 helper）。
 func TestCanvasOps_FreezeNodeNameIntoPayload(t *testing.T) {

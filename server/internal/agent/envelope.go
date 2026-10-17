@@ -21,12 +21,12 @@ const (
 	FrameThreadEnd         FrameType = "thread_end"
 	FrameError             FrameType = "error"
 	// FrameCanvasChanged 是「这个项目的画布快照变了」的权威通知帧（version + 源指纹
-	// + 二期新增的 op 变更摘要）。它复用 agent 这条既有 socket，正是为了不为画布协作
+	// + 后来新增的 op 变更摘要）。它复用 agent 这条既有 socket，正是为了不为画布协作
 	// 再开一条连接。
 	//
-	// 二期为什么**不**换成新的 canvas_op 帧名：一期前端只认 type=="canvas_changed"，
+	// 新版为什么**不**换成新的 canvas_op 帧名：旧版前端只认 type=="canvas_changed"，
 	// 改名等于让所有还没刷新的页面瞬间失聪（协作靠的就是这条帧）。改为在同一帧里
-	// 加一个可选的 op 字段——一期前端忽略未知字段、继续整拉快照；二期前端见 op 就
+	// 加一个可选的 op 字段——旧版前端忽略未知字段、继续整拉快照；新版前端见 op 就
 	// 本地合并，没 op（后端未升级/摘要序列化失败）才回退整拉。加字段零破坏，是这里
 	// 唯一能同时满足「兼容旧页面」和「带上变更数据」的形态。
 	FrameCanvasChanged FrameType = "canvas_changed"
@@ -60,7 +60,7 @@ type Frame struct {
 	Version    *int64 `json:"version,omitempty"`
 	SourceMark string `json:"source_mark,omitempty"`
 
-	// Op 是 canvas_changed 帧的**变更摘要**（二期新增，可选）：收到它的编辑端直接
+	// Op 是 canvas_changed 帧的**变更摘要**（可选）：收到它的编辑端直接
 	// 在本地重放这一笔变更，不必整拉快照——整拉会清掉选中/拖拽/文本光标等本地交互态，
 	// 多人同时编辑时等于互相打断。合并语义逐条写在 canvasstate.CanvasOpSummary 上，
 	// 前端 applyRemoteOp 必须与之同构。

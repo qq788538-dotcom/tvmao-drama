@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-// 【画布集成适配·阶段二唯一注入点】宿主（自由画布）向导演台注入的能力集合。
+// 【画布集成适配·唯一注入点】宿主（自由画布）向导演台注入的能力集合。
 // 设计约束：
 // 1. 本文件不 import 导演台任何其他模块（directorStore 会反向 import 它，
 //    引入依赖会成环），状态类型一律用 unknown，由调用方收窄。
@@ -32,7 +32,7 @@ export interface DirectorHostAdapter {
   /** true=已删除（含引用确认后强删）；false=用户在确认弹窗里取消。
    *  引用检查与确认交互都在实现侧（画布），desk 只管刷新列表。 */
   deleteUserModel(id: number): Promise<boolean>;
-  /** 平台预置模型目录（阶段三·管理员在后台配置的分类与模型）。分类是后台
+  /** 平台预置模型目录（管理员在后台配置的分类与模型）。分类是后台
    *  数据（可增删改名），desk 的分类 tab 按返回值动态渲染，不再依赖上游
    *  写死的四个分类；「我的模型」不在其中，由 desk 自己拼在尾部。 */
   listPresetLibrary(): Promise<DirectorPresetCategory[]>;

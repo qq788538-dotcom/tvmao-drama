@@ -18,7 +18,7 @@ import (
 // DirectorModelHandler 是「3D 导演台·用户级云端模型库」的 HTTP 层：
 // 上传 FBX/OBJ/GLB 模型、列表（签名 URL）、删除（带画布快照引用检查）。
 // 模型是用户级（跨画布项目共享）资源，条数上限是常量
-// directormodels.UserModelLimit（用户拍板硬编码，不走 settings）。
+// directormodels.UserModelLimit（约定硬编码，不走 settings）。
 type DirectorModelHandler struct {
 	svc     *directormodels.Service
 	storage assets.Storage

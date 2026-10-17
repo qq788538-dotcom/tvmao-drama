@@ -99,7 +99,7 @@ export function configureCanvasPersistence(next: {
     // ownerToken**，而页面的调用顺序是「加载快照 → seedCanvasBaselines →
     // setCanvasOwnerToken → configureCanvasPersistence」——如果换项目时才在这里
     // 兜底 reset，刚为**新**项目播下的基线和刚设好的 token 会被一起清掉：
-    // 基线没了 → 字段级 LWW 静默退化成整节点 upsert（二期要消灭的互踩面又回来了）；
+    // 基线没了 → 字段级 LWW 静默退化成整节点 upsert（并发编辑要消灭的互踩面又回来了）；
     // token 没了 → store 的结构性 op 被 applyCanvasOp 静默丢弃，用户的增删节点
     // 一个都不落库。两种都无报错、无 UI 反馈，只表现为「协作偶尔互相覆盖」。
     //

@@ -63,7 +63,7 @@ func (s *Service) CreateNode(userID, projectID int64, req CreateNodeRequest, opt
 	}
 	if _, err := s.projects.MutateSnapshot(projectID, func(payload json.RawMessage) (json.RawMessage, bool, error) {
 		// 摘要丢弃：CLI 写入至今不广播 canvas_op（没有 WS 连接的调用方），这条路径
-		// 与二期并发编辑无关。要接的话在这里把摘要交给 notifier 即可。
+		// 与并发编辑无关。要接的话在这里把摘要交给 notifier 即可。
 		next, changed, _, err := canvasstate.UpsertNode(ensurePayload(payload), raw)
 		return next, changed, err
 	}); err != nil {

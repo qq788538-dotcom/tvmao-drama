@@ -182,7 +182,7 @@ export function StoryboardCard({
       type="button"
       aria-pressed={selected}
       onClick={() => onSelect(node.id)}
-      // 图片/视频卡片可拖到详情面板的参考区建连线（用户拍板：来源只限左侧
+      // 图片/视频卡片可拖到详情面板的参考区建连线（约定：来源只限左侧
       // 列表，文本/音频不参与）。draggable 挂在整张卡片上而不是缩略图上——
       // 拖拽目标是"这个节点"，抓哪儿都该能拖。
       draggable

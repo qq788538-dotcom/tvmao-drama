@@ -252,7 +252,7 @@ describe('useMediaNodeMenu 「删除」', () => {
     expect(buttons[buttons.length - 1].textContent).toBe('删除');
   });
 
-  it('「Seedance 合规校验」固定是菜单首项（用户拍板）', () => {
+  it('「Seedance 合规校验」固定是菜单首项', () => {
     renderProbe({ url: 'http://x.png', kind: 'image', nodeId: 'n-1' });
     openMenu();
     const menu = screen.getByText('删除').closest('.canvas-menu-enter')!;

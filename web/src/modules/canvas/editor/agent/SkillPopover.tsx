@@ -73,7 +73,7 @@ export function SkillPopover({ open, onClose, onSelect }: SkillPopoverProps) {
     [skills, apiCategories],
   );
 
-  // 没有「全部」胶囊（用户拍板砍掉），默认选中第一个分组；字典晚于 skills 到达
+  // 没有「全部」胶囊（约定砍掉），默认选中第一个分组；字典晚于 skills 到达
   // 时分组名可能重算（孤儿被并入「其他」），已选中的胶囊若已不存在同样落回第一
   // 个分组，避免列表卡在永远为空的过滤态。分组还没算出来前保持 ''（不过滤），
   // 加载过渡态不闪「暂无匹配」。

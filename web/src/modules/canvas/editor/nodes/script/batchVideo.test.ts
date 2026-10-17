@@ -55,7 +55,7 @@ describe('batchVideo（skill 对齐版）', () => {
     for (const from of ['img1', 'img2']) {
       expect(st.connections.some((c) => c.from === from && c.to === ids[0])).toBe(true);
     }
-    // 用户拍板：不连脚本节点（scriptRowId 反向锚已表达归属，连线只是噪音）。
+    // 约定：不连脚本节点（scriptRowId 反向锚已表达归属，连线只是噪音）。
     expect(st.connections.some((c) => c.from === 's1' && c.to === ids[0])).toBe(false);
     expect(spawnedCountForRow('r1')).toBe(1);
   });

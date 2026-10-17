@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	// UserModelLimit 是每用户模型条数上限。用户拍板定成硬编码常量：最初走
+	// UserModelLimit 是每用户模型条数上限。约定定成硬编码常量：最初走
 	// settings 键可调，但「调上限」从没有真实发生过——为不存在的运维场景留
 	// 配置口子是过度设计（feedback_no_overengineering）。要调就改这里发版。
 	UserModelLimit = 30

@@ -12,7 +12,7 @@ export interface AnnoOp {
   text?: string; // text 工具的内容
   color?: string; // 标注颜色；缺省 = DEFAULT_ANNO_COLOR（老 op 无此字段照常红色）
   // 落笔那一刻的「原始像素/屏幕像素」换算比。样式统一的基准是**屏幕像素**
-  // （线宽 3 屏幕px、文字 15px、图钉 9px，任何分辨率的视频观感一致——用户拍板），
+  // （线宽 3 屏幕px、文字 15px、图钉 9px，任何分辨率的视频观感一致），
   // 渲染/合成时用它把屏幕基准换回原始空间，保存出的标注帧与屏幕所见比例完全
   // 一致（所见即所得）。缺省（老 op）退回按帧宽推导的旧算法。
   px?: number;
@@ -30,7 +30,7 @@ export const DEFAULT_ANNO_COLOR: string = ANNO_COLORS[0];
 
 export interface FrameAnnotation {
   // 记录唯一 id：同一秒可以有多条独立记录（每次「添加至输入框」都新增，用户
-  // 拍板），React key/说明编辑/删除/抓帧全部按 id 定位——按 timeSec 定位会让
+  // 约定），React key/说明编辑/删除/抓帧全部按 id 定位——按 timeSec 定位会让
   // 同秒的多条互相串（改一条说明全变、抓帧全合成第一条的涂鸦）。
   id: string;
   timeSec: number;

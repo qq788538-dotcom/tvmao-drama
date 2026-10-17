@@ -7,7 +7,7 @@
 // canvas-portal-surface 的理由见那边注释），差异只有两点：
 //   1. 内容存在本地 ref，不 commit 到任何节点——没有节点可写；
 //   2. 底部多一个「保存为文本节点」：编辑成果的唯一去处是落成新画布文本节点
-//     （用户拍板的语义），落点取当前视口中心，落完平移过去让用户看到它。
+//     （约定的语义），落点取当前视口中心，落完平移过去让用户看到它。
 import { useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';

@@ -8,7 +8,7 @@
 
 // 单段时长下限。上游 seedance edit 对过短片段没意义,取 4 秒。
 export const RESHOOT_MIN_RANGE_SEC = 4;
-// 单段时长上限。seedance 2.5 edit 单次输入最长 30s(用户拍板按 30s 做,
+// 单段时长上限。seedance 2.5 edit 单次输入最长 30s(约定按 30s 做,
 // 未实测上游校验;如果上游素材校验拒 >15s,收这个常量即可,交互不用改)。
 export const RESHOOT_MAX_RANGE_SEC = 30;
 // 最多可选段数。

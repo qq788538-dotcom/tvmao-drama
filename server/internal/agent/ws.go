@@ -140,8 +140,8 @@ var agentFrameWriteTimeout = 30 * time.Second
 // canvasNotifyWriteTimeout）；顺带挡掉 projectID<=0——SendToProject 那条退化成
 // SendToUser 的分支会把帧撒到该用户的全部页面，画布变更绝不该那样。
 //
-// op 是二期加的变更摘要，可以为 nil（个人路径、或调用方拿不到摘要时）：nil 时帧的
-// 字节形态与一期**逐字相同**，一期前端照常整拉。
+// op 是变更摘要，可以为 nil（个人路径、或调用方拿不到摘要时）：nil 时帧的
+// 字节形态与旧版**逐字相同**，旧版前端照常整拉。
 func (h *Hub) NotifyCanvasChanged(userID, projectID, version int64, sourceMark string, op *canvasstate.CanvasOpSummary) {
 	if userID <= 0 || projectID <= 0 {
 		return

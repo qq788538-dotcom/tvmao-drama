@@ -51,7 +51,7 @@ it("imports a local OBJ/FBX model from the single local model entry", async () =
   expect(screen.queryByText("导入道具模型")).not.toBeInTheDocument();
 
   const input = screen.getByLabelText("导入本地模型");
-  // 阶段三放开 .glb（单文件二进制；.gltf 仍拒，见 localModelImport 注释）。
+  // 现在放开 .glb（单文件二进制；.gltf 仍拒，见 localModelImport 注释）。
   expect(input).toHaveAttribute("accept", ".fbx,.obj,.glb");
 
   const file = new File(["demo"], "football.obj", { type: "model/obj" });

@@ -167,7 +167,7 @@ func (fakeSigner) SignJSON(raw json.RawMessage) json.RawMessage {
 }
 
 // 出图回写的 content 是 canonical media://，而前端把它直接当 <img src>——浏览器不认
-// 这个协议。一期同伴走 GET 快照(那条路上有 SignJSON)，二期本地合并绕开了唯一签名出口，
+// 这个协议。旧版同伴走 GET 快照(那条路上有 SignJSON)，新版本地合并绕开了唯一签名出口，
 // 不补签就是「A 出图 → B 画布上这张图整块裂开」且零报错。
 // 落库的字节必须仍是 canonical（签名 URL 会过期，写进快照就是定时死链）。
 func TestWriteNode_OpMediaIsSignedButSnapshotStaysCanonical(t *testing.T) {

@@ -134,9 +134,9 @@ export interface Frame {
    *  "server"。不下发完整 token——帧会推给项目下所有成员连接，带全 token
    *  等于广播编辑权凭据。前端算法必须同规则：`token.split(':').pop().slice(0,8)`。 */
   source_mark?: string;
-  /** canvas_changed 专用（二期并发编辑）：本次写入的变更摘要。带它就能在本地
+  /** canvas_changed 专用（并发编辑）：本次写入的变更摘要。带它就能在本地
    *  合并出同一结果，不必整拉快照（整拉会清掉选中/undo/正在输入的面板）。
-   *  **可选**——一期客户端忽略它继续整拉；摘要序列化失败时后端也不带，
+   *  **可选**——旧版客户端忽略它继续整拉；摘要序列化失败时后端也不带，
    *  接收端一律退回整拉兜底。 */
   op?: CanvasOpFramePayload;
 }

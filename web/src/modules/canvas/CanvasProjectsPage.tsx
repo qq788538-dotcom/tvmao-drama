@@ -56,7 +56,7 @@ function formatDate(iso: string): string {
 // ─── 卡片 ────────────────────────────────────────────────────────────────────
 
 /**
- * 封面 16:9 + object-fit: cover（用户拍板，照参考图）。已知代价：9:16 竖屏短剧的
+ * 封面 16:9 + object-fit: cover（约定，照参考图）。已知代价：9:16 竖屏短剧的
  * 封面会被砍掉上下大半。整齐优先是有意的取舍，不是疏漏。
  */
 function ProjectCover({ url }: { url?: string }) {
@@ -345,7 +345,7 @@ export function CanvasProjectsPage({ onOpenProject, onProjectDeleted, embedded =
   });
 
   /**
-   * 创建副本。**必须有 loading 遮罩**：没有前置确认框（用户拍板），而复制大项目要
+   * 创建副本。**必须有 loading 遮罩**：没有前置确认框，而复制大项目要
    * 几秒才跳走，没有反馈的话用户会以为没点中而连点——连点就是复制出好几份、真实
    * 吃掉几倍存储配额。模态遮罩挡住的是整页点击，比只禁用某个按钮更彻底。
    */

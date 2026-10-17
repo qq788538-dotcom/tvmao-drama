@@ -892,7 +892,7 @@ func TestRun_PrependsGlobalSystemPrompt(t *testing.T) {
 	if msgs[0].Content != GlobalSystemPrompt {
 		t.Fatalf("msgs[0] should be verbatim GlobalSystemPrompt, got %q", msgs[0].Content)
 	}
-	// 花钱前必须先问——这条是用户拍板的产品铁律，不是可有可无的措辞。整段
+	// 花钱前必须先问——这条是约定的产品铁律，不是可有可无的措辞。整段
 	// prompt 里别的句子怎么改都行，这条语义丢了就是回归。
 	for _, kw := range []string{"执行生成前必须先问", "不要自己估算或编造数字", "我是小喵"} {
 		if !strings.Contains(msgs[0].Content, kw) {

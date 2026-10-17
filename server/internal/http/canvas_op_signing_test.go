@@ -29,8 +29,8 @@ func (signingStorage) SignedURL(_ context.Context, key string, _ time.Duration) 
 
 // op 摘要里的媒体引用必须在出帧前被签名。
 //
-// 为什么是必修：快照里存的是 canonical `media://<key>`，一期同伴走 GET 快照，
-// 那条路上有 SignJSON（唯一签名出口）；二期本地合并绕开了它。前端把 node.content
+// 为什么是必修：快照里存的是 canonical `media://<key>`，旧版同伴走 GET 快照，
+// 那条路上有 SignJSON（唯一签名出口）；新版本地合并绕开了它。前端把 node.content
 // 直接当 <img src>，浏览器不认 media:// → A 生成一张图，B 的画布上这张图整块裂开，
 // 刷新才好，且没有任何报错。
 func TestCanvasMutationSignsMediaInBroadcastOp(t *testing.T) {
@@ -101,7 +101,7 @@ func TestCanvasMutationNoOpDoesNotBroadcast(t *testing.T) {
 	}
 }
 
-// 个人路径同样不发 no-op 帧（一期这里会白发一帧让所有观看端重拉快照）。
+// 个人路径同样不发 no-op 帧（旧版这里会白发一帧让所有观看端重拉快照）。
 func TestCanvasMutationNoOpDoesNotBroadcastForPersonal(t *testing.T) {
 	repo := &fakeProjectRepository{
 		project:       &projects.Project{ID: 42, UserID: 7},

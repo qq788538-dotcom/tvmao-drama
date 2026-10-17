@@ -135,7 +135,7 @@ export function CanvasContextMenu({
 
   const shortcuts = shortcutLabels();
   // 弹出时不预读剪贴板做置灰——navigator.clipboard.read 会触发权限弹窗（用户
-  // 拍板：粘贴常亮，点了没图才提示）。
+  // 约定：粘贴常亮，点了没图才提示）。
   const groups: Array<
     Array<{ key: string; label: string; shortcut?: string; disabled?: boolean; onPick: () => void }>
   > = [

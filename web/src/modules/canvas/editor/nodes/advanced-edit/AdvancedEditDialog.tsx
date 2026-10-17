@@ -153,7 +153,7 @@ export function AdvancedEditDialog({ videoUrl, onSave, onClose }: Props) {
   const newOpId = () => `op-${Date.now()}-${draftIdRef.current++}`;
 
   // 落笔那一刻的「原始像素/屏幕像素」换算比——统一样式的锚点是屏幕像素
-  // （用户拍板：视频分辨率千差万别，按帧宽算样式没法统一观感），烘焙进 op
+  // （约定：视频分辨率千差万别，按帧宽算样式没法统一观感），烘焙进 op
   // 让渲染/合成/保存的比例与屏幕所见完全一致。
   const displayScale = (): number => {
     const video = videoRef.current;

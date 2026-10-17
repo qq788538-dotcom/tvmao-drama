@@ -19,7 +19,7 @@ func (s *Service) SetSnapshotSearcher(sr snapshotSearcher) { s.search = sr }
 // RewriteMediaRef 实现 generation.MediaRefRewriter:把所有画布快照里的旧 URL 换成新的。
 // 节点 content 与 settings.history[].url 存的是同一串,字符串替换一次改完,不解析节点
 // 结构——URL 不含引号/反斜杠,替换后仍是合法 JSON。走 MutateSnapshot 行锁事务,与
-// writeNode 同一条写路径;改完广播 version、op 为 nil,观看端整拉一次快照(一期行为),
+// writeNode 同一条写路径;改完广播 version、op 为 nil,观看端整拉一次快照(旧版行为),
 // 开着页面的用户不用刷新。未注入 searcher 时是 no-op:补搬照常,只是画布副本不改。
 func (s *Service) RewriteMediaRef(_ context.Context, userID int64, oldURL, newURL string) error {
 	if s.search == nil || oldURL == "" || oldURL == newURL {

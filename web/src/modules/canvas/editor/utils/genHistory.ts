@@ -27,7 +27,7 @@ export interface GenHistoryItem {
   presetKey?: string;
   /**
    * 预设当时的显示名快照。单独存一份而不是每次按 key 反查配置——预设日后被
-   * 后台删除/改名，历史仍能显示当时的名字（用户拍板：落库用 key、展示用 name）。
+   * 后台删除/改名，历史仍能显示当时的名字（约定：落库用 key、展示用 name）。
    */
   presetName?: string;
   /** 生成这一版时的预设参数选择（维度 key → 选项 key）。与 presetKey 同理是提交时刻的事实快照。 */

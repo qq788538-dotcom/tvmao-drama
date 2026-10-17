@@ -64,7 +64,7 @@ export function MultiAnglePanel({ sourceNodeId, onClose }: Props) {
   const [modelId, setModelId] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // 默认选启用列表第一个（用户拍板）。
+  // 默认选启用列表第一个。
   const effectiveModelId = modelId || cfg?.models[0] || '';
   const selectedModel = (modelsQuery.data ?? []).find((m) => m.modelId === effectiveModelId);
 

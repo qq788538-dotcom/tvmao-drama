@@ -233,14 +233,14 @@ func (h *CanvasMutationHandler) mutate(w http.ResponseWriter, r *http.Request, o
 	if !h.verifyProject(w, userID, projectID) {
 		return
 	}
-	// 团队身份（actor>0）**不校验单人编辑锁**——二期用户拍板去锁并发写。
+	// 团队身份（actor>0）**不校验单人编辑锁**——现在去锁并发写。
 	//
 	// 那服务端写入靠什么串行化？靠 MutateClientSnapshot 的
 	// `SELECT … FOR UPDATE`：并发写在 MySQL 行锁上排队，一次读-改-写整体原子，
 	// 谁也丢不了更新。单人锁解决的从来不是「同时写会写坏」，而是「整快照覆盖式
-	// 保存会互相顶掉」——那套保存路径二期已经不用了，写入全是节点级/字段级 op。
+	// 保存会互相顶掉」——那套保存路径已经不用了，写入全是节点级/字段级 op。
 	//
-	// 个人身份（actor==0）逐字保持一期行为：锁、心跳、失锁弹窗、探测一条不动。
+	// 个人身份（actor==0）逐字保持旧版行为：锁、心跳、失锁弹窗、探测一条不动。
 	// 个人多标签页仍然是「后开的接管编辑权」，那条 UI 与语义不在本次改动范围内。
 	if actorUserIDFromContext(r.Context()) == 0 {
 		if err := h.owner.Require(r.Context(), projectID, ownerToken); err != nil {
@@ -295,9 +295,9 @@ func (h *CanvasMutationHandler) mutate(w http.ResponseWriter, r *http.Request, o
 
 // signOpSummary 把摘要里的媒体引用换成新鲜的短时签名 URL。
 //
-// 为什么必须做：快照里存的是 canonical 的 `media://<key>`，一期同伴走 GET 快照，
+// 为什么必须做：快照里存的是 canonical 的 `media://<key>`，旧版同伴走 GET 快照，
 // 那条路上有 SignJSON（project_handlers.go 的 GetSnapshot）——签名是**唯一出口**。
-// 二期的本地合并绕开了那个出口：前端把 node.content 直接当 <img src> 用，而浏览器
+// 新版的本地合并绕开了那个出口：前端把 node.content 直接当 <img src> 用，而浏览器
 // 不认 media:// 协议，于是「A 生成一张图 → B 画布上这张图整块裂开，刷新才好」，
 // 且没有任何报错。摘要发出去之前补签这一次，等于把 op 帧也接进同一个出口。
 //
