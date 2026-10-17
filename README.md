@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="https://www.tvmao.net/">线上体验</a> ·
+  <a href="#交流群">交流群</a> ·
   <a href="#下载安装">下载安装</a> ·
   <a href="docs/tutorial.md">上手教程</a> ·
   <a href="docs/user-guide.md">用户手册</a> ·
@@ -160,6 +161,14 @@ pnpm test:server && pnpm test:web && pnpm test:tauri && pnpm test:scripts
 ```
 
 完整的环境准备、目录说明和打包流程见 [开发指南](docs/development.md)。
+
+## 交流群
+
+使用中遇到问题、想交流创作经验或参与开发，欢迎微信扫码加入「喵剧AI 开源群」：
+
+<p align="center">
+  <img src="docs/images/wechat-group.png" alt="微信群「喵剧AI 开源群」二维码" width="240" />
+</p>
 
 ## 参与贡献
 
