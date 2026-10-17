@@ -29,7 +29,7 @@ interface SidebarProps {
 }
 
 /**
- * 浮动药丸式侧栏——视觉上对标 app.tapnow.ai 的左侧 dock。
+ * 浮动药丸式侧栏（左侧 dock）。
  * 外层列占据布局空间（这样右侧的相邻元素能自然定位）；可见的药丸在这一列里
  * 垂直居中。所有 action 都和之前扁平侧栏完全一致——这是一次纯换皮重构。
  */
@@ -71,11 +71,11 @@ export function Sidebar({
   const isHistoryActive = activeTool === 'history';
 
   return (
-    // 用绝对定位浮在 canvas 之上，这样 canvas 的点阵图案能延伸到它背后
-    //（TapNow 的设计）。外层列是 pointer-events-none，让药丸上下的空白处
+    // 用绝对定位浮在 canvas 之上，这样 canvas 的点阵图案能延伸到它背后。
+    // 外层列是 pointer-events-none，让药丸上下的空白处
     // 仍能做 canvas 的 pan/select；药丸本身重新启用 pointer events。
     <div className="absolute inset-y-0 left-0 w-[68px] flex flex-col items-center justify-center z-40 py-4 pointer-events-none">
-      {/* 药丸本体——TapNow 设计：rounded-4xl、模糊的深色表面、
+      {/* 药丸本体：rounded-4xl、模糊的深色表面、
           淡淡的 1px 白色边框。这里必须用 inline style，因为我们的 tailwind
           配置关掉了 preflight，意味着 `border` 和 `backdrop-blur-*` 这些
           utility 拿不到默认的 border-style / backdrop-filter。 */}
@@ -90,7 +90,7 @@ export function Sidebar({
           WebkitBackdropFilter: 'blur(24px)',
         }}
       >
-        {/* 主 CTA——自动整理（白色圆圈，对应 TapNow 里的 "+" 位）。 */}
+        {/* 主 CTA——自动整理（白色圆圈）。 */}
         <DockCta
           onClick={handleAutoArrange}
           icon={<Layout size={18} strokeWidth={2.2} />}
@@ -138,14 +138,13 @@ export function Sidebar({
             保存：局部 mutation 重构之后每个动作都即时落库，它只剩「把 1.5s
             debounce 里的输入提前 flush」这点作用，而失焦本来就会 flush；留着
             反而让人以为不点就会丢东西（Ctrl+S 保留，仍可手动 flush）。
-            AI 对话：入口移到了顶栏右侧的「Agent」按钮（CanvasEditorPage 顶栏），
-            对标上游 Tapnow 的位置。 */}
+            AI 对话：入口移到了顶栏右侧的「Agent」按钮（CanvasEditorPage 顶栏）。 */}
       </div>
     </div>
   );
 }
 
-/** 白色圆形主 CTA——视觉上对标 TapNow 的「+ 添加节点」按钮。 */
+/** 白色圆形主 CTA。 */
 function DockCta({
   onClick,
   icon,
@@ -167,7 +166,7 @@ function DockCta({
   );
 }
 
-/** 方形图标按钮——TapNow 的次要 dock 项。40px 可点击区域。 */
+/** 方形图标按钮——次要 dock 项。40px 可点击区域。 */
 function DockBtn({
   onClick,
   icon,

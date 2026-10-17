@@ -1,4 +1,4 @@
-/* Inter 是 TapNow 的默认无衬线字体。桌面端字体随应用打包（spec E7）：
+/* Inter 是默认无衬线字体。桌面端字体随应用打包（spec E7）：
    Inter 400/500/600/700 与 JetBrains Mono 400/500 由 main.tsx 从
    @fontsource 引入，不再从 Google Fonts 在线加载。 */
 
@@ -100,7 +100,7 @@
   }
 }
 
-/* --- Node connector styles (palette aligned to TapNow primary cyan) --- */
+/* --- Node connector styles (primary cyan palette) --- */
 .connector {
   position: absolute;
   top: 50%;

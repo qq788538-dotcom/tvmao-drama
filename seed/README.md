@@ -1,6 +1,6 @@
 # 内置种子数据
 
-来源：参考仓生产库（`tapnow`，生产实例 `tapnow-api-blue`），2026-09-30 只读导出。
+首次安装时导入 SQLite 的内置模型、配置与 Skill。
 格式：每张表一个 JSONL 文件，每行一条记录，字段名与生产库列名一致。
 
 | 文件 | 行数 | 说明 |
@@ -11,7 +11,6 @@
 | `agent_tools.jsonl` | 4 | Agent 工具目录 |
 | `skills.jsonl` | 10 | 官方 Skill（全部 `is_official=1`，其中 2 个 `is_published=0`） |
 | `skill_categories.jsonl` | 4 | Skill 分类 |
-| `seedance_characters.jsonl` | 1729 | AI 角色库；`image_url` 是 `media://tapnow/sd-assets/<asset_id>.webp`。2026-10-08：形象图改为内置（原图 556MB 不内置，转 512px WebP q82 共约 27MB，放 `server/internal/aicharacters/images/` 由 go:embed 编进 sidecar），不再从 TOS 在线拉取；Seedance 生成走 `asset://<asset_id>`，用不到原图 |
 
 未导出（有意排除）：
 - 密钥类 settings：`upstream_api_key`、`upstream_access_token`、`drama_seedance_sd_key`
@@ -24,5 +23,13 @@
 ## 内置到 sidecar
 
 `model_configs.jsonl`、`settings.jsonl` 由 sidecar 通过 `go:embed` 内置（`server/internal/builtin/seeddata/` 是它们的逐字节副本）。修改或重新导出后运行 `scripts/sync-seed.sh`；`go test ./internal/builtin/` 会检查副本与本目录一致。
+
+## AI 角色库数据包（不随开源仓库分发）
+
+AI 角色库的角色数据 `seedance_characters.jsonl` 和形象图（512px WebP，约 27MB）没有公开分发的授权，开源仓库里不包含，`.gitignore` 也已排除。没有数据包时 sidecar 照常构建运行，AI 角色库为空。
+
+私有构建需要角色库时：
+1. 把 `seedance_characters.jsonl` 放到本目录，把 `<asset_id>.webp` 放到 `server/internal/aicharacters/images/`。
+2. 运行 `scripts/sync-seed.sh`，再构建。`go test ./internal/aicharacters/` 会检查每个角色都有对应的图。
 
 `seedance_characters.jsonl` 由 `server/internal/aicharacters`（`seeddata/` 副本，同样由 `scripts/sync-seed.sh` 同步）在启动时导入 `seedance_characters` 表：哈希（含 `seedFormatVersion`）记在 `builtin_seed_state`（dataset=`ai_characters`），没变则跳过；变了按 `asset_id` upsert，种子里已删除的角色从表中删除。JSONL 里的 `created_at`/`updated_at` 不导入。

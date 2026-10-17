@@ -147,7 +147,7 @@ export function GenVideoNode({ id }: { id: string }) {
     submittedAt ? Date.parse(submittedAt) || undefined : undefined,
   );
 
-  // TapNow 风格的多版本 history。每次生成成功都往 `settings.history` 追加一条
+  // 多版本 history。每次生成成功都往 `settings.history` 追加一条
   // 记录；`settings.historyIndex` 决定当前显示哪一个。`node.content` 镜像那条
   // 记录的 URL，这样读 `content` 的下游节点会跟随用户当前显示的选择。
   //
@@ -481,7 +481,7 @@ export function GenVideoNode({ id }: { id: string }) {
     if (!selectedModelId) return;
     if (inputLimitError) return;
     // 上游文本节点的词与本地 videoPrompt 合并，上游在前（composePrompt）。这里
-    // 曾照搬 Tapnow-Studio-PP-3.8.7 的 "videoPrompt || description.prompt" 二选一，
+    // 曾用 "videoPrompt || description.prompt" 二选一，
     // 但那样输入框一有内容就把上游那句整个丢掉，两者其实是基底 + 修正的互补关系。
     //
     // 提交给上游的最终提示词：@ 提及已展开成「图片2」这类纯文本。这也是要记进

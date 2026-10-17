@@ -252,7 +252,7 @@ func (r *SQLiteRepository) SaveAuthoritative(projectID int64, payload json.RawMe
 //
 // 快照行不存在时**建行**,不是跳过。曾经这里 return nil 静默当成功,理由是"没保存过
 // 就没节点可写"——那对生成结果回写成立(任务的节点必然已经在画布上),对 CLI 完全不成立:
-// `tapnow project create` 只 INSERT projects 一行,新项目根本没有快照行,于是 CLI 的
+// `miaoju project create` 只 INSERT projects 一行,新项目根本没有快照行,于是 CLI 的
 // 每一次 node create 都写进空气还回 200,画布永远是空的。写路径分成两个函数、只有
 // MutateClientSnapshot(网页保存)处理了这一支,是这个 bug 藏了这么久的原因。
 //

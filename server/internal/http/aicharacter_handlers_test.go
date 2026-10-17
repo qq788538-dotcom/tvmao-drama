@@ -49,7 +49,7 @@ func manyCharacters(n int) []aicharacters.Character {
 			Age:      20 + i%50,
 			Gender:   "女",
 			AgeGroup: "青年",
-			ImageURL: fmt.Sprintf("media://tapnow/sd-assets/asset-%04d.jpg", i),
+			ImageURL: fmt.Sprintf("media://builtin/characters/asset-%04d.jpg", i),
 		})
 	}
 	return out

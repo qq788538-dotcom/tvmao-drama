@@ -771,9 +771,9 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
       }}
     >
       {(() => {
-        // TapNow 风格的背景点阵：整个图案随 zoom 缩放（gap 和点半径都缩放），
+        // 背景点阵：整个图案随 zoom 缩放（gap 和点半径都缩放），
         // 所以放大时点会变大变清晰，缩小时点会变淡——和 React Flow 的
-        // Background 一致。世界坐标系的图案（React Flow / TapNow 行为）：
+        // Background 一致。世界坐标系的图案（同 React Flow）：
         // gap 和点半径都随 zoom 线性缩放，没有下限。效果：
         //   • 放大 → 稀疏、更大、更明显的点
         //   • 缩小 → 密集的亚像素点，糊成一层淡淡的纹理

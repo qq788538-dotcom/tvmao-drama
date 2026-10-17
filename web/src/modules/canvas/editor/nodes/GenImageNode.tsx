@@ -208,7 +208,7 @@ export function GenImageNode({ id }: { id: string }) {
     submittedAt ? Date.parse(submittedAt) || undefined : undefined,
   );
 
-  // TapNow 风格的多版本 history。每次生成成功都往 `settings.history` 追加一条
+  // 多版本 history。每次生成成功都往 `settings.history` 追加一条
   // 记录；`settings.historyIndex` 决定当前显示哪一个。`node.content` 镜像那条
   // 记录的 URL，这样读 `content` 的下游节点会跟随用户当前显示的选择。
   //
@@ -565,7 +565,7 @@ export function GenImageNode({ id }: { id: string }) {
     // 两边共用 composePrompt，不各写一份。
     const submittedPrompt = composePrompt(serializeMentionPrompt(prompt, mediaRefs), fallbackPrompt);
 
-    // 结果内联渲染在这个节点自身上，对标 TapNow 的流程：每次生成成功都
+    // 结果内联渲染在这个节点自身上：每次生成成功都
     // 追加到 `settings.history`，这样用户可以回翻之前的结果。
     //
     // pendingGen：把这次提交的提示词/参数当场落库，等结果回来时再写进 history

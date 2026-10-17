@@ -1,9 +1,8 @@
 import { theme } from 'antd';
 import type { ThemeConfig } from 'antd';
 
-// Ant Design 暗色主题——原样取自参考仓 apps/web/src/main.tsx。这些值对齐
-// app.tapnow.ai 的 design token，让 AntD 的弹窗、下拉、tooltip、表格跟画布
-// 共用同一套配色。
+// Ant Design 暗色主题。这些值对齐画布的 design token（tailwind.config.js），
+// 让 AntD 的弹窗、下拉、tooltip、表格跟画布共用同一套配色。
 export const darkTheme: ThemeConfig = {
   algorithm: theme.darkAlgorithm,
   token: {

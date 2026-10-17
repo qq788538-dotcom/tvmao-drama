@@ -20,10 +20,10 @@ func seedCharacters(t *testing.T, conn *sql.DB) {
 		group string
 		img   string
 	}{
-		{"asset-001", 25, "女", "演员", "常演宫女", "青年", "media://tapnow/sd-assets/asset-001.jpg"},
-		{"asset-002", 45, "男", "厨师", "川菜馆主厨", "中年", "media://tapnow/sd-assets/asset-002.jpg"},
-		{"asset-003", 70, "男", "养蜂人", "只卖100%纯蜂蜜", "老年", "media://tapnow/sd-assets/asset-003.png"},
-		{"asset-004", 30, "女", "程序员", "只写 snake_case 代码", "青年", "media://tapnow/sd-assets/asset-004.jpg"},
+		{"asset-001", 25, "女", "演员", "常演宫女", "青年", "media://builtin/characters/asset-001.jpg"},
+		{"asset-002", 45, "男", "厨师", "川菜馆主厨", "中年", "media://builtin/characters/asset-002.jpg"},
+		{"asset-003", 70, "男", "养蜂人", "只卖100%纯蜂蜜", "老年", "media://builtin/characters/asset-003.png"},
+		{"asset-004", 30, "女", "程序员", "只写 snake_case 代码", "青年", "media://builtin/characters/asset-004.jpg"},
 	}
 	for _, r := range rows {
 		if _, err := conn.Exec(`INSERT INTO seedance_characters
@@ -98,7 +98,7 @@ func TestGetAndNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Age != 45 || c.Gender != "男" || c.ImageURL != "media://tapnow/sd-assets/asset-002.jpg" {
+	if c.Age != 45 || c.Gender != "男" || c.ImageURL != "media://builtin/characters/asset-002.jpg" {
 		t.Fatalf("got %+v", c)
 	}
 	if _, err := repo.Get("nope"); !errors.Is(err, ErrNotFound) {
@@ -110,11 +110,11 @@ func TestPublicAssetIDsMapsBareKeys(t *testing.T) {
 	conn := dbtest.Open(t)
 	seedCharacters(t, conn)
 	repo := NewSQLiteRepository(conn)
-	got, err := repo.PublicAssetIDs([]string{"tapnow/sd-assets/asset-002.jpg", "u1/2026/10/mine.png"})
+	got, err := repo.PublicAssetIDs([]string{"builtin/characters/asset-002.jpg", "u1/2026/10/mine.png"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, map[string]string{"tapnow/sd-assets/asset-002.jpg": "asset-002"}) {
+	if !reflect.DeepEqual(got, map[string]string{"builtin/characters/asset-002.jpg": "asset-002"}) {
 		t.Fatalf("got %v", got)
 	}
 	empty, err := repo.PublicAssetIDs(nil)

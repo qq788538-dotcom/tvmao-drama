@@ -12,8 +12,12 @@ import (
 // 内置数据导入后，真实仓库经列表接口返回非空。
 func TestAICharacterListNonEmptyAfterSeedImport(t *testing.T) {
 	conn := dbtest.Open(t)
-	if _, err := aicharacters.Import(conn); err != nil {
+	res, err := aicharacters.Import(conn)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if res.Skipped {
+		t.Skip("未放入 AI 角色库数据包，见 seed/README.md")
 	}
 	h := NewAICharacterHandler(aicharacters.NewSQLiteRepository(conn), aiCharFakeSigner{})
 	rec := httptest.NewRecorder()

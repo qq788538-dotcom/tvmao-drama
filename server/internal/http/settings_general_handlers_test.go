@@ -23,7 +23,7 @@ func TestGeneralGetReturnsVersionAndDataDir(t *testing.T) {
 	e := newSCEnv(t)
 	code, body := e.do("GET", "/general", nil)
 	g := decodeTo[generalResp](t, body)
-	if code != 200 || g.Version != "9.9.9" || g.DataDir != e.dataDir || g.BaseDomain != "http://115.191.35.118:3000" || g.APIKeySet || g.BaseDomainModified {
+	if code != 200 || g.Version != "9.9.9" || g.DataDir != e.dataDir || g.BaseDomain != "http://gw.example.com:3000" || g.APIKeySet || g.BaseDomainModified {
 		t.Fatalf("%d %s", code, body)
 	}
 }
@@ -88,14 +88,14 @@ func TestUpstreamBaseDomainGoesThroughEditServiceAndRestores(t *testing.T) {
 	}
 	code, body = e.do("POST", "/upstream/base-domain/restore-default", nil)
 	g = decodeTo[generalResp](t, body)
-	if code != 200 || g.BaseDomain != "http://115.191.35.118:3000" || g.BaseDomainModified {
+	if code != 200 || g.BaseDomain != "http://gw.example.com:3000" || g.BaseDomainModified {
 		t.Fatalf("%d %s", code, body)
 	}
 }
 
 func TestUpstreamSameBaseDomainIsNotAnEdit(t *testing.T) {
 	e := newSCEnv(t)
-	_, body := e.do("PUT", "/upstream", map[string]any{"baseDomain": "http://115.191.35.118:3000/"})
+	_, body := e.do("PUT", "/upstream", map[string]any{"baseDomain": "http://gw.example.com:3000/"})
 	if g := decodeTo[generalResp](t, body); g.BaseDomainModified {
 		t.Fatal("值没变不应记为用户修改")
 	}

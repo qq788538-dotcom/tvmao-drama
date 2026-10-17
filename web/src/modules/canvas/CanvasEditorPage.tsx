@@ -474,7 +474,7 @@ export function CanvasEditorPage() {
   return (
     <div className="canvas-root">
       {/* 第 0 层：全宽画布——铺满整个视口，让点状背景延伸到浮动顶栏和
-          侧边栏后面（TapNow 的设计）。 */}
+          侧边栏后面。 */}
       <CanvasEditor projectId={pid} />
 
       {/* 第 0.5 层：故事板覆盖层。盖住画布和它的工具面板，但让开顶栏（z-40）。
@@ -528,7 +528,7 @@ export function CanvasEditorPage() {
         />
       )}
 
-      {/* 第 3 层：浮动顶栏——左侧 logo 组没有背景（TapNow 设计）；右侧组
+      {/* 第 3 层：浮动顶栏——左侧 logo 组没有背景；右侧组
           是一个毛玻璃胶囊，跟侧边栏的表面风格一致。这里用内联样式来
           绕开 preflight: false。 */}
       <div className="absolute top-3 left-4 right-4 flex items-center gap-3 z-40 pointer-events-none">
@@ -644,7 +644,7 @@ export function CanvasEditorPage() {
           </span>
         </div>
 
-        {/* Agent 入口——对标上游 Tapnow：顶栏最右侧的独立按钮（原来是左侧
+        {/* Agent 入口：顶栏最右侧的独立按钮（原来是左侧
             dock 里的「AI 对话」图标）。顶栏在故事板视图也在，但 AgentPanel
             自己是 fixed z-[900]，盖得过故事板覆盖层（z-30），两个视图都能用。 */}
         <button

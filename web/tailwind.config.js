@@ -6,8 +6,7 @@ export default {
   },
   theme: {
     extend: {
-      // Semantic design tokens — values mirror app.tapnow.ai's CSS variables
-      // so our Tailwind utilities and TapNow's renderer share one palette.
+      // Semantic design tokens shared by Tailwind utilities and the canvas renderer.
       // Use these by name (bg-card, text-muted-foreground, …) instead of
       // raw zinc/blue scales going forward.
       colors: {
@@ -47,7 +46,7 @@ export default {
         border: 'rgba(255,255,255,0.10)',
         input: 'rgba(255,255,255,0.15)',
         ring: 'rgba(115,115,115,0.10)',
-        // Legacy alias — values already aligned to TapNow tokens above.
+        // Legacy alias — values already aligned to the tokens above.
         // Existing components using `canvas-*` will pick up the new look
         // without code changes.
         canvas: {

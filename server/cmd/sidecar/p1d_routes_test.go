@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
 )
 
 func p1dGet(t *testing.T, port, path string) (int, map[string]any) {
@@ -58,18 +60,21 @@ func TestP1dRoutesOnFreshInstall(t *testing.T) {
 	if chars["imageConfigured"] != true {
 		t.Fatalf("新装形象图应为可用: %v", chars)
 	}
+	// 角色数据包不随开源仓库分发：没放数据包时角色库为空。
 	items, _ := chars["items"].([]any)
-	if len(items) == 0 {
-		t.Fatalf("新装应有内置角色: %v", chars)
+	if (len(items) > 0) != aicharacters.HasBuiltinData() {
+		t.Fatalf("新装角色数与数据包不符: %v", chars)
 	}
-	imgURL, _ := items[0].(map[string]any)["imageUrl"].(string)
-	imgResp, err := http.Get(imgURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	imgResp.Body.Close()
-	if imgResp.StatusCode != http.StatusOK || imgResp.Header.Get("Content-Type") != "image/webp" {
-		t.Fatalf("内置形象图 %s: code=%d type=%q", imgURL, imgResp.StatusCode, imgResp.Header.Get("Content-Type"))
+	if len(items) > 0 {
+		imgURL, _ := items[0].(map[string]any)["imageUrl"].(string)
+		imgResp, err := http.Get(imgURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		imgResp.Body.Close()
+		if imgResp.StatusCode != http.StatusOK || imgResp.Header.Get("Content-Type") != "image/webp" {
+			t.Fatalf("内置形象图 %s: code=%d type=%q", imgURL, imgResp.StatusCode, imgResp.Header.Get("Content-Type"))
+		}
 	}
 
 	// 状态查询不依赖合规配置：未配置时也必须 200（前端每次打开画布都会批量查角标）。

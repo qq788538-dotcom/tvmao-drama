@@ -15,9 +15,10 @@ import (
 // 角色形象图内置在 sidecar 里（512px WebP，约 27MB）：不放对象存储，浏览和使用都不产生外网流量。
 // 原图（平均 329KB，共 556MB）不内置也不在线拉取——Seedance 生成走 asset://<asset_id>，
 // 用不到像素；本地这份只供画布展示和给非 Seedance 模型当参考图。
-// 文件名 = object key 的 basename（种子 image_url 形如 media://tapnow/sd-assets/<asset_id>.webp）。
+// 文件名 = object key 的 basename（种子 image_url 形如 media://<prefix>/<asset_id>.webp）。
+// 形象图不随开源仓库分发（.gitignore 已排除），没有数据包时目录里只有 README.md。
 //
-//go:embed images/*.webp
+//go:embed images
 var embeddedImages embed.FS
 
 // EmbeddedImages 返回内置形象图目录（根下直接是 <asset_id>.webp），供 sidecar 装配。
