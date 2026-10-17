@@ -33,10 +33,9 @@ func FirstVideoInput(inputs map[string]any) string {
 
 // resolveInputDuration 按 gen_control.inputDuration 从首个输入视频取真实时长注入 inputs.duration。
 //
-// 桌面端差异：参考仓注入时长是为了按秒计费防薅，取不到就拒绝提交，并在 duration_ms 为 NULL
-// 时下载对象跑 ffprobe 再回填。桌面端不计费（spec X3）、不带 ffprobe，上游请求模板也不读这个
-// 值（它只影响产物 assets.duration_ms），所以只走 duration_ms 快路径：查到就注入，查不到放行。
-// 去掉下载 + 探测 + 回填还有一个硬理由：SubmitTx 在写事务里调用本函数，回填经 r.db 写库会
+// 桌面端不计费、不带 ffprobe，上游请求模板也不读这个值（它只影响产物 assets.duration_ms），
+// 所以只走 duration_ms 快路径：查到就注入，查不到放行。
+// 不做下载 + 探测 + 回填还有一个硬理由：SubmitTx 在写事务里调用本函数，回填经 r.db 写库会
 // 自死锁（等 busy_timeout 10 秒后 SQLITE_BUSY），读几百 MB 文件也会长时间占着写锁。
 func (s *Service) resolveInputDuration(_ context.Context, cfg *models.InputDurationConfig, inputs map[string]any) error {
 	if cfg == nil {

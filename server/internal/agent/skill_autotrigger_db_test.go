@@ -15,7 +15,7 @@ func TestLoadedSkillIDs(t *testing.T) {
 	repo := NewRepository(conn)
 
 	threadID := uuid.NewString()
-	// SQLite 版 agent_threads.project_id 是外键（参考仓 MySQL 版传 0），这里建真项目。
+	// SQLite 版 agent_threads.project_id 是外键，这里建真项目。
 	uid, pid := makeTestUserAndProject(t, conn)
 	if err := repo.CreateThread(Thread{ID: threadID, ProjectID: pid, UserID: uid, Title: "t"}); err != nil {
 		t.Fatalf("create thread: %v", err)

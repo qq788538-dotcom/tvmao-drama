@@ -69,7 +69,7 @@ type AppNotRunningError struct{ Err error }
 func (e *AppNotRunningError) Error() string { return "喵剧未运行，请先打开应用" }
 func (e *AppNotRunningError) Unwrap() error { return e.Err }
 
-// SandboxBlockedError：AI 助手的沙箱拦截了网络（CLI spec 3.4、3.5）。必须与"未运行"区分，
+// SandboxBlockedError：AI 助手的沙箱拦截了网络。必须与"未运行"区分，
 // 否则 AI 助手会以为应用没开，而不是去申请网络权限。
 type SandboxBlockedError struct{ Err error }
 

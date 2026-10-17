@@ -161,7 +161,7 @@ func TestAgentE2E_ChatRoundTrip(t *testing.T) {
 	}
 }
 
-// Review Focus #1：没配上游就发消息，必须收到 error + action_end，面板不转圈。
+// 没配上游就发消息，必须收到 error + action_end，面板不转圈。
 func TestAgentE2E_MissingUpstreamConfigEndsAction(t *testing.T) {
 	e := setupE2E(t, "", "")
 	th := e.do(t, "POST", fmt.Sprintf("/api/v1/projects/%d/agent/threads", e.projectID), `{}`)
@@ -180,7 +180,7 @@ func TestAgentE2E_MissingUpstreamConfigEndsAction(t *testing.T) {
 	}
 }
 
-// 写接口不注册（Agent 模型写死为内置值，2026-10-07），只读列表仍在。
+// 写接口不注册（Agent 模型写死为内置值），只读列表仍在。
 func TestAgentE2E_AdminBackboneWritesNotRegistered(t *testing.T) {
 	e := setupE2E(t, "http://unused", "k")
 	if out := e.do(t, "GET", "/api/v1/admin/agent/backbone-models", ``); out["data"] == nil {
@@ -208,7 +208,7 @@ type stubSigner struct{}
 func (stubSigner) Sign(s string) string         { return s }
 func (stubSigner) Canonicalize(s string) string { return s }
 
-// P1b 合并时接了 Signer/Objects 却漏传 Keys，本机图片会原样发给上游；装配直接报错。
+// 接了 Signer/Objects 却漏传 Keys，本机图片会原样发给上游；装配直接报错。
 func TestWireAgentRequiresKeysWhenStorageWired(t *testing.T) {
 	conn := dbtest.Open(t)
 	ctx, cancel := context.WithCancel(context.Background())

@@ -64,7 +64,7 @@ func NewHub() *Hub {
 
 // Register 把一个已经 accept 的 ws 连接挂到 hub 上。让 handler 保活（比如 park 在
 // r.Context().Done() 上）是调用方的责任——hub 不驱动 read loop。
-// 桌面端没有多人协作（spec X2），注册不广播任何帧。
+// 桌面端没有多人协作，注册不广播任何帧。
 func (h *Hub) Register(ctx context.Context, userID int64, projectID int64, ws frameWriter) {
 	c := &hubConn{ws: ws, userID: userID, projectID: projectID, ctx: ctx}
 	h.mu.Lock()

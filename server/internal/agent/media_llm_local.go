@@ -15,7 +15,7 @@ import (
 )
 
 // MediaKeyExtractor 把本机媒体地址（sidecar 签出的 http URL 或 media://key）认回存储 key；
-// 认不出（外链）返回 false。P1b 的 assets.Storage 直接满足。
+// 认不出（外链）返回 false。assets.Storage 直接满足。
 type MediaKeyExtractor interface {
 	ExtractKey(urlOrKey string) (string, bool)
 }
@@ -57,7 +57,7 @@ func (r *LocalMediaResolver) ResolveForLLM(ctx context.Context, kind, u string) 
 		return u, nil
 	}
 	if r.Keys == nil {
-		// 没接存储（P1b 未合并，或装配时漏传 Keys）：本机地址上游访问不到，原样发出去
+		// 没接存储（装配时漏传 Keys）：本机地址上游访问不到，原样发出去
 		// 模型只会对着一个打不开的链接胡说，还会把媒体 token 带出本机。明确报错。
 		if IsLocalMediaURL(u) {
 			return "", errLocalMediaUnresolvable

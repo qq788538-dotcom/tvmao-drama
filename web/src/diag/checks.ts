@@ -1,4 +1,4 @@
-// 诊断检查：验证「壳 → sidecar → WebView」整条链路，以及参考仓画布依赖的
+// 诊断检查：验证「壳 → sidecar → WebView」整条链路，以及画布依赖的
 // WebCodecs / mediabunny 能力在当前系统 WebView 里是否可用。
 // 每个检查互不依赖、各自捕获异常，一项失败不影响其余项。
 import {
@@ -145,7 +145,7 @@ export function diagMediaPath(name: string): string {
   return `/api/v1/diag/media/${encodeURIComponent(name)}`;
 }
 
-/** 用参考仓画布同样的 mediabunny 调用方式，对 sidecar 返回的媒体跑一遍。 */
+/** 用画布同样的 mediabunny 调用方式，对 sidecar 返回的媒体跑一遍。 */
 export async function mediaChecks(info: ServerInfo, name: string): Promise<CheckResult[]> {
   const mb = await import('mediabunny');
   const url = buildMediaUrl(info, diagMediaPath(name));

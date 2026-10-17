@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Button, Result, Spin } from 'antd';
 import { resolveStartupProject } from './resolveStartupProject';
 
-// 根路由 `/`：不渲染任何首页，算出要打开的项目后直接跳进画布（spec F9）。
+// 根路由 `/`：不渲染任何首页，算出要打开的项目后直接跳进画布。
 export function StartupRedirect() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);

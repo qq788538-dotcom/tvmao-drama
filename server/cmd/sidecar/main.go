@@ -43,7 +43,7 @@ import (
 var version = "dev"
 
 // defaultOrigins 只含打包后的两个来源。开发服务器 http://localhost:5173 由壳在 debug 构建里
-// 经 --origins 传入（P0 遗留：release 包不能放行它）。
+// 经 --origins 传入（release 包不能放行它）。
 const defaultOrigins = "tauri://localhost,http://tauri.localhost"
 
 const (
@@ -109,7 +109,7 @@ func run() error {
 	if err := db.Migrate(conn); err != nil {
 		return fmt.Errorf("数据库迁移: %w", err)
 	}
-	// 内置模型和画布配置（spec M9/M11）：首次启动导入，升级后按 model_id 字段级合并。
+	// 内置模型和画布配置：首次启动导入，升级后按 model_id 字段级合并。
 	if err := builtin.Apply(conn); err != nil {
 		return fmt.Errorf("导入内置数据: %w", err)
 	}
@@ -161,7 +161,7 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// P5 Agent：在 builtin.Apply 之后装配（agentseed 引用内置模型），ctx 用上面的关闭 ctx，
+	// Agent：在 builtin.Apply 之后装配（agentseed 引用内置模型），ctx 用上面的关闭 ctx，
 	// 进行中的 Run 随 sidecar 退出取消。Keys 必须是真正的 LocalStorage（ExtractKey），否则拒绝装配。
 	agentW, err := wireAgent(ctx, agentWiringDeps{
 		DB:        conn,
@@ -178,7 +178,7 @@ func run() error {
 	}
 	a.deps.Agent, a.deps.Skills, a.deps.AdminAgent = agentW.Agent, agentW.Skills, agentW.AdminAgent
 
-	// P6 脚本节点：找不到内置 Python 时只记警告（任务执行时报错），不阻断启动。
+	// 脚本节点：找不到内置 Python 时只记警告（任务执行时报错），不阻断启动。
 	canvasScript, scriptWorkers, err := wireCanvasScript(ctx, conn, *dataDir, *pythonHome)
 	if err != nil {
 		// Agent 的周期刷新已在跑：取消 ctx 并等它退出，再让 defer 关库。
@@ -189,14 +189,14 @@ func run() error {
 	}
 	a.deps.CanvasScript = canvasScript
 	bgWorkers := append(append([]<-chan struct{}{}, agentW.Workers...), scriptWorkers...)
-	// 生成结果回写画布后经 Agent Hub 推 canvas_changed（P1c 留的注入点）。
+	// 生成结果回写画布后经 Agent Hub 推 canvas_changed。
 	attachCanvasNotifier(a, agentW.Hub)
 
 	apphttp.MustWire(a.deps)
 	apphttp.MustWireCLI(a.deps)
 	srv := &nethttp.Server{
 		Handler: apphttp.NewRouter(a.deps),
-		// P0 遗留：防慢速请求头占满连接。
+		// 防慢速请求头占满连接。
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -204,7 +204,7 @@ func run() error {
 		a.cleaner.Start(ctx, projectCleanInterval),
 		a.sweeper.Start(ctx, orphanSweepInterval, library.DefaultGracePeriod),
 	}
-	// 生成后台：先把上个进程的租约判过期并续跑在途任务，再起队列/投递/巡检循环（spec S7）。
+	// 生成后台：先把上个进程的租约判过期并续跑在途任务，再起队列/投递/巡检循环。
 	// 在 READY 之前调用；退出时随 ctx 取消停下，没跑完的任务由下次启动续跑。
 	workers = append(workers, a.gen.Gen.StartBackground(ctx))
 	// 进行中的 Agent Run：ctx 取消后等它们退出（关库后不再写消息）。
@@ -242,8 +242,8 @@ func run() error {
 	}
 	// 先断开所有 SSE：srv.Shutdown 不会取消在途请求，长连接不关会拖满 shutdownTimeout。
 	a.events.Close()
-	// 关闭顺序：ctx 已取消（worker 不再开始新一轮）→ 停 HTTP、生成管线 Drain（停止领取、等在途任务收口，
-	// P1c M1）、等后台 worker 退出，三者并行，共用一个 shutdownTimeout 截止时间 → 关数据库（defer）。
+	// 关闭顺序：ctx 已取消（worker 不再开始新一轮）→ 停 HTTP、生成管线 Drain（停止领取、等在途任务收口）、
+	// 等后台 worker 退出，三者并行，共用一个 shutdownTimeout 截止时间 → 关数据库（defer）。
 	// 必须等 worker 和 Drain 结束再关库：sql.DB.Close 不会等事务以外的后续语句，剩下的步骤只会拿到
 	// "sql: database is closed"。
 	if !shutdownAndWait(shutdownTimeout, srv.Shutdown, drainGen, workers...) {
@@ -320,8 +320,8 @@ func waitDone(timeout time.Duration, chans ...<-chan struct{}) bool {
 	}
 }
 
-// ensurePrivateDir 建数据目录并收紧成仅当前用户可访问（data.db 里有 API Key，spec M3）。
-// P0 用 0755 建过的老目录也在这里改掉。Windows 的 %APPDATA% 本身是用户私有目录，chmod 只管只读位。
+// ensurePrivateDir 建数据目录并收紧成仅当前用户可访问（data.db 里有 API Key）。
+// 早期版本用 0755 建过的老目录也在这里改掉。Windows 的 %APPDATA% 本身是用户私有目录，chmod 只管只读位。
 func ensurePrivateDir(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err

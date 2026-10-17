@@ -22,7 +22,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/settings"
 )
 
-// memGenStorage：内存版本地存储（生产是 P1b 的磁盘实现）。
+// memGenStorage：内存版本地存储（生产是磁盘实现）。
 type memGenStorage struct {
 	mu   sync.Mutex
 	objs map[string][]byte
@@ -241,7 +241,7 @@ func TestCanvasGenerationEndToEnd(t *testing.T) {
 	}
 }
 
-// Review Focus 1 / spec S7：上个进程留下两条心跳仍「新鲜」的在途任务——
+// 上个进程留下两条心跳仍「新鲜」的在途任务——
 // n2 已领取但没调过上游（应重新执行恰好一次），n3 已拿到上游任务号（应续轮询、绝不重新提交）。
 func TestRestartResumesInFlightTasks(t *testing.T) {
 	h := newHarness(t, "n2", "n3")

@@ -19,27 +19,27 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/upstream"
 )
 
-// 生成链路的装配（参考仓 cmd/server/main.go:194-263、630-705 的桌面版）。
+// 生成链路的装配。
 
 const (
-	genLeaseHeartbeatSec = 15                // 参考仓 LEASE_HEARTBEAT_SEC 默认值
-	genLeaseStaleSec     = 90                // 参考仓 LEASE_STALE_SEC 默认值
-	genUpstreamTimeout   = 300 * time.Second // 参考仓 UPSTREAM_TIMEOUT_SEC 默认值
+	genLeaseHeartbeatSec = 15                // 租约心跳间隔（秒）
+	genLeaseStaleSec     = 90                // 租约过期判定（秒）
+	genUpstreamTimeout   = 300 * time.Second // 上游请求超时
 )
 
-// genCanvasNotifier 与 canvasgen 未导出的 canvasChangeNotifier 同形（P1b 决定由谁实现）。
+// genCanvasNotifier 与 canvasgen 未导出的 canvasChangeNotifier 同形。
 type genCanvasNotifier interface {
 	NotifyCanvasChanged(userID, projectID, version int64, sourceMark string, op *canvasstate.CanvasOpSummary)
 }
 
-// genMediaSigner 与 http 的 mediaRefSigner、canvasgen 的 mediaSigner 同形；P1b 的 *apphttp.MediaSigner 满足。
+// genMediaSigner 与 http 的 mediaRefSigner、canvasgen 的 mediaSigner 同形；*apphttp.MediaSigner 满足。
 type genMediaSigner interface {
 	Sign(s string) string
 	SignJSON(raw json.RawMessage) json.RawMessage
 	Canonicalize(s string) string
 }
 
-// genExternal 是生成链路向 P1b 要的依赖。字段可为 nil：Storage 为 nil 时产物不落本地；
+// genExternal 是生成链路的外部依赖。字段可为 nil：Storage 为 nil 时产物不落本地；
 // Assets 为 nil 时不建 asset 行、不注册 apply-to-canvas；Reclaimer 为 nil 时删任务不登记孤儿；
 // Signer 为 nil 时 URL 原样返回；Notifier 为 nil 时回写不广播。
 type genExternal struct {
@@ -112,7 +112,7 @@ func wireGeneration(conn *sql.DB, dataDir string, ext genExternal) (*genWiring, 
 	}, nil
 }
 
-// promptPresetResolver 逐字移植参考仓 main.go:230-263：多角度/打光保留 key 先分流，
+// promptPresetResolver：多角度/打光保留 key 先分流，
 // 其余查绘图预设表；每次现读 settings，后台改正文后排队中的任务执行时自动生效。
 func promptPresetResolver(get func(string) (string, error)) func(string, map[string]string) (string, bool) {
 	return func(key string, params map[string]string) (string, bool) {
@@ -148,7 +148,7 @@ func promptPresetResolver(get func(string) (string, error)) func(string, map[str
 	}
 }
 
-// settingsUpstreamKey：桌面端没有「用户独立 key」，全局 Key = settings.upstream_api_key（spec M3）。
+// settingsUpstreamKey：桌面端没有「用户独立 key」，全局 Key = settings.upstream_api_key。
 // 只作为 models.ResolveUpstream 的回落值（generation / canvasscript 经 GlobalWithKey 接入）。
 type settingsUpstreamKey struct {
 	settings interface{ Get(string) (string, error) }
@@ -158,7 +158,7 @@ func (k settingsUpstreamKey) Resolve(int64) (string, error) {
 	return k.settings.Get(models.SettingUpstreamAPIKey)
 }
 
-// sqliteUserStorage 实现 generation.UserStorage：直接读写 users 表（P1a 0001 已建，本地用户配额 1 PiB）。
+// sqliteUserStorage 实现 generation.UserStorage：直接读写 users 表（迁移 0001 已建，本地用户配额 1 PiB）。
 type sqliteUserStorage struct{ db *sql.DB }
 
 func (u sqliteUserStorage) AddStorage(id, delta int64) error {
@@ -177,7 +177,7 @@ func (u sqliteUserStorage) AddStorageTx(tx *sql.Tx, id, delta int64) error {
 	return err
 }
 
-// noopGenBilling 把 billing.NoopService 适配成 generation.Billing（参考仓 main.go:873-905 的 billingAdapter）。
+// noopGenBilling 把 billing.NoopService 适配成 generation.Billing。
 type noopGenBilling struct{ svc *billing.NoopService }
 
 func (b noopGenBilling) Freeze(ctx context.Context, u, t, a int64, n string) (generation.BillingResult, error) {

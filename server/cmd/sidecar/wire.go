@@ -44,14 +44,14 @@ type app struct {
 	events *events.Hub
 }
 
-// wire 是唯一的装配点（对应参考仓 cmd/server/main.go 里画布相关的那部分）。
+// wire 是唯一的装配点。
 // 生成任务清理（taskProjectCleanup）接 generation 仓库：删项目时清掉该项目的终态任务历史。
-// 画布变更广播（canvas_changed）依赖 P5 的 Agent Hub，Hub 在 run() 里 wireAgent 之后才存在：
+// 画布变更广播（canvas_changed）依赖 Agent Hub，Hub 在 run() 里 wireAgent 之后才存在：
 // 这里构造的 handler 与生成回写都先不带 Notifier，由 run() 用 SetChangeNotifier 补注入。
 // 生成后台循环不在这里启动，由 run() 在 HTTP 就绪前用可取消的 ctx 调 a.gen.Gen.StartBackground。
 func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dataDir, version string) (*app, error) {
 	signer := apphttp.NewMediaSigner(storage)
-	// 对象存储（用户自配 TOS/OSS）：本机视频/音频经它交给上游（对象存储设计 §3.2）。
+	// 对象存储（用户自配 TOS/OSS）：本机视频/音频经它交给上游。
 	publisher := objectstore.NewPublisher(settings.NewSQLiteRepository(conn), storage, nil)
 	projectsRepo := projects.NewSQLiteRepository(conn)
 	assetsRepo := assets.NewSQLiteRepository(conn)
@@ -98,13 +98,13 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 
 	genW.Gen.SetMediaPublisher(publisher)
 
-	// ── P1d ──
+	// ── 用户端接口 ──
 	settingsRepo := settings.NewSQLiteRepository(conn)
 	modelsRepo := models.NewSQLiteRepository(conn)
 	aiCharactersRepo := aicharacters.NewSQLiteRepository(conn)
 	charImages := aicharacters.NewImageCache(aiCharactersRepo, aicharacters.EmbeddedImages(), charImageStore{storage})
 
-	// Seedance 合规走隐藏内置模型 seedance-asset（seedance-asset 设计）：同步注册，拿到 asset_id 即通过。
+	// Seedance 合规走隐藏内置模型 seedance-asset：同步注册，拿到 asset_id 即通过。
 	librarySeedanceSvc := library.NewSeedanceService(
 		library.NewSQLiteSeedanceAssetsRepository(conn),
 		seedance.NewRegistrar(modelsRepo, settingsRepo, nil),
@@ -112,10 +112,10 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	// AI 角色图是平台预置、已过校验的公共资产：状态角标兜底。
 	librarySeedanceSvc.SetPublicAssets(aiCharactersRepo)
 	librarySeedanceSvc.SetMediaPublisher(publisher)
-	// 生成时真人素材自动以 asset://<id> 提交（参考仓 main.go 同名装配）。
+	// 生成时真人素材自动以 asset://<id> 提交。
 	genW.Gen.WithRealPersonResolver(librarySeedanceSvc)
 
-	// 自由画布 CLI 契约（参考仓 cmd/server/main.go 同名装配）：service 层及以下与网页共用。
+	// 自由画布 CLI 契约：service 层及以下与网页共用。
 	// CLI 写画布成功后经事件中心通知网页（SSE），网页空闲时整拉快照。
 	hub := events.NewHub()
 	deps.Events = hub
@@ -130,7 +130,7 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	deps.CLIModel = apphttp.NewCLIModelHandler(modelsRepo)
 	deps.CLIAsset = apphttp.NewCLIAssetHandler(assetHandler, assetsRepo, signer)
 
-	// 后处理（去字幕/转高清/转白模）直接入 P1c 的生成管线。
+	// 后处理（去字幕/转高清/转白模）直接入生成管线。
 	deps.CanvasPostprocess = apphttp.NewCanvasPostprocessHandler(settingsRepo, genW.CanvasGen, projectsRepo, assetsRepo, genW.Gen, modelsRepo, signer).
 		WithObjectStore(storage)
 	deps.GenImagePreset = apphttp.NewGenImagePresetHandler(settingsRepo)
@@ -144,8 +144,8 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		storage, orphans, usersRepo, signer, conn)
 	deps.DirectorLibrary = apphttp.NewDirectorLibraryHandler(directorlibrary.NewSQLiteRepository(conn), signer)
 
-	// ── P4 设置页 ── 内置模型的修改只经 builtin.Service（白名单 + 改动记录，spec M10/M11）。
-	// 五项画布配置与 Agent 模型 2026-10-07 起写死为内置值，设置页不再提供修改接口。/admin/canvas/* 的整份覆盖写接口不注册（见 router.go）。
+	// ── 设置页 ── 内置模型的修改只经 builtin.Service（白名单 + 改动记录）。
+	// 五项画布配置与 Agent 模型写死为内置值，设置页不再提供修改接口。/admin/canvas/* 的整份覆盖写接口不注册（见 router.go）。
 	policy, err := builtin.NewService(conn)
 	if err != nil {
 		return nil, fmt.Errorf("初始化内置数据编辑服务: %w", err)
@@ -155,11 +155,11 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 		Models:   modelsRepo,
 		// 对象存储连接测试。
 		ObjectStore: publisher,
-		// 每模型独立上游：本机字段，直接写 model_configs，不经内置编辑策略（2026-10-07）。
+		// 每模型独立上游：本机字段，直接写 model_configs，不经内置编辑策略。
 		ModelUpstream: modelsRepo,
 		ModelEdit:     apphttp.NewPolicyModelEdit(policy, modelsRepo),
 		SettingEdit:   apphttp.NewPolicySettingEdit(policy, settingsRepo),
-		// Agent 模型只读（2026-10-07 写死），仅供模型中心标注引用。
+		// Agent 模型只读（写死为内置值），仅供模型中心标注引用。
 		Agent: apphttp.NewBackboneAgentModels(agent.NewBackboneRepo(conn)),
 	}
 

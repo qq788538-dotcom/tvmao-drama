@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// persistRetryDelays 是单个产物槽位下载/落盘失败后的重试间隔（spec S5：失败自动重试 3 次）。
+// persistRetryDelays 是单个产物槽位下载/落盘失败后的重试间隔（失败自动重试 3 次）。
 // 包级变量而非 Service 字段：测试置零即可，生产不需要配置。
 var persistRetryDelays = []time.Duration{2 * time.Second, 5 * time.Second, 10 * time.Second}
 

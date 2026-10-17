@@ -15,7 +15,7 @@ type InputLimitError struct{ Msg string }
 func (e *InputLimitError) Error() string { return e.Msg }
 
 // mediaKinds：inputLimits 键 → (inputs 数组字段名, 用户可见名)。只认这三类——
-// 不认识的约束键静默忽略（spec 2026-08-12 扩展性语义：新键先配置、后升级二进制
+// 不认识的约束键静默忽略（扩展性语义：新键先配置、后升级二进制
 // 期间约束不生效而不是报错，运维要知道这一点）。
 var mediaKinds = []struct{ kind, inputsKey, label string }{
 	{"video", "videos", "视频"},

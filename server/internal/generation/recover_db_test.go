@@ -8,7 +8,7 @@ import (
 )
 
 // newRecoverDBHarness：真实 SQLite + 记录计费调用的替身。本地用户 id=1 由迁移预置。
-// leaseStaleSec 取 60（参考仓是 1）：「心跳新鲜」用例与断言之间跨过 1 秒边界就会误判，60 秒足够稳定。
+// leaseStaleSec 取 60（而不是 1）：「心跳新鲜」用例与断言之间跨过 1 秒边界就会误判，60 秒足够稳定。
 func newRecoverDBHarness(t *testing.T) (*sql.DB, *Service, int64) {
 	t.Helper()
 	conn := dbtest.Open(t)

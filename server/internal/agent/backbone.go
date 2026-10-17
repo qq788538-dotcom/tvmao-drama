@@ -176,7 +176,7 @@ type PlannerDeps struct {
 	UpstreamKey UpstreamKeyResolver
 	Models      ModelLookup
 	Billing     AgentBilling
-	// Media 把发给 subagent 的媒体地址换成上游拿得到的形式（S12 接缝，可为 nil）。
+	// Media 把发给 subagent 的媒体地址换成上游拿得到的形式（可为 nil）。
 	Media LLMMediaResolver
 }
 
@@ -286,14 +286,14 @@ func buildModelForUser(ctx context.Context, userID int64, role string, deps Plan
 		return nil, nil, noBilling, fmt.Errorf("%s backbone: models repo not wired", role)
 	}
 	// backbone 没有自己的计费字段：按 backbone.ModelName 去 model_configs 取计费配置。
-	// 桌面端计费是空实现（NoopBilling），查不到时降级成零值计费继续运行——参考仓在这里
-	// 拒绝 Run（防白嫖），桌面端照搬会让 Agent 依赖模型种子是否恰好含这个 model_id，
+	// 桌面端计费是空实现（NoopBilling），查不到时降级成零值计费继续运行——若在这里
+	// 拒绝 Run，Agent 就会依赖模型种子是否恰好含这个 model_id，
 	// 设置页切过去的模型被种子删掉后 Agent 就永久不可用。
 	mb := noBilling
 	var mcfg *models.ModelConfig
 	m, merr := deps.Models.GetByModelID(cfg.ModelName)
 	if merr != nil && !errors.Is(merr, models.ErrNotFound) {
-		// 数据库瞬时错误等：不能静默回落全局——那可能是另一个计费账号（审查 M-5）。
+		// 数据库瞬时错误等：不能静默回落全局——那可能是另一个计费账号。
 		return nil, nil, noBilling, fmt.Errorf("%s backbone: 读取模型 %q 配置失败: %w", role, cfg.ModelName, merr)
 	}
 	if merr != nil || m == nil {
@@ -329,7 +329,7 @@ func buildModelForUser(ctx context.Context, userID int64, role string, deps Plan
 		Temperature: float32Ptr(cfg.Temperature),
 		// 挂日志 transport：planner 的 HTTP 由 eino 内部的 openai client 发出，不走
 		// internal/upstream 的日志层——上游 400 时从服务端日志完全看不到我们发了什么、
-		// 上游回了什么（2026-08-17 测试环境排障只能靠猜）。这层是唯一能看到最终
+		// 上游回了什么。这层是唯一能看到最终
 		// 出网 JSON 的地方。
 		HTTPClient: &http.Client{Transport: &plannerLogTransport{inner: http.DefaultTransport}},
 	})
@@ -341,8 +341,8 @@ func buildModelForUser(ctx context.Context, userID int64, role string, deps Plan
 
 // plannerLogTransport 给 planner/utility 的出网请求打日志。
 // 只记方法、地址、状态码、请求体字节数；上游 ≥400 时再附上截断后的响应体。
-// 请求体一律不打：里面是用户的完整对话，还可能有上百 MB 的图片 data URI（spec S12
-// 把本机图片内联成 data URI 之后），桌面端日志会落盘并随诊断包上传。
+// 请求体一律不打：里面是用户的完整对话，还可能有上百 MB 的图片 data URI（本机
+// 图片内联成 data URI 之后），桌面端日志会落盘并随诊断包上传。
 // 不打任何请求头（Authorization 里是 sk）。
 type plannerLogTransport struct{ inner http.RoundTripper }
 

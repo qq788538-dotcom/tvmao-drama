@@ -1,7 +1,6 @@
 // Package agent — tools_attachment.go：内置的 read_attachment 工具，让 LLM 能
 // 分段读取「超过内联阈值的大文本」——用户上传的 .txt/.md 附件（对象存储）与
-// 画布文字节点正文（快照 settings.text）。设计见
-// docs/superpowers/specs/2026-08-31-agent-large-text-attachment-design.md。
+// 画布文字节点正文（快照 settings.text）。
 //
 // 为什么不内联：内联正文进会话历史每轮重放，大文件单条消息直接超 backbone
 // 窗口，第一轮请求就失败；历史压缩只折「老消息」救不了当轮。分段读取把大

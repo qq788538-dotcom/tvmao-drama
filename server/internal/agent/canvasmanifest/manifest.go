@@ -1,7 +1,6 @@
 // Package canvasmanifest 是「画布节点能力清单」的真源。
 //
 // 它回答两个问题：这个类型的节点有哪些 settings 字段、agent 能对每个字段做什么。
-// 设计依据见 docs/superpowers/specs/2026-08-27-agent-canvas-capability-manifest.md。
 //
 // 为什么要有它：在此之前 agent 对画布是盲写——read_canvas 手挑 7 个字段回传（实际
 // 在用的有 30+），update_node 除三个机器字段外任意 JSON 放行、写错字段名静默成功。

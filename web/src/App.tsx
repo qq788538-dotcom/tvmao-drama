@@ -8,13 +8,13 @@ import { ProjectsModal } from '@/modules/canvas/ProjectsModal';
 import { SettingsModal } from '@/modules/settings/SettingsModal';
 import { openSettings } from '@/modules/settings/settingsModalStore';
 
-// 桌面端路由（spec F9）：
+// 桌面端路由：
 //   /                  启动入口，直接跳进画布（上一次 → 最近修改 → 新建）
-//   /canvas            所有项目（原样复用参考仓的 CanvasProjectsPage）
+//   /canvas            所有项目（CanvasProjectsPage）
 //   /canvas/:projectId 画布编辑器
 //   /settings          兼容路由：打开设置弹框并回启动入口（设置本身是弹框，不是页面）
-//   /diag              环境诊断（P0 诊断页，隐藏入口；同样在「设置 → 环境诊断」里）
-// 路径与参考仓保持一致：画布模块里有十余处直接从 location.pathname 解析 /canvas/:id。
+//   /diag              环境诊断（隐藏入口；同样在「设置 → 环境诊断」里）
+// 路径不能改：画布模块里有十余处直接从 location.pathname 解析 /canvas/:id。
 export function App() {
   return (
     <>

@@ -56,7 +56,7 @@ describe('isUnsavedNode', () => {
     expect(isUnsavedNode(genNode({ type: 'input-image', settings: { unsaved: true, genTaskId: 3 } }))).toBe(true);
   });
 
-  // I-2：页面开着重新生成拿到本地地址后，store 里可能残留旧的 unsaved 标记。
+  // 页面开着重新生成拿到本地地址后，store 里可能残留旧的 unsaved 标记。
   it('unsaved 标记残留但内容已是本机地址（sidecar media 或 media://）时不算', () => {
     expect(isUnsavedNode(genNode({ content: LOCAL, settings: { unsaved: true, genTaskId: 3 } }))).toBe(false);
     expect(isUnsavedNode(genNode({ content: 'media://gen/1.png', settings: { unsaved: true, genTaskId: 3 } }))).toBe(false);
@@ -175,7 +175,7 @@ describe('useUnsavedLocalBadge', () => {
     expect(screen.queryByText('未保存到本地')).toBeNull();
   });
 
-  // I-2：上次下载失败（unsaved + genTaskId A），不点重试直接重新生成并成功拿到本地地址。
+  // 上次下载失败（unsaved + genTaskId A），不点重试直接重新生成并成功拿到本地地址。
   // 角标必须消失、重试按钮不可用，否则重试会拿任务 A 的图把新结果换掉。
   it('先失败后又重新生成成功：角标消失，没有可点的重试按钮', async () => {
     setNodes([genNode({ settings: { unsaved: true, genTaskId: 42, history: [REMOTE] } })]);

@@ -14,7 +14,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/settings"
 )
 
-// 真实装配（P1b 磁盘存储 + 资产仓库 + 签名器）下走一遍画布生成：经 HTTP 提交 → 产物落盘 →
+// 真实装配（磁盘存储 + 资产仓库 + 签名器）下走一遍画布生成：经 HTTP 提交 → 产物落盘 →
 // 节点回写。落库的节点 content 必须是 media://<key>（不得是带端口/token 的本地 URL），
 // 经接口读快照时才签成本次启动的本地 URL。
 func TestE2EGenerationPersistsMediaKeyOnCanvas(t *testing.T) {

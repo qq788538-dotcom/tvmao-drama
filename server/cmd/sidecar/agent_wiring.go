@@ -19,22 +19,22 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/settings"
 )
 
-// agentWiringDeps 是 Agent 依赖的外部能力。除 DB 外都可以为 nil（对应计划尚未合并），
+// agentWiringDeps 是 Agent 依赖的外部能力。除 DB 外都可以为 nil（对应能力未接入），
 // 此时换成明确报错的兜底实现，Agent 对话本身照常可用。
 type agentWiringDeps struct {
 	DB      *sql.DB
-	Gen     agent.GenerationService      // P1c 的 *generation.Service
-	Signer  agent.URLSigner              // P1b 的 *apphttp.MediaSigner
-	Assets  agent.AttachmentAssetFinder  // P1b 的 assets 仓库
-	Objects agent.AttachmentObjectReader // P1b 的 assets.Storage
-	Keys    agent.MediaKeyExtractor      // P1b 的 assets.Storage（ExtractKey）；接了 Signer/Objects 就必须接它
+	Gen     agent.GenerationService      // *generation.Service
+	Signer  agent.URLSigner              // *apphttp.MediaSigner
+	Assets  agent.AttachmentAssetFinder  // assets 仓库
+	Objects agent.AttachmentObjectReader // assets.Storage
+	Keys    agent.MediaKeyExtractor      // assets.Storage（ExtractKey）；接了 Signer/Objects 就必须接它
 	// Publisher 把本机视频/音频发布到用户自配的对象存储；nil 时本机视频/音频仍报错。
 	Publisher agent.MediaPublisher
 }
 
 type agentWiring struct {
 	Workers    []<-chan struct{} // 后台 goroutine 的退出信号，main 关库前等待
-	Hub        *agent.Hub        // 交给 P1c 的 canvasgen.SetChangeNotifier，承载 canvas_changed
+	Hub        *agent.Hub        // 交给 canvasgen.SetChangeNotifier，承载 canvas_changed
 	Registry   *agent.DBRegistry
 	Agent      *apphttp.AgentHandler
 	Skills     *apphttp.SkillsHandler
@@ -78,7 +78,7 @@ func wireAgent(ctx context.Context, d agentWiringDeps) (*agentWiring, error) {
 	if objects == nil {
 		objects = agentUnavailableAssets{}
 	}
-	// Keys 为 nil（P1b 未合并）时，resolver 对本机地址一律报错，绝不把 127.0.0.1 原样发给上游。
+	// Keys 为 nil 时，resolver 对本机地址一律报错，绝不把 127.0.0.1 原样发给上游。
 	resolver := &agent.LocalMediaResolver{Keys: d.Keys, Objects: objects, Publisher: d.Publisher}
 
 	backbones := agent.NewBackboneRepo(d.DB)
@@ -249,7 +249,7 @@ func (m agentModelResolver) ResolvePollMaxWait(id int64) (time.Duration, error) 
 	return maxWait, nil
 }
 
-// agentKeyResolver：全局上游 Key = settings.upstream_api_key（spec A2）。只作为 models.ResolveUpstream
+// agentKeyResolver：全局上游 Key = settings.upstream_api_key。只作为 models.ResolveUpstream
 // 的回落值使用（agent.buildModelForUser 经 GlobalWithKey 接入），模型单独配了上游时不会读它。
 type agentKeyResolver struct{ settings *settings.SQLiteRepository }
 
@@ -257,14 +257,14 @@ func (k agentKeyResolver) Resolve(int64) (string, error) {
 	return k.settings.Get(models.SettingUpstreamAPIKey)
 }
 
-// agentIdentitySigner：P1b 的 MediaSigner 未接入时，URL 原样进出。
+// agentIdentitySigner：MediaSigner 未接入时，URL 原样进出。
 type agentIdentitySigner struct{}
 
 func (agentIdentitySigner) Sign(s string) string         { return s }
 func (agentIdentitySigner) Canonicalize(s string) string { return s }
 
 // agentIconSigner 给 Skill 图标出口用：缩略图退化为原图签名（种子里 icon_url 全为空，够用）。
-// P1b 合并后直接把 *apphttp.MediaSigner 传给 NewSkillsHandler，删掉本类型。
+// 也可以直接把 *apphttp.MediaSigner 传给 NewSkillsHandler，删掉本类型。
 type agentIconSigner struct{ signer agent.URLSigner }
 
 func (s agentIconSigner) Sign(u string) string             { return s.signer.Sign(u) }

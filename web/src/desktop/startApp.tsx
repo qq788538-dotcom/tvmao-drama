@@ -38,7 +38,7 @@ export function adoptSidecarSession(info: ServerInfo): number {
     if (prev) {
       queryClient.clear();
       // Agent 对话的消息缓存是模块级 zustand store，不随页面树重挂而清空；里面的原图链接由
-      // 旧会话签发，留着的话 Lightbox 看原图会失败（final-review M-6）。清掉后重挂时重新拉。
+      // 旧会话签发，留着的话 Lightbox 看原图会失败。清掉后重挂时重新拉。
       useAgentStore.setState({ messages: {}, pageState: {} });
     }
     setSidecarSession(info);
@@ -59,7 +59,7 @@ function SessionScope({ info }: { info: ServerInfo }) {
 
 /**
  * 启动流程：SidecarGate 拿到本次 sidecar 的端口和 token 之后才渲染任何页面——
- * axios 拦截器和 AgentClient 都要用到会话。P8 的壳会在 sidecar 崩溃后自动重启它并广播
+ * axios 拦截器和 AgentClient 都要用到会话。壳会在 sidecar 崩溃后自动重启它并广播
  * 状态事件：Gate 先切回「正在启动」（卸掉整棵页面树），就绪后用新会话重新挂载。
  * 地址栏里的路由不变，所以用户会回到原来的画布，快照和媒体 URL 用新 token 重新拉。
  */

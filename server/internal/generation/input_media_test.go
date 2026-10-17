@@ -19,7 +19,7 @@ import (
 
 const localBase = "http://127.0.0.1:5555/media/"
 
-// localMediaStorage 模拟 P1b 的本地存储：ExtractKey 认 media:// 和 sidecar 自己签出的本地 URL。
+// localMediaStorage 模拟本地存储：ExtractKey 认 media:// 和 sidecar 自己签出的本地 URL。
 type localMediaStorage struct {
 	AssetStorage
 	files map[string][]byte

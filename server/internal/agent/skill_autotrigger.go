@@ -4,8 +4,6 @@
 // skill），无损；而让 planner 读一份 skill 目录自行决定加载，误触发时它会自作
 // 主张套上一段长指令，用户不知道行为为什么变了。硬匹配还能被运营验证——
 // 「用户说 X 就一定走 Y」可复现、出问题能改词表。
-//
-// 设计依据见 docs/superpowers/specs/2026-08-27-canvas-agent-skill-auto-trigger.md。
 package agent
 
 import (

@@ -14,13 +14,13 @@ import (
 )
 
 // MediaPublisher 把本机媒体发布到用户配置的对象存储并返回上游可下载的地址
-// （对象存储设计 §3.2；*objectstore.Publisher 满足）。
+// （*objectstore.Publisher 满足）。
 type MediaPublisher interface {
 	Configured() bool
 	Publish(ctx context.Context, mediaKey string) (string, error)
 }
 
-// SetMediaPublisher 注入对象存储发布器（setter 惯例同 SetTempDir）。nil = 参考仓原逻辑。
+// SetMediaPublisher 注入对象存储发布器（setter 惯例同 SetTempDir）。nil = 用本机签名地址。
 func (s *Service) SetMediaPublisher(p MediaPublisher) { s.publisher = p }
 
 // skipImagesFor：图片会以内容本身发给上游（data_uri / base64 / edits multipart）时不必上传。
@@ -32,7 +32,7 @@ func skipImagesFor(m *models.ModelConfig) bool {
 // 在调上游之前失败，不产生任何上游调用。
 var ErrLocalMediaUnreachable = errors.New("未配置对象存储：视频和音频需要上传到你自己的对象存储，请在 设置 → 对象存储 中填写")
 
-// ensureNoLocalMediaForRequest 只检查真正会发给上游的内容（C1）。
+// ensureNoLocalMediaForRequest 只检查真正会发给上游的内容。
 // edits 模式且有落盘参考图时走 multipart：payload 里的 image/images/mask 不会发送
 // （图片字节走文件 part），只检查 scalarMultipartFields 产出的标量字段；其余情况整个
 // payload 都会作为 JSON 发出，全量检查。判定条件必须与 callUpstream 的分支保持一致。

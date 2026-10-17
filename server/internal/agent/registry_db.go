@@ -52,7 +52,7 @@ type DBRegistry struct {
 
 func NewDBRegistry(repo AgentToolsRepo, resolver ModelResolver, genSvc GenerationService, deps PlannerDeps, signer URLSigner, skills SkillsRepo, canvas CanvasSnapshotReader, modelCatalog CanvasModelCatalog, attachAssets AttachmentAssetFinder, attachObjects AttachmentObjectReader, _ string) *DBRegistry {
 	builtins := []Tool{
-		// output_skill_definition 不注册：桌面端不允许用户新建 Skill（spec A4），
+		// output_skill_definition 不注册：桌面端不允许用户新建 Skill，
 		// 前端也不渲染保存弹窗，planner 产出的技能草稿无处可去。工具类型本身保留。
 		NewAnalyzeImageTool(deps, nil),
 		NewAnalyzeVideoTool(deps, nil),
@@ -75,7 +75,7 @@ func NewDBRegistry(repo AgentToolsRepo, resolver ModelResolver, genSvc Generatio
 		//（见 tools_canvas_capability.go 的包注释）。
 		&ListCanvasModelsTool{Catalog: modelCatalog},
 		&DescribeCanvasNodeTool{Reader: canvas, Catalog: modelCatalog},
-		// 大文本附件分段读取（spec 2026-08-31）：超过内联阈值的 .txt/.md 与
+		// 大文本附件分段读取：超过内联阈值的 .txt/.md 与
 		// 画布文字节点，引用行只给 artifact_id，正文靠它按需读。
 		&ReadAttachmentTool{Assets: attachAssets, Objects: attachObjects, Canvas: canvas},
 	}

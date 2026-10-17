@@ -1,4 +1,4 @@
-// Package endpoint 读取桌面端壳写下的 CLI 地址文件（CLI spec 3.2）。
+// Package endpoint 读取桌面端壳写下的 CLI 地址文件。
 // sidecar 每次启动用随机端口和新 token，CLI 每次执行都重新读这个文件，不缓存。
 package endpoint
 

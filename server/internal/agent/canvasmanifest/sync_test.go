@@ -15,7 +15,7 @@ import (
 // 纪律。
 //
 // 桌面仓是单仓：server/ 与 web/ 永远同时存在，找不到浏览器副本就是路径或文件被改坏了，
-// 必须失败（spec A5：不一致则构建失败）。
+// 必须失败（不一致则构建失败）。
 func TestBrowserCopyInSync(t *testing.T) {
 	const rel = "../../../../web/src/modules/canvas/editor/agent/canvasManifest.json"
 	path, err := filepath.Abs(rel)

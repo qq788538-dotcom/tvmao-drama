@@ -1,4 +1,4 @@
-// 守护：终审 I-4 裁定。CSP 的 img-src / media-src 放行 https:（上游外链回退要能预览），
+// 守护：CSP 的 img-src / media-src 放行 https:（上游外链回退要能预览），
 // connect-src 不放行 https（接口只走 127.0.0.1 sidecar）。
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

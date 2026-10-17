@@ -15,10 +15,10 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/skillruntime"
 )
 
-// skillMaxIterations 与参考仓 DRAMA_AGENT_MAX_ITERATIONS 默认值一致（重流程 skill 正常就近 20 轮）。
+// skillMaxIterations 是 Skill 执行的最大迭代轮数（重流程 skill 正常就近 20 轮）。
 const skillMaxIterations = 40
 
-// wireCanvasScript 装配脚本节点（P6）：释放内置 Skill、找内置 Python、启动回收与 worker。
+// wireCanvasScript 装配脚本节点：释放内置 Skill、找内置 Python、启动回收与 worker。
 // 找不到 Python 不阻止启动，只打印警告；任务执行时以“内置 Python 运行时缺失”失败。
 func wireCanvasScript(ctx context.Context, conn *sql.DB, dataDir, pythonHome string) (*apphttp.CanvasScriptHandler, []<-chan struct{}, error) {
 	runtimeDir := filepath.Join(dataDir, "runtime")

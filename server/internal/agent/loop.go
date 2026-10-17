@@ -58,8 +58,8 @@ type Agent struct {
 	// Signer 把写进 content_blocks 的 URL 做 canonicalize，让 DB 行能熬过 24h 的
 	// signed-URL TTL。为 nil 时回退到原样存 URL（旧行为——会留下永久失效隐患）。
 	Signer URLSigner
-	// MediaResolver 把发给 planner 的 image_url 换成上游拿得到的地址（S12 接缝）。
-	// nil = 不改写（参考仓行为）。只影响出网请求，不影响落库内容。
+	// MediaResolver 把发给 planner 的 image_url 换成上游拿得到的地址。
+	// nil = 不改写。只影响出网请求，不影响落库内容。
 	MediaResolver LLMMediaResolver
 	// MaxInlineImageBytes 是单次 LLM 请求里内联图片（data URI）的总字节上限；0 = 20MB。
 	MaxInlineImageBytes int64
@@ -220,7 +220,7 @@ func (a *Agent) Run(ctx context.Context, threadID, actionID, userText string, me
 	}
 	// 显式携带 tool_choice（ToolChoiceAllowed 无白名单 → 渲染成字符串 "auto"），
 	// 不再依赖 eino WithTools 的隐式默认——那个默认藏在库里，排查上游 400 时
-	// 没法从我们自己的代码确认出网形态（2026-08-17 测试环境排障的教训）。
+	// 没法从我们自己的代码确认出网形态。
 	// 只在真绑了工具时带：不带 tools 的请求附 tool_choice 会被部分上游拒绝。
 	var llmOpts []model.Option
 	if toolsBound {

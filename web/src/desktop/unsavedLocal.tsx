@@ -1,7 +1,7 @@
-// spec S5：生成结果下载到本机失败（sidecar 自动重试 3 次仍失败）时，节点里留的是上游
+// 生成结果下载到本机失败（sidecar 自动重试 3 次仍失败）时，节点里留的是上游
 // 外链。这里负责认出这种节点、挂「未保存到本地」角标和「重试」按钮。
 //
-// 重试走 sidecar 的 POST /tasks/{id}/repersist（P1c Task 5）。成功时 sidecar 已经把快照里
+// 重试走 sidecar 的 POST /tasks/{id}/repersist。成功时 sidecar 已经把快照里
 // 的节点改成本地地址；页面这边把同样的改动落到 store，再补一次局部持久化——与生成结果
 // 回填同一套做法（服务端权威写回，前端补齐自己的状态）。
 import { useState, type ReactNode } from 'react';

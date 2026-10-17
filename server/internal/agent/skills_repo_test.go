@@ -249,7 +249,7 @@ func TestSkillsRepoIncrementUseCount(t *testing.T) {
 	}
 }
 
-// 多分类过滤：categories 数组命中也算（参考仓 JSON_CONTAINS，桌面 json_each）。
+// 多分类过滤：categories 数组命中也算（json_each）。
 func TestListPublicByCategoryMatchesArray(t *testing.T) {
 	conn := openTestDB(t)
 	resetSkillsTables(t, conn)

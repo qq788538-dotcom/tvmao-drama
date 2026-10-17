@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 构建 macOS 发布包：out/喵剧AI_<版本>_aarch64.dmg（Apple 芯片）和 out/喵剧AI_<版本>_x64.dmg（Intel）。
-# 不做开发者签名和公证（spec E5）：Tauri 按 signingIdentity "-" 做 ad-hoc 签名；dmg 内附《首次打开说明.txt》。
+# 不做开发者签名和公证：Tauri 按 signingIdentity "-" 做 ad-hoc 签名；dmg 内附《首次打开说明.txt》。
 # Tauri 的 dmg 配置不能往卷里放额外文件，所以 Tauri 只出 .app，dmg 由 hdiutil 生成。
 # 用法：bash scripts/release-macos.sh [aarch64|x64|all]（默认 all）
 set -euo pipefail

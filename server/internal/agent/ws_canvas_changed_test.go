@@ -43,7 +43,7 @@ func TestHub_CanvasChangedKeepsPhaseOneShapeAndAddsOptionalOp(t *testing.T) {
 	}
 }
 
-// 桌面端没有 presence（spec X2）：注册连接不得向任何人发帧。
+// 桌面端没有 presence：注册连接不得向任何人发帧。
 func TestHub_RegisterDoesNotBroadcast(t *testing.T) {
 	first := &recordingWriter{}
 	hub := NewHub()

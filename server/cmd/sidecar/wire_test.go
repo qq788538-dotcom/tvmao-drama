@@ -139,7 +139,7 @@ func TestE2EProjectUploadCanvasMediaLifecycle(t *testing.T) {
 		t.Fatalf("media: code=%d type=%q body=%q", mresp.StatusCode, mresp.Header.Get("Content-Type"), mbody)
 	}
 
-	// 5. 媒体 token 不能调接口（Review Focus 5）
+	// 5. 媒体 token 不能调接口
 	presp, err := http.Get(e.base + "/api/v1/projects?token=" + e2eMediaToken)
 	if err != nil {
 		t.Fatal(err)
@@ -247,7 +247,7 @@ func TestE2EProjectUploadCanvasMediaLifecycle(t *testing.T) {
 	}
 }
 
-// Review Focus 4：经真实路由的穿越尝试（编码后的 ..）一律 404，绝不吐出数据目录里的其他文件。
+// 经真实路由的穿越尝试（编码后的 ..）一律 404，绝不吐出数据目录里的其他文件。
 func TestE2EMediaTraversalIsRejected(t *testing.T) {
 	e := newE2E(t)
 	for _, p := range []string{"/media/%2e%2e/secret.txt", "/media/..%2fsecret.txt", "/media/u1/%2e%2e/%2e%2e/secret.txt"} {
@@ -272,7 +272,7 @@ func TestMustWirePanicsOnMissingHandler(t *testing.T) {
 	apphttp.MustWire(apphttp.Deps{})
 }
 
-// 前端（P3a）读画布图片像素：媒体 GET 必须带回白名单 Origin 的 CORS 头；ownerToken 固定发 "local"，
+// 前端读画布图片像素：媒体 GET 必须带回白名单 Origin 的 CORS 头；ownerToken 固定发 "local"，
 // 不先 claim 也要放行。
 func TestE2EMediaCORSAndLocalOwnerToken(t *testing.T) {
 	e := newE2E(t)
@@ -315,7 +315,7 @@ func TestE2EMediaCORSAndLocalOwnerToken(t *testing.T) {
 	}
 }
 
-// M1：手动编辑画布成功后必须经 attachCanvasNotifier 推 canvas_changed；未注入时不广播。
+// 手动编辑画布成功后必须经 attachCanvasNotifier 推 canvas_changed；未注入时不广播。
 func TestManualCanvasEditNotifiesAfterAttach(t *testing.T) {
 	e := newE2E(t)
 	resp, b := e.callJSON(t, http.MethodPost, "/api/v1/projects", `{"name":"p"}`)
@@ -354,7 +354,7 @@ func TestManualCanvasEditNotifiesAfterAttach(t *testing.T) {
 	}
 }
 
-// CLI 路由经真实装配可达：CLI token 进得去，网页 token 被最外层 localauth 拒掉（CLI spec 3.3）。
+// CLI 路由经真实装配可达：CLI token 进得去，网页 token 被最外层 localauth 拒掉。
 func TestWireCLIRoutesUseCLIToken(t *testing.T) {
 	conn := dbtest.Open(t)
 	dataDir := t.TempDir()

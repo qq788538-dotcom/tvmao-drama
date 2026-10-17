@@ -1,5 +1,5 @@
-// 守护：桌面端隐藏运维入口（spec F10 隐藏 Skill JSON 导入导出、S10 不做项目导入导出），
-// 相关弹窗和超管门控已删除；以后从参考仓同步代码时如果带回来，这里会失败。
+// 守护：桌面端隐藏运维入口（隐藏 Skill JSON 导入导出、不做项目导入导出），
+// 相关弹窗和超管门控已删除；以后如果有代码把它们带回来，这里会失败。
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';

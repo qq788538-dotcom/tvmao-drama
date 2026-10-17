@@ -43,12 +43,12 @@ type Task struct {
 
 var ErrNotFound = errors.New("task not found")
 
-// ErrTaskNotTerminal：删除接口只允许删终态任务(v5 §5.2)。非终态行持有冻结,
+// ErrTaskNotTerminal：删除接口只允许删终态任务。非终态行持有冻结,
 // 删了钱既不结算也不退款、对账永久报警——删除是清理历史的操作,不是取消任务的通道。
 var ErrTaskNotTerminal = errors.New("task not terminal")
 
 // ErrDataURIInput：sink 任务的输入含内联 data URI，Submit 拒绝（HTTP 层映射 400）。
-// 见 v5 §3.1——产品路径全 URL，这是给绕过前端的直连调用方的明确报错，不是兜底。
+// 产品路径全 URL，这是给绕过前端的直连调用方的明确报错，不是兜底。
 var ErrDataURIInput = errors.New("参考图请先上传为素材：不支持内联图片数据(data URI)")
 
 // sqlSecondsOffset 生成 datetime('now', ?) 的修饰串：-90 → "-90 seconds"，30 → "+30 seconds"。
@@ -86,21 +86,21 @@ type Repository interface {
 	// Heartbeat 按代次续租;影响 0 行 = 失租,调用方必须立刻 cancel 执行 ctx。
 	Heartbeat(taskID, lease int64) (bool, error)
 	// StatusLiteByIDs 批量取任务的轻量状态（status/attempt/error），供业务层
-	// List 时把重试进度投影到 DTO（v5 §4.4）。ids 空返回空 map。
+	// List 时把重试进度投影到 DTO。ids 空返回空 map。
 	StatusLiteByIDs(ids []int64) (map[int64]TaskStatusLite, error)
-	// MarkRetryPending 把权威终态失败的任务转入 retry_pending（v5 §4.2 业务重试）：
+	// MarkRetryPending 把权威终态失败的任务转入 retry_pending（业务重试）：
 	// attempt+1、清空上游标记（权威失败=上游宣告任务死亡，清空安全）、清租约。
 	// 判定与转移原子：WHERE 带 sink 非空 + attempt<上限 + 状态 CAS，抢不到返回 false。
 	// 钱一个字不碰——重试复用同一笔冻结。
 	MarkRetryPending(taskID, lease int64, maxAttempts, intervalSec int, errMsg string) (bool, error)
 	// PromoteDueRetries 把到点的 retry_pending 放回 queued（并入队列 pump，不新增 worker）。
 	PromoteDueRetries(limit int) (int64, error)
-	// CreateTx 在调用方事务里建行(v5 §5.4 SubmitTx 用)：与 Create 同一 INSERT，
+	// CreateTx 在调用方事务里建行(SubmitTx 用)：与 Create 同一 INSERT，
 	// 只是执行在 tx 上——行随事务原子出现，pending_freeze 中间态因此不需要。
 	CreateTx(tx *sql.Tx, task Task) (int64, error)
 	// MarkRunningDirectTx 在建行事务里给 sinkless 直连任务落执行权:owner+heartbeat+
 	// lease=1(建行者即首任持有者)。直连任务全生命周期不经过 queued,worker 结构上
-	// 领不到——保证 4 的结构性成立(v5 §3.1/§5.4)。
+	// 领不到。
 	MarkRunningDirectTx(tx *sql.Tx, taskID int64, instance string) error
 	// ── 持久化队列（0080）────────────────────────────────────────────
 	// RunningCountByModel 统计每个模型当前在跑的任务数（只算心跳新鲜的），
@@ -117,7 +117,7 @@ type Repository interface {
 	ClaimStaleRunning(taskID int64, instance string, staleSec int) (int64, bool, error)
 	// MarkUpstreamCalled 在向上游发请求之前调用，落下"已调过上游"的事实。
 	// fingerprint 是本次调用所用上游的指纹（models.UpstreamFingerprint），同一条 UPDATE 落库，
-	// 重启续轮询时比对（I-1）。
+	// 重启续轮询时比对。
 	MarkUpstreamCalled(taskID, lease int64, fingerprint string) (bool, error)
 	// RequeueStale 把被中断且从未调过上游的任务放回队列（attempt+1，清租约）。
 	// 不碰 frozen_cents——重排复用原来那一笔冻结，绝不重新冻结。
@@ -288,7 +288,7 @@ func (r *SQLiteRepository) List(f ListFilter) ([]Task, int64, error) {
 		return nil, 0, err
 	}
 
-	// 两阶段取数：内层只对 id 排序分页，外层按主键取宽行。SQLite 下没有 sort buffer 问题，保留写法是为了与参考仓同形。
+	// 两阶段取数：内层只对 id 排序分页，外层按主键取宽行。SQLite 下没有 sort buffer 问题，保留这种写法。
 	q := `SELECT t.id, t.user_id, t.project_id, t.model_id, t.status, IFNULL(t.output_kind, ''), IFNULL(t.upstream_task_id, ''), t.input, t.output, t.frozen_cents, t.cost_cents, IFNULL(t.audit_flag, ''), IFNULL(t.error, ''), t.created_at, t.updated_at
 		FROM generation_tasks t
 		INNER JOIN (
@@ -331,9 +331,9 @@ func (r *SQLiteRepository) List(f ListFilter) ([]Task, int64, error) {
 	return out, total, nil
 }
 
-// DeleteTx 在调用方事务里删终态任务行(v5 §5.2):非终态行持有冻结,直删会让钱
+// DeleteTx 在调用方事务里删终态任务行:非终态行持有冻结,直删会让钱
 // 悬挂、对账永久报警——返回 ErrTaskNotTerminal(handler 409)。
-// 放在事务里是 codex 复核抓出的关键:行删除必须与资产清理/orphan 标记/配额回收
+// 必须放在事务里:行删除必须与资产清理/orphan 标记/配额回收
 // 同生共死,否则后半段失败后行已消失、重试 404、残留永久无兜底。
 func (r *SQLiteRepository) DeleteTx(tx *sql.Tx, userID, taskID int64) error {
 	res, err := tx.Exec(`DELETE FROM generation_tasks WHERE id = ? AND user_id = ? AND status IN ('succeeded','failed')`, taskID, userID)
@@ -360,7 +360,7 @@ func (r *SQLiteRepository) DeleteForProject(projectID int64) error {
 	return err
 }
 
-// MarkUpstream 落上游任务号并转 processing。带代次:失租者写不进(v5 §5.3)。
+// MarkUpstream 落上游任务号并转 processing。带代次:失租者写不进。
 func (r *SQLiteRepository) MarkUpstream(id, lease int64, upstreamTaskID string) (bool, error) {
 	res, err := r.db.Exec(`UPDATE generation_tasks SET upstream_task_id = ?, status = 'processing' WHERE id = ? AND lease_version = ?`, upstreamTaskID, id, lease)
 	if err != nil {
@@ -424,7 +424,7 @@ func (r *SQLiteRepository) ListProcessing(maxAgeSec, staleSec int) ([]Task, erro
 }
 
 // Heartbeat 续租：仅当执行权代次匹配时更新 heartbeat_at。影响 0 行 = 失租——
-// 调用方必须立刻 cancel 执行 ctx，尽早中止上游调用(v5 §5.3)。
+// 调用方必须立刻 cancel 执行 ctx，尽早中止上游调用。
 // (ClaimLease 已删除:它无条件覆盖 owner,「接管」在 DB 层面是假的;统一走带代次的
 // ClaimQueued/ClaimStaleRunning。)
 func (r *SQLiteRepository) Heartbeat(taskID, lease int64) (bool, error) {
@@ -588,7 +588,7 @@ func (r *SQLiteRepository) MarkUpstreamCalled(taskID, lease int64, fingerprint s
 
 // RequeueStale 放回队列。条件里带 upstream_called_at IS NULL 是最后一道保险：
 // 万一调用方判断有误，DB 这一层也不会让「已经调过上游的任务」被重排出去重复扣费。
-// 不递增 attempt（v5 §4.2）：接管重排不是业务重试，部署中断不该消耗用户可见的
+// 不递增 attempt：接管重排不是业务重试，部署中断不该消耗用户可见的
 // 重试预算、也不该显示成「重试中(n)」；毒任务由排队超时按 created_at 总龄兜底。
 func (r *SQLiteRepository) RequeueStale(taskID, lease int64) (bool, error) {
 	res, err := r.db.Exec(`UPDATE generation_tasks
@@ -671,7 +671,7 @@ func (r *SQLiteRepository) PromoteDueRetries(limit int) (int64, error) {
 	return res.RowsAffected()
 }
 
-// ListStaleRunning 是统一接管器（v5 §3.2）的输入：不按 sink 过滤——sinkless 直连
+// ListStaleRunning 是统一接管器的输入：不按 sink 过滤——sinkless 直连
 // 孤儿也必须被扫到，否则永久 running、冻结不释放。处置由调用方按状态表分流。
 func (r *SQLiteRepository) ListStaleRunning(staleSec int) ([]Task, error) {
 	rows, err := r.db.Query(`SELECT `+queueTaskCols+` FROM generation_tasks

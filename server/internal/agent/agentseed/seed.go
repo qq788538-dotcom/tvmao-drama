@@ -1,10 +1,10 @@
 // Package agentseed 把内置的 Skill、Skill 分类、Agent 工具目录、Agent 大模型
-// （spec A3：从参考仓生产库导出，见仓库根 seed/README.md）写入 SQLite。
+// （见仓库根 seed/README.md）写入 SQLite。
 //
-// 四张表全部内置、用户不能新建或编辑（spec A4），所以语义是"种子即真相"：
+// 四张表全部内置、用户不能新建或编辑，所以语义是"种子即真相"：
 // 每次启动整表同步——种子里没有的行删除，有的行按 id 覆盖。
-// agent_backbone_models.model_name 曾可在设置页切换（spec A2，由 model_name_overridden 保护）；
-// 2026-10-07 起写死为种子值：每次启动无条件覆盖并清除标记，不再提供修改入口。
+// agent_backbone_models.model_name 写死为种子值：每次启动无条件覆盖并清除 model_name_overridden
+// 标记，不提供修改入口。
 package agentseed
 
 import (
@@ -116,7 +116,7 @@ func jsonText(v json.RawMessage, fallback string) any {
 
 func placeholders(n int) string { return strings.TrimSuffix(strings.Repeat("?,", n), ",") }
 
-// Import 同步四张表，单事务。须在 model_configs 种子（P2b）导入之后调用。
+// Import 同步四张表，单事务。须在 model_configs 种子导入之后调用。
 func Import(conn *sql.DB) (Result, error) {
 	var res Result
 	cats, err := readJSONL[categoryRow]("skill_categories")
@@ -204,7 +204,7 @@ func Import(conn *sql.DB) (Result, error) {
 			return res, err
 		}
 		if exists == 0 {
-			// 模型种子（P2b）里没有这个 id：先跳过，下次启动模型到位后自动补上。
+			// 模型种子里没有这个 id：先跳过，下次启动模型到位后自动补上。
 			log.Printf("agentseed: 跳过工具 %s，模型 id=%d 不存在", t.ToolName, t.SourceModelID)
 			res.SkippedTools++
 			continue

@@ -1,5 +1,5 @@
-// 守护：spec X3 删除了积分计费和估价 UI。估价接口、估价合批器、单价说明解析都已删除，
-// 以后从参考仓同步代码时如果把它们带回来，这里会失败。
+// 守护：桌面端删除了积分计费和估价 UI。估价接口、估价合批器、单价说明解析都已删除，
+// 以后如果有代码把它们带回来，这里会失败。
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';

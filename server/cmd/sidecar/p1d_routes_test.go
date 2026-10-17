@@ -27,7 +27,7 @@ func p1dGet(t *testing.T, port, path string) (int, map[string]any) {
 	return resp.StatusCode, body
 }
 
-// 新装的应用：P1d 的用户端接口全部可用，且“未配置”状态如实反映。
+// 新装的应用：用户端接口全部可用，且“未配置”状态如实反映。
 func TestP1dRoutesOnFreshInstall(t *testing.T) {
 	bin := buildSidecar(t)
 	_, _, port := startSidecar(t, bin, t.TempDir())

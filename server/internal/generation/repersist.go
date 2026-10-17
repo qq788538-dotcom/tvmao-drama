@@ -8,10 +8,9 @@ import (
 	"strings"
 )
 
-// 手动「保存到本地」（spec S5）：产物首搬重试 3 次仍失败时，任务照常成功、output 里保留上游
+// 手动「保存到本地」：产物首搬重试 3 次仍失败时，任务照常成功、output 里保留上游
 // 外链（assetIds 对应位置为 0），画布节点显示「未保存到本地」和重试按钮；用户点重试走这里。
-// 参考仓的 RunRepersistWorker（每 5 分钟自动补搬、翻倍退避 10 次）桌面端不启用：spec 要求的是
-// 「重试 3 次后提示并可手动重试」。补搬与首搬共用 persistSlot，key / URL / asset 行逐字同形。
+// 不做后台定时自动补搬：行为是「重试 3 次后提示并可手动重试」。补搬与首搬共用 persistSlot，key / URL / asset 行逐字同形。
 
 // ErrNothingToRepersist：任务不是成功态，或所有产物都已在本地。HTTP 层映射 409。
 var ErrNothingToRepersist = errors.New("该任务没有需要保存到本地的产物")

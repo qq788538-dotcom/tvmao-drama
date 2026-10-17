@@ -243,7 +243,7 @@ func TestShutdownLineExitsCleanly(t *testing.T) {
 	}
 }
 
-// P0 遗留：P0 用 0755 建过目录的老安装，再启动时要收紧成 0700。
+// 早期版本用 0755 建过目录的老安装，再启动时要收紧成 0700。
 func TestDataDirBecomesPrivate(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows 的 %APPDATA% 本身是用户私有目录，chmod 只管只读位")
@@ -264,7 +264,7 @@ func TestDataDirBecomesPrivate(t *testing.T) {
 	}
 }
 
-// P0 遗留：开发服务器的来源只在壳的 debug 构建经 --origins 传入，默认白名单里没有它。
+// 开发服务器的来源只在壳的 debug 构建经 --origins 传入，默认白名单里没有它。
 func TestDefaultOriginsExcludeDevServer(t *testing.T) {
 	bin := buildSidecar(t)
 	_, _, port := startSidecar(t, bin, t.TempDir())
@@ -309,7 +309,7 @@ func TestReadTokenLabelsError(t *testing.T) {
 	}
 }
 
-// P0 遗留：启动失败必须以退出码 1 结束，并在 stderr 留下原因（壳据此显示错误页）。
+// 启动失败必须以退出码 1 结束，并在 stderr 留下原因（壳据此显示错误页）。
 func TestStartupFailuresExitOneWithStderr(t *testing.T) {
 	bin := buildSidecar(t)
 	cases := []struct {
@@ -339,7 +339,7 @@ func TestStartupFailuresExitOneWithStderr(t *testing.T) {
 	}
 }
 
-// 首次启动在打印 READY 之前就已把内置模型和配置导入 data.db（spec M9）。
+// 首次启动在打印 READY 之前就已把内置模型和配置导入 data.db。
 func TestBuiltinSeedImportedOnStartup(t *testing.T) {
 	bin := buildSidecar(t)
 	dataDir := t.TempDir()

@@ -7,8 +7,8 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/builtin"
 )
 
-// P4 T15：设置接口由真实装配接上 builtin.Service；/admin/canvas/* 的整份覆盖写接口不存在。
-// 2026-10-07 起五项画布配置与 Agent 模型写死：/api/v1/settings/configs/*、/agent-models 也已注销。
+// 设置接口由真实装配接上 builtin.Service；/admin/canvas/* 的整份覆盖写接口不存在。
+// 五项画布配置与 Agent 模型写死：/api/v1/settings/configs/*、/agent-models 也已注销。
 func TestE2ESettingsCenterWiredAndAdminCanvasAbsent(t *testing.T) {
 	e := newE2E(t)
 	if err := builtin.Apply(e.conn); err != nil {

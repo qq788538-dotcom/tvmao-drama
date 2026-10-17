@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 把脚本节点用到的 Skill 从参考仓复制到 server/internal/skillbundle/skills（go:embed 编进 sidecar）。
+# 把脚本节点用到的 Skill 从 HUABU_SKILLS_DIR 复制到 server/internal/skillbundle/skills（go:embed 编进 sidecar）。
 # 名单与 seed/settings.jsonl 中 canvas_script_config.styles[].skillName 一致；风格配置变了就重跑并提交。
 set -euo pipefail
 cd "$(dirname "$0")/.."

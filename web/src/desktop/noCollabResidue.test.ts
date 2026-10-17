@@ -1,5 +1,5 @@
-// 守护：spec X2 删除了多人协作。瞬态通道、在线名册、远端 op 合并、在途登记都已删除；
-// 以后从参考仓同步代码时如果把它们带回来，这里会失败。
+// 守护：桌面端删除了多人协作。瞬态通道、在线名册、远端 op 合并、在途登记都已删除；
+// 以后如果有代码把它们带回来，这里会失败。
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';

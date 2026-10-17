@@ -108,7 +108,7 @@ func TestBackboneModelOwnUpstreamWithoutGlobal(t *testing.T) {
 	}
 }
 
-// M-1：独立上游地址存成了 .../v1（旧值），Agent 仍只拼一层 /v1。
+// 独立上游地址存成了 .../v1（旧值），Agent 仍只拼一层 /v1。
 func TestBackboneOwnUpstreamWithTrailingV1(t *testing.T) {
 	own := newChatUpstream(t)
 	generateOnce(t, PlannerDeps{
@@ -122,7 +122,7 @@ func TestBackboneOwnUpstreamWithTrailingV1(t *testing.T) {
 	}
 }
 
-// M-5：查模型行遇到 ErrNotFound 以外的错误时直接失败，不静默回落全局账号。
+// 查模型行遇到 ErrNotFound 以外的错误时直接失败，不静默回落全局账号。
 func TestBackboneModelLookupErrorDoesNotFallBackToGlobal(t *testing.T) {
 	global := newChatUpstream(t)
 	_, err := BuildPlannerForUser(context.Background(), 1, PlannerDeps{

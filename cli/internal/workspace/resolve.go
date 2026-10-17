@@ -3,7 +3,7 @@
 // 刻意不提供 config.json / profile / `miaoju config`：只有 --project 与目录绑定
 // 两层显式优先级，没有隐式配置合并。
 //
-// （计划里这个包叫 internal/context；改名是因为包名 context 会和标准库撞，
+// （包不叫 context：包名 context 会和标准库撞，
 // 每个同时用两者的文件都得起别名。）
 package workspace
 

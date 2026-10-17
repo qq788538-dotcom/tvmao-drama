@@ -17,7 +17,7 @@ const (
 	Network  = 7
 	// AppNotRunning：喵剧未运行（地址文件不存在、连接被拒、端口上不是本应用、token 重读后仍被拒）。
 	AppNotRunning = 8
-	// SandboxBlocked：网络被 AI 助手的沙箱拦截（CLI spec 3.4）。
+	// SandboxBlocked：网络被 AI 助手的沙箱拦截。
 	SandboxBlocked = 9
 )
 

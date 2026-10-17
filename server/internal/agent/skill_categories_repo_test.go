@@ -128,7 +128,7 @@ func TestSkillsRepo_MultiCategoryRoundTripAndFilter(t *testing.T) {
 	}
 }
 
-// 改名要级联 skills.categories 数组里的同名元素（参考仓用 JSON_SET，桌面在 Go 里改）。
+// 改名要级联 skills.categories 数组里的同名元素（在 Go 里改）。
 func TestSkillCategoriesRenameCascadesArray(t *testing.T) {
 	conn := openTestDB(t)
 	cats := NewSkillCategoriesRepo(conn)

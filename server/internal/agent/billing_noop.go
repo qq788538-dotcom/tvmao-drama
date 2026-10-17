@@ -6,7 +6,7 @@ import (
 	"github.com/james/huabu_studio/apps/api/internal/billing"
 )
 
-// NoopBilling 是桌面端的计费空实现（spec A1）：Freeze/Settle/Refund 永远成功、
+// NoopBilling 是桌面端的计费空实现：Freeze/Settle/Refund 永远成功、
 // 不记账、不查余额。loop 的 freeze→settle 流程照常走，只是钱不动。
 type NoopBilling struct{}
 

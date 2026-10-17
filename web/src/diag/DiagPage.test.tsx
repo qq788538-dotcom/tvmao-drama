@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/shared/server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/server')>()),
   getServerInfo: vi.fn(async () => ({ port: 50001, token: 't' })),
-  // P8 的 SidecarGate 会订阅 Tauri 事件；测试环境没有 Tauri，桩成空订阅。
+  // SidecarGate 会订阅 Tauri 事件；测试环境没有 Tauri，桩成空订阅。
   onSidecarStatus: vi.fn(async () => () => {}),
 }));
 

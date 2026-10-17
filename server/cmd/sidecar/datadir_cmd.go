@@ -52,7 +52,7 @@ func migrateWithSourceLock(from, to string) error {
 	return datadir.Migrate(from, to)
 }
 
-// runSubcommand 处理壳在正常启动前调用的一次性子命令（数据目录迁移，spec S2）。
+// runSubcommand 处理壳在正常启动前调用的一次性子命令（数据目录迁移）。
 // 返回 handled=false 表示不是子命令，按正常服务模式继续。子命令不读 stdin、不监听端口。
 func runSubcommand(args []string, stdout io.Writer) (bool, error) {
 	if len(args) == 0 {

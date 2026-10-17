@@ -1,5 +1,5 @@
 // Package agent — tools_canvas_ops.go：让 planner 直接操作画布的一组内置工具
-// （用户拍板：agent 拥有画布完整操作权，设计见 docs/2026-08-13-agent-canvas-ops-design.md）。
+// （agent 拥有画布完整操作权）。
 //
 // 架构：读走服务端（直读 workflow_snapshots 最新快照，浏览器局部 mutation 秒级
 // 同步上来，滞后可忽略）；写走前端（emit artifact → onAgentArtifact 调 store

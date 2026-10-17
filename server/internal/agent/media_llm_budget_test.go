@@ -10,7 +10,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// 没接 Keys（P1b 未合并或合并时漏传）时，本机地址绝不能原样发给上游。
+// 没接 Keys（装配时漏传）时，本机地址绝不能原样发给上游。
 func TestLocalMediaResolver_NoKeysRejectsLoopback(t *testing.T) {
 	r := &LocalMediaResolver{Objects: fakeObjects{}}
 	for _, u := range []string{
