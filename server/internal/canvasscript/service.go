@@ -373,22 +373,26 @@ func (s *Service) claimOne(ctx context.Context) (*Task, bool) {
 }
 
 func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
+	// 状态回写不随 worker ctx 取消：关闭时 ctx 先被取消，而 RunWorker 会等本 goroutine
+	// 收尾、sidecar 等 worker 退出后才关库，这时写库仍然安全。曾经直接用 ctx 写，
+	// 关闭瞬间刚跑完的结果写不进去，任务停在 running，下次启动再整个重跑一遍。
+	dbCtx := context.WithoutCancel(ctx)
 	// 失败分流：还有重试额度 → 重排 pending；用尽 → failed。
 	// msg 存库并展示给用户，不得含路径等内部细节；detail 只写日志。
 	fail := func(msg, detail string) {
 		log.Printf("canvasscript: task=%d 失败详情: %s", t.ID, detail)
 		if int(t.Attempts) < cfg.maxAttempts() {
 			log.Printf("canvasscript: task=%d attempt=%d 失败将重试: %s", t.ID, t.Attempts, msg)
-			_, _ = s.db.ExecContext(ctx, `
+			_, _ = s.db.ExecContext(dbCtx, `
 				UPDATE canvas_script_tasks SET status='pending', owner_instance=NULL, heartbeat_at=NULL, error=?
 				WHERE id=? AND status='running'`, msg, t.ID)
 			return
 		}
-		_, _ = s.db.ExecContext(ctx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=? AND status='running'`, msg, t.ID)
+		_, _ = s.db.ExecContext(dbCtx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=? AND status='running'`, msg, t.ID)
 	}
 
 	if t.Model == "" {
-		_, _ = s.db.ExecContext(ctx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=?`,
+		_, _ = s.db.ExecContext(dbCtx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=?`,
 			"任务未记录模型，请重新提交", t.ID)
 		return
 	}
@@ -431,6 +435,16 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 		SourceText: t.Script,
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			// 进程关闭打断的不是任务本身的失败：退回本次计数、回到 pending，下次启动重跑。
+			// 走普通失败分流的话，最后一次尝试会被判成「重试次数用尽」永久失败。
+			log.Printf("canvasscript: task=%d 运行被关闭打断，下次启动重跑: %v", t.ID, err)
+			_, _ = s.db.ExecContext(dbCtx, `
+				UPDATE canvas_script_tasks SET status='pending', owner_instance=NULL, heartbeat_at=NULL,
+				       attempts=MAX(attempts-1, 0)
+				WHERE id=? AND status='running'`, t.ID)
+			return
+		}
 		fail("生成失败，请稍后重试", err.Error())
 		return
 	}
@@ -438,8 +452,8 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 		fail("生成结果不符合要求，请重试", err.Error())
 		return
 	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE canvas_script_tasks SET status='succeeded', result=? WHERE id=?`, result.Content, t.ID); err != nil {
+	if _, err := s.db.ExecContext(dbCtx, `
+		UPDATE canvas_script_tasks SET status='succeeded', result=? WHERE id=? AND status='running'`, result.Content, t.ID); err != nil {
 		log.Printf("canvasscript: 写结果失败 task=%d: %v", t.ID, err)
 	}
 }

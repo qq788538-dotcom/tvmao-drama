@@ -81,6 +81,7 @@ func (s *Service) prepareExecution(ctx context.Context, userID int64, modelID st
 
 	payload, err := upstream.InterpolateTemplate(model.RequestTemplate, normalizedInputs)
 	if err != nil {
+		removePreparedFiles(preparedImages)
 		return nil, fmt.Errorf("interpolate template: %w", err)
 	}
 	// S12 未定：插值后的请求里还留着本机地址，上游访问不到，调上游之前失败。

@@ -67,6 +67,8 @@ type fakeSkills struct {
 	runErr  error
 	content string
 	runs    []skillruntime.RunRequest
+	// beforeReturn 在 Run 返回前调用（模拟 Run 期间进程开始关闭、worker ctx 被取消）。
+	beforeReturn func()
 }
 
 func (f *fakeSkills) Snapshot(_ context.Context, name string) (skillruntime.Snapshot, error) {
@@ -80,6 +82,9 @@ func (f *fakeSkills) Run(_ context.Context, req skillruntime.RunRequest) (skillr
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.runs = append(f.runs, req)
+	if f.beforeReturn != nil {
+		f.beforeReturn()
+	}
 	if f.runErr != nil {
 		return skillruntime.RunResult{}, f.runErr
 	}
@@ -371,4 +376,45 @@ func TestRunWorkerProcessesPendingTask(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatal("worker 应在一轮抢占内跑完任务")
+}
+
+// Run 刚成功返回、worker ctx 恰好因关闭被取消：结果必须照样落库。曾经用已取消的 ctx 写库，
+// UPDATE 直接失败、结果丢掉，任务停在 running，下次启动再被当成中断重跑一遍。
+func TestExecuteSuccessPersistsAfterShutdownCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sk := &fakeSkills{content: validCandidate, beforeReturn: cancel}
+	svc, conn := newTestService(t, testConfig(), sk, fakeModels{})
+	id := submitOne(t, svc)
+	task, _ := svc.claimOne(context.Background())
+	svc.execute(ctx, task, testConfig())
+	if status, _, _ := taskRow(t, conn, id); status != StatusSucceeded {
+		t.Fatalf("关闭时已出结果应落库成功, status=%s", status)
+	}
+}
+
+// 关闭打断的 Run 不是任务本身失败：不消耗重试次数、回到 pending，下次启动重跑。
+// 曾经它走普通失败分流且用已取消的 ctx 写库（写不进），最后一次尝试时被 RecoverOnStartup
+// 判成「重试次数用尽」——用户只是关了一下应用，任务就永久失败。
+func TestExecuteShutdownInterruptDoesNotConsumeAttempt(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sk := &fakeSkills{runErr: context.Canceled, beforeReturn: cancel}
+	svc, conn := newTestService(t, testConfig(), sk, fakeModels{})
+	id := submitOne(t, svc)
+	if _, err := conn.Exec(`UPDATE canvas_script_tasks SET attempts=1 WHERE id=?`, id); err != nil {
+		t.Fatal(err)
+	}
+	task, _ := svc.claimOne(context.Background()) // attempts=2，已是最后一次
+	svc.execute(ctx, task, testConfig())
+	status, _, attempts := taskRow(t, conn, id)
+	if status != StatusPending || attempts != 1 {
+		t.Fatalf("关闭打断应回到 pending 且不计次: status=%s attempts=%d", status, attempts)
+	}
+	if err := svc.RecoverOnStartup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if status, _, _ := taskRow(t, conn, id); status != StatusPending {
+		t.Fatalf("重启后应仍可重跑: status=%s", status)
+	}
 }
