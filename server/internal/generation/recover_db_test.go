@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // newRecoverDBHarness：真实 SQLite + 记录计费调用的替身。本地用户 id=1 由迁移预置。

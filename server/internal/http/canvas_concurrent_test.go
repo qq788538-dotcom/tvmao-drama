@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasowner"
-	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasowner"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasstate"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 )
 
 func teamCanvasRequest(t *testing.T, method, path string, body []byte, params map[string]string, actor int64) *http.Request {

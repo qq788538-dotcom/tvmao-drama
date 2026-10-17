@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // 种子工具引用的生产模型 id（agent_tools.source_model_id）。

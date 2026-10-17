@@ -13,13 +13,13 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
-	"github.com/james/huabu_studio/apps/api/internal/canvasgen"
-	"github.com/james/huabu_studio/apps/api/internal/generation"
-	"github.com/james/huabu_studio/apps/api/internal/mediaprobe"
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
-	"github.com/james/huabu_studio/apps/api/internal/settings"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasgen"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/mediaprobe"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
 )
 
 // maxDesubDownloadBytes 限制懒回填时落临时文件的源视频体积上限（只在对象不是本地文件、

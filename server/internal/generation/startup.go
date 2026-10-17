@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/lifecycle"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/lifecycle"
 )
 
 // 启动恢复（去掉多实例租约）。

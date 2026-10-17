@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasgen"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasgen"
 )
 
 // ── 坏配置降级 ─────────────────────────────────────────────

@@ -17,7 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/james/huabu_studio/apps/cli/internal/endpoint"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/endpoint"
 )
 
 const testCLIToken = "cli-test-token"

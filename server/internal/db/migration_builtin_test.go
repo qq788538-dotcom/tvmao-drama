@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // 已有行和新插入的行，user_overrides 都默认为 '[]'（全部字段跟随内置种子）。

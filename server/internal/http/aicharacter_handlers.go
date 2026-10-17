@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/aicharacters"
 )
 
 // aiCharacterSigner 是 *MediaSigner 在这里用到的两个方法。

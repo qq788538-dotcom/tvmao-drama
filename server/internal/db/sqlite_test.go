@@ -10,8 +10,8 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/db"
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 func TestOpenEnablesPragmas(t *testing.T) {

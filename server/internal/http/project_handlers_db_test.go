@@ -18,12 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
-	"github.com/james/huabu_studio/apps/api/internal/library"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
-	"github.com/james/huabu_studio/apps/api/internal/users"
-	"github.com/james/huabu_studio/apps/api/internal/workflows"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/users"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/workflows"
 )
 
 type projectEnv struct {

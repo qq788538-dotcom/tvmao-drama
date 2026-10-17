@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // 直连任务(ForceAsync/agent 动态工具)建行即 running,心跳只在 callAndComplete 里起。

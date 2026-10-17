@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/cliapi"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/cliapi"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 )
 
 // fakeProjectStore 是 cliapi.ProjectStore 的内存实现。

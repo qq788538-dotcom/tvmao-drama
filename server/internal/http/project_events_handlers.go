@@ -6,7 +6,7 @@ import (
 	nethttp "net/http"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/events"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/events"
 )
 
 const sseHeartbeat = 25 * time.Second

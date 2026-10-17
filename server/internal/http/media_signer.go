@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
 )
 
 // MediaURLExpiry 是传给 storage.SignedURL 的有效期参数。本地 URL 不过期（有效性由每次启动的

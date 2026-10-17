@@ -12,7 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/james/huabu_studio/apps/api/internal/agent"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
 )
 
 // stubSkillsRepo 是 agent.SkillsRepo 的内存测试替身。HTTP handler 只需要

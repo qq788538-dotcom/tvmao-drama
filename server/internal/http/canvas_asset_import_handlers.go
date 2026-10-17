@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
 )
 
 // 画布「复制节点」跨项目粘贴的资产登记。

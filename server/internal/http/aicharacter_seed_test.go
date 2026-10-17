@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/aicharacters"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // 内置数据导入后，真实仓库经列表接口返回非空。

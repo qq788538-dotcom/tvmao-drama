@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/seedance"
-	"github.com/james/huabu_studio/apps/api/internal/upstream"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/seedance"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/upstream"
 )
 
 const maxInputImageBytes = 25 << 20

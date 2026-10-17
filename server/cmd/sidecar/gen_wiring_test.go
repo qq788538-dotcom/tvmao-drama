@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/canvasgen"
-	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
-	"github.com/james/huabu_studio/apps/api/internal/settings"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasgen"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasstate"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
 )
 
 // memGenStorage：内存版本地存储（生产是磁盘实现）。

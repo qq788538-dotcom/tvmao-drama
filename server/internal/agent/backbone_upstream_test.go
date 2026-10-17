@@ -11,7 +11,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // chatUpstream 是一个最小的 OpenAI 兼容上游：记录收到的路径与 Authorization。

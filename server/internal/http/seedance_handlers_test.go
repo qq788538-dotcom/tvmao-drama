@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
-	"github.com/james/huabu_studio/apps/api/internal/library"
-	"github.com/james/huabu_studio/apps/api/internal/seedance"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/seedance"
 )
 
 type seedanceFakeExtractor struct{}

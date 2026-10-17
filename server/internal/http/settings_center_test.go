@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/james/huabu_studio/apps/api/internal/localauth"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/localauth"
 )
 
 func TestScDecodeStrictRejectsUnknownField(t *testing.T) {

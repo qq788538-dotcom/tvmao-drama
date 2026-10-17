@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/upstream"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/upstream"
 )
 
 // 端到端：参考图源 → 落盘 → multipart 发上游 → 响应 b64 抽成文件 → 流式上传存储。

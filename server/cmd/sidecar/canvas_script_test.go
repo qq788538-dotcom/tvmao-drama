@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/db"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db"
 )
 
 func TestWireCanvasScriptExtractsSkillsAndRecoversRunningTasks(t *testing.T) {

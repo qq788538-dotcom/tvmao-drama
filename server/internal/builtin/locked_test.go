@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // 五项画布配置写死为内置值，设置页不再提供编辑入口。

@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasscript"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasscript"
 )
 
 // CanvasScriptHandler 脚本节点“剧本生成分镜”的用户侧接口：风格列表、提交、轮询。

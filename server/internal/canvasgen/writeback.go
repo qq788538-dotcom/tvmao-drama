@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasstate"
 )
 
 // writeNode 后端权威回写画布快照里 nodeID 那个节点:通过 projects.MutateSnapshot 在行锁事务内

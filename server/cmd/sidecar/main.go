@@ -29,14 +29,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/builtin"
-	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
-	"github.com/james/huabu_studio/apps/api/internal/db"
-	apphttp "github.com/james/huabu_studio/apps/api/internal/http"
-	"github.com/james/huabu_studio/apps/api/internal/library"
-	"github.com/james/huabu_studio/apps/api/internal/localauth"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/aicharacters"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/builtin"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasstate"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db"
+	apphttp "github.com/qq788538-dotcom/tvmao-drama/server/internal/http"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/localauth"
 )
 
 // version 由构建脚本通过 -ldflags "-X main.version=…" 注入。

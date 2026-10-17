@@ -14,7 +14,7 @@ import (
 	"io"
 	"regexp"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
 )
 
 // seeddata/ 下是仓库根 seed/ 同名文件的逐字节副本：go:embed 不能引用包目录之外的文件。

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/cliapi"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/cliapi"
 )
 
 // cliWriteEnv 是带幂等存储的完整环境。

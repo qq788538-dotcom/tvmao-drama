@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/james/huabu_studio/apps/api/internal/cliapi"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/cliapi"
 )
 
 // CLIHandler 是 /api/v1/cli/* 上项目、画布、节点、连线的 handler。

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
 )
 
 // SubmitTx：在调用方的事务里建行 + 冻结。

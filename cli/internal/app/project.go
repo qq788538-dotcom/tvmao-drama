@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/james/huabu_studio/apps/cli/internal/client"
-	"github.com/james/huabu_studio/apps/cli/internal/workspace"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/client"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/workspace"
 )
 
 func newProjectCommand(st *runtimeState) *cobra.Command {

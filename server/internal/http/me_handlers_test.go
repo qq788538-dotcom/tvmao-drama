@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
-	"github.com/james/huabu_studio/apps/api/internal/users"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/users"
 )
 
 func TestMeReturnsLocalAdminWithLiveStorage(t *testing.T) {

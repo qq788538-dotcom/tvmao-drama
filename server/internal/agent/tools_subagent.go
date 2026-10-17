@@ -16,7 +16,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
 )
 
 const (

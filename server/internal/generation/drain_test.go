@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/lifecycle"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/lifecycle"
 )
 
 // 关闭排空后不再领取新任务；Drain 等在途 goroutine，且有上限。

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/objectstore"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/objectstore"
 )
 
 type fakeProber struct{ got objectstore.Config }

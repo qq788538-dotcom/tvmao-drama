@@ -9,8 +9,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // MediaPublisher 把本机媒体发布到用户配置的对象存储并返回上游可下载的地址

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
-	"github.com/james/huabu_studio/apps/api/internal/generation"
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // SubmitTx 的事务不变量在真实 SQLite 上验证：建行与冻结同事务；冻结失败整体回滚、不留任务行。

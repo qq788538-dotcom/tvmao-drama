@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
 )
 
 // 额外收费规则(billing_config.extras)的条件字段在**冻结**与**结算**两侧必须给出相同判定，

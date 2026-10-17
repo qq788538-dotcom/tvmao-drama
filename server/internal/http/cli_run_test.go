@@ -7,10 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasgen"
-	"github.com/james/huabu_studio/apps/api/internal/cliapi"
-	"github.com/james/huabu_studio/apps/api/internal/generation"
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasgen"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/cliapi"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // fakeEnqueuer 记录最后一次 Enqueue 的入参，供「CLI 与网页产出一致」的断言用。

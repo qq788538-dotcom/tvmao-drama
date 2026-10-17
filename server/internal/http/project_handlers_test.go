@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasowner"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasowner"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 )
 
 func TestCanvasMutationPatchNodeRequiresOwner(t *testing.T) {

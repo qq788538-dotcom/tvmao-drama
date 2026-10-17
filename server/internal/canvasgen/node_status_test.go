@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/generation"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
 )
 
 // 「节点丢 taskId」自愈对账的 service 侧：按 nodeId 找回最新任务并给出

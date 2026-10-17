@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // 合规素材注册在内置模型 seedance-asset 解析出的上游账号下（seedance-asset 设计 §2，

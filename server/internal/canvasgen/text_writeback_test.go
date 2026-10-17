@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/generation"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
 )
 
 // 文本生成任务的写回：产物落 settings.text（浏览器 TextNode.tsx 读写的字段），

@@ -8,7 +8,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/james/huabu_studio/apps/api/internal/cliapi"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/cliapi"
 )
 
 // CLI HTTP 层的响应渲染。与网页的 writeError（{"error":"中文"}）刻意不同：

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // ---- 带 CASCADE 外键的子表（agent_tools.source_model_id）不能让 Apply 失败 ----

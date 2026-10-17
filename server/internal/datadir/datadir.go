@@ -18,7 +18,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/james/huabu_studio/apps/api/internal/db"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db"
 )
 
 // PointerFileName 是壳记录迁移待办（待迁移 / 待清理目录）的文件名，放在系统默认数据目录里，永不复制、永不删除。

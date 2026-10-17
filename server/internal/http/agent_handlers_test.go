@@ -11,7 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/james/huabu_studio/apps/api/internal/agent"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
 )
 
 // capturingRunner 记下 Run 收到的 userText，让测试断言「消息到底有没有触达 runner」。

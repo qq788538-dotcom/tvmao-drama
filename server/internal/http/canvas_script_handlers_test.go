@@ -12,11 +12,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasscript"
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/settings"
-	"github.com/james/huabu_studio/apps/api/internal/skillruntime"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasscript"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/skillruntime"
 )
 
 type csFakeModels struct{}

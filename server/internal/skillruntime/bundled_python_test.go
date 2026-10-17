@@ -9,8 +9,8 @@ import (
 
 	"github.com/cloudwego/eino/adk/filesystem"
 
-	"github.com/james/huabu_studio/apps/api/internal/skillbundle"
-	"github.com/james/huabu_studio/apps/api/internal/skillruntime"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/skillbundle"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/skillruntime"
 )
 
 // bundledPython 用 fetch-python.sh 准备的内置 Python；没准备时跳过（CI / 未运行 fetch-python.sh 的 worktree）。

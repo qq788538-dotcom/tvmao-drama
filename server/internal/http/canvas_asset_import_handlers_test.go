@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
 )
 
 // fakeCanvasAssetRefStore 是 canvasAssetRefStore 的手写替身。

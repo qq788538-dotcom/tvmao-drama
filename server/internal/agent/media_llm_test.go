@@ -11,7 +11,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
 )
 
 // 最小 PNG 头，足够让 http.DetectContentType 认成 image/png。

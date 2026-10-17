@@ -10,7 +10,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
 )
 
 // keepTailPctNum/keepTailPctDen 把压缩后保留原文的「尾巴」表示成 context window

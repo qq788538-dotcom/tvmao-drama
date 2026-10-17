@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/agent"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
 )
 
 // SkillsHandler 服务 /api/v1/skills 端点——内置的官方 Skill 目录（只读）。

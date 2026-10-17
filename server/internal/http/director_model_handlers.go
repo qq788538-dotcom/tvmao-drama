@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/directormodels"
-	"github.com/james/huabu_studio/apps/api/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/directormodels"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
 )
 
 // DirectorModelHandler 是「3D 导演台·用户级云端模型库」的 HTTP 层：

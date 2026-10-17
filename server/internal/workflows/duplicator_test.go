@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
 )
 
 // 这组测试盯的是并发化之后最容易悄悄坏掉的那件事：**失败路径上一个已复制对象都不能漏

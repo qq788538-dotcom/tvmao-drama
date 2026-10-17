@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	"github.com/james/huabu_studio/apps/api/internal/directorlibrary"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/directorlibrary"
 )
 
 // directorSigner 是 *MediaSigner 在导演台两个 handler 里用到的方法。

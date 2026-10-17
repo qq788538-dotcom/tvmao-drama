@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasgen"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasgen"
 )
 
 func multiAngleHandler(t *testing.T) (*MultiAngleHandler, *presetMemSettings) {

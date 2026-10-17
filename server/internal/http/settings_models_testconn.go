@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // modelConnTestClient 是“测试连接”用的 HTTP 客户端；包级变量，测试可替换。

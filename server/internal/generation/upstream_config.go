@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // 首次启动 settings 里还没有 base_domain / upstream_api_key（种子数据不含 Key）。

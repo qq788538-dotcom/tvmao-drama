@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db"
 )
 
 // Open 在临时目录建一个新库并执行全部迁移，测试结束自动关闭。

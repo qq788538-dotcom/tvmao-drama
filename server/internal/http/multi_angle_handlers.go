@@ -3,8 +3,8 @@ package http
 import (
 	"net/http"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasgen"
-	"github.com/james/huabu_studio/apps/api/internal/settings"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasgen"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
 )
 
 // MultiAngleHandler 「绘图多角度设置」：后台配全量(含保密 prompt/template)，

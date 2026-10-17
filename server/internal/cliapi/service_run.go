@@ -6,11 +6,11 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasgen"
-	"github.com/james/huabu_studio/apps/api/internal/canvasinputs"
-	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
-	"github.com/james/huabu_studio/apps/api/internal/generation"
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasgen"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasinputs"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasstate"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // CLI 的节点运行。

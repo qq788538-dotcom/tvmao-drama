@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // svcFixture 建库、直接写入小种子（不经 Apply），返回绑定该种子的 Service。

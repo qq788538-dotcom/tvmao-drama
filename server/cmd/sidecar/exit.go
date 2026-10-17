@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/datadir"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/datadir"
 )
 
 // 退出码契约（壳侧见 src-tauri/src/sidecar.rs 的 DATA_DIR_BUSY_EXIT、datadir.rs 的 MIGRATE_LOCK_BUSY_EXIT）。

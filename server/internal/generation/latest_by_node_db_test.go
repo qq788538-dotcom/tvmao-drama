@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // 「画布节点丢 taskId」自愈对账的查询侧：按 (user, project, sink.nodeId) 找该节点

@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasowner"
-	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasowner"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasstate"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 )
 
 // recordingNotifier 记下广播调用，用来钉住「mutation 成功才发帧、帧里只有指纹不含

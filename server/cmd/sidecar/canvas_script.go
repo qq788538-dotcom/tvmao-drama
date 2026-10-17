@@ -7,12 +7,12 @@ import (
 	"log"
 	"path/filepath"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasscript"
-	apphttp "github.com/james/huabu_studio/apps/api/internal/http"
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/settings"
-	"github.com/james/huabu_studio/apps/api/internal/skillbundle"
-	"github.com/james/huabu_studio/apps/api/internal/skillruntime"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasscript"
+	apphttp "github.com/qq788538-dotcom/tvmao-drama/server/internal/http"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/skillbundle"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/skillruntime"
 )
 
 // skillMaxIterations 是 Skill 执行的最大迭代轮数（重流程 skill 正常就近 20 轮）。

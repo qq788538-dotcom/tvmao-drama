@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // loadSeedModel 从仓库根的 seed/model_configs.jsonl 读出真实的内置模型配置，

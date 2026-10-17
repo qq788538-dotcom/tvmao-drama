@@ -17,10 +17,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
-	"github.com/james/huabu_studio/apps/api/internal/directormodels"
-	"github.com/james/huabu_studio/apps/api/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/directormodels"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
 )
 
 // directorFakeRepo 是 directormodels.Repository 的手写 fake：条数恒 0（不触发 limit_reached）。

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/generation"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
 )
 
 // 后端权威把结果并入 settings.history。这条路径的存在理由:恒异步后用户提交完就

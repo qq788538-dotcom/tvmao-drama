@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/james/huabu_studio/apps/api/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
 )
 
 // fakeFoldersRepo 只实现守卫测试所需路径，其余 panic 以免测试静默走错分支。

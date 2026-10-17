@@ -14,12 +14,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/james/huabu_studio/apps/api/internal/agent"
-	"github.com/james/huabu_studio/apps/api/internal/agent/agentseed"
-	"github.com/james/huabu_studio/apps/api/internal/builtin"
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/settings"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent/agentseed"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/builtin"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
 )
 
 type wlEnv struct {

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/upstream"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/upstream"
 )
 
 // ModelID 是合规校验专用的隐藏内置模型（seedance-asset 设计 §2）。

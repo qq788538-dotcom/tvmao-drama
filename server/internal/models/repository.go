@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
 )
 
 type ModelConfig struct {

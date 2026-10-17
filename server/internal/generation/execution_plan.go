@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/upstream"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/upstream"
 )
 
 // executionPlan 是"调一次上游"所需的全部材料。

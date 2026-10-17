@@ -17,11 +17,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/billing"
-	"github.com/james/huabu_studio/apps/api/internal/lifecycle"
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/upstream"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/lifecycle"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/upstream"
 )
 
 type Billing interface {

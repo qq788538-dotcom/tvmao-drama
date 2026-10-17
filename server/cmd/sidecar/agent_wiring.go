@@ -9,14 +9,14 @@ import (
 	"log"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/agent"
-	"github.com/james/huabu_studio/apps/api/internal/agent/agentseed"
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/generation"
-	apphttp "github.com/james/huabu_studio/apps/api/internal/http"
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
-	"github.com/james/huabu_studio/apps/api/internal/settings"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent/agentseed"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
+	apphttp "github.com/qq788538-dotcom/tvmao-drama/server/internal/http"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
 )
 
 // agentWiringDeps 是 Agent 依赖的外部能力。除 DB 外都可以为 nil（对应能力未接入），

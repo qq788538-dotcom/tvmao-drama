@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/lifecycle"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/lifecycle"
 )
 
 // 队列的执行端与接管。

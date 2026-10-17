@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
-	"github.com/james/huabu_studio/apps/api/internal/generation"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasstate"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
 )
 
 // canvasUpstreamTTL 是上游转存前原始地址的时效——「限时去字幕」直连窗口，与

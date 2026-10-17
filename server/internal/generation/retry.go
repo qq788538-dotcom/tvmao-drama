@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // 业务重试（v5 §4.2）：同一任务原地重试，一笔冻结贯穿始终。

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/datadir"
-	"github.com/james/huabu_studio/apps/api/internal/db"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/datadir"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db"
 )
 
 func mustWrite(t *testing.T, path, body string) {

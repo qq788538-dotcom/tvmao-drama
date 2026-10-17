@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // 提交时在任务行记下上游指纹（规范化地址 + Key 的 sha256 前 16 位），重启续轮询时

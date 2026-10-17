@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
 )
 
 var errRealPersonNotReady = errors.New("真人图尚未通过合规校验")

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasstate"
 )
 
 // 兼容金测试：canvas_changed 的 type 与既有字段一个都不许变（旧版前端只认

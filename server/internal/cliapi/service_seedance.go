@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/james/huabu_studio/apps/api/internal/library"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 )
 
 // CLI 侧的 Seedance 2.0 合规校验。

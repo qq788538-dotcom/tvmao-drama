@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/lifecycle"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/lifecycle"
 )
 
 // tracker 返回在途任务的 goroutine 登记处：未注入时用进程级 lifecycle.Default。

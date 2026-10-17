@@ -17,11 +17,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/james/huabu_studio/apps/cli/internal/client"
-	"github.com/james/huabu_studio/apps/cli/internal/endpoint"
-	"github.com/james/huabu_studio/apps/cli/internal/exitcode"
-	"github.com/james/huabu_studio/apps/cli/internal/output"
-	"github.com/james/huabu_studio/apps/cli/internal/workspace"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/client"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/endpoint"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/exitcode"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/output"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/workspace"
 )
 
 type Dependencies struct {

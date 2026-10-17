@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
-	"github.com/james/huabu_studio/apps/api/internal/settings"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
 )
 
 // 真实装配（磁盘存储 + 资产仓库 + 签名器）下走一遍画布生成：经 HTTP 提交 → 产物落盘 →

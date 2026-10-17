@@ -6,7 +6,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
 )
 
 // 只给 *_db_test.go 用的 SQLite 测试替身。生产实现分别在 assets / library 包和

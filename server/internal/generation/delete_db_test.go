@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // Delete 单事务化的真实 SQLite 验证：①终态删除的全部效果（行删、资产行删、孤儿登记、配额回收）

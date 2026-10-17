@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/agent"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
 )
 
 func TestModelPatchToEdits(t *testing.T) {

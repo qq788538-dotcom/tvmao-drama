@@ -17,7 +17,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
 )
 
 // agentSettleTimeout 给脱离请求生命周期的结算/退款 context 设上限——客户端断开会

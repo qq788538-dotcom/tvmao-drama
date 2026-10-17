@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/generation"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
 )
 
 // captureMutator 是本文件专用的 fake snapshotMutator：固定操作单节点 "n1"，

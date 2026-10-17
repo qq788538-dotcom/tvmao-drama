@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/db"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db"
 )
 
 type OrphanObject struct {

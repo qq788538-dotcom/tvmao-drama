@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/datadir"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/datadir"
 )
 
 func TestRunSubcommandMigrateAndCleanup(t *testing.T) {

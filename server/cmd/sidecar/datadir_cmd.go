@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/datadir"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/datadir"
 )
 
 // migrateLockWait 是拿不到迁移锁时的最长等待（另一个迁移进程仍在跑，例如壳异常时没能结束它）。

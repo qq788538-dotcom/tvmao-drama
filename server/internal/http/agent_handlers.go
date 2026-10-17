@@ -15,7 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/james/huabu_studio/apps/api/internal/agent"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
 )
 
 // AgentHandler 暴露 agent 的 WS upgrader，以及给右侧聊天面板做引导的

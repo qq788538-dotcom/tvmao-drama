@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/cliapi"
-	"github.com/james/huabu_studio/apps/api/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/cliapi"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
 )
 
 // 一张混合画布：两张图（一张有内容一张没有）、一个视频、一个只读 preview。

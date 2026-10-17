@@ -12,10 +12,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/agent"
-	"github.com/james/huabu_studio/apps/api/internal/builtin"
-	"github.com/james/huabu_studio/apps/api/internal/models"
-	"github.com/james/huabu_studio/apps/api/internal/settings"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/builtin"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
 )
 
 func mapPolicyErr(err error) error {

@@ -9,7 +9,7 @@ import (
 	neturl "net/url"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/seedance"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/seedance"
 )
 
 // urlSigner 把 canonical 的 media://key 转成对外可访问的 HTTPS URL，供 Seedance 拉图。

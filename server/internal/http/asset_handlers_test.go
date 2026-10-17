@@ -11,7 +11,7 @@ import (
 	"net/textproto"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
 )
 
 // newTestAssetHandler 组装一个可测的 AssetHandler：fake storage/repo/users/signer，

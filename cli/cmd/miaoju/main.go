@@ -10,7 +10,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/james/huabu_studio/apps/cli/internal/app"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/app"
 )
 
 // version 由构建时 ldflags 注入：

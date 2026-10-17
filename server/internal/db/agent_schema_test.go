@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 func TestAgentTablesExist(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 
 	"github.com/ncruces/go-sqlite3/driver"
 
-	"github.com/james/huabu_studio/apps/api/internal/db"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db"
 )
 
 var plainHeader = []byte("SQLite format 3\x00")

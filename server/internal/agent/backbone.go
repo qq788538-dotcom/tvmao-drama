@@ -17,8 +17,8 @@ import (
 	openai "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 
-	"github.com/james/huabu_studio/apps/api/internal/billing"
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/billing"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 const (

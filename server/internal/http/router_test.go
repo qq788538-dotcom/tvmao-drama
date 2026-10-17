@@ -14,7 +14,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/james/huabu_studio/apps/api/internal/localauth"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/localauth"
 )
 
 const testToken = "0123456789abcdef0123456789abcdef"

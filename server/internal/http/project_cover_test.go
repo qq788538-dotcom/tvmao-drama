@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 )
 
 // 列表接口的封面契约：repo 给出 canonical media://，出口必须是签名后的缩略 URL，

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/directormodels"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/directormodels"
 )
 
 // TestValidateUpload 钉住「与 directormodels 同一套三扩展名约束」——本包的

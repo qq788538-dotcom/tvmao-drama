@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/builtin"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/builtin"
 )
 
 // 设置接口由真实装配接上 builtin.Service；/admin/canvas/* 的整份覆盖写接口不存在。

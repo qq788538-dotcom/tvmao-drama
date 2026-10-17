@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // 两个并发 Move 互相挂到对方下面：查环和 UPDATE 不在同一事务时，两边都能通过查环，

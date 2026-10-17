@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // output_kind 列(0103)的真实 DB 验证:List 的 Kind 过滤与回显。

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 func intp(n int) *int { return &n }

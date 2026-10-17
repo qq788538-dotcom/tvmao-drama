@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // model_mapper 把管理员配置的模型目录翻成 CLI 的公共模型契约。

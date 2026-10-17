@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/directormodels"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/directormodels"
 )
 
 // 模型文件校验与引用匹配直接复用 directormodels 的实现：全局模型库与

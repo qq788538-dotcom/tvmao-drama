@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // 单进程桌面端：启动时库里 running/processing 行的心跳都来自已经死掉的上个进程，

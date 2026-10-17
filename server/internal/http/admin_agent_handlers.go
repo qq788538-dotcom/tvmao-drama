@@ -3,7 +3,7 @@ package http
 import (
 	nethttp "net/http"
 
-	"github.com/james/huabu_studio/apps/api/internal/agent"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
 )
 
 // AdminAgentHandler 只读列出 Agent 骨干模型。Agent 模型写死为内置值，

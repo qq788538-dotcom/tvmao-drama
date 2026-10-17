@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/datadir"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/datadir"
 )
 
 type generalResp struct {

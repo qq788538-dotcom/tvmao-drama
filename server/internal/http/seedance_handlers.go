@@ -6,7 +6,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/james/huabu_studio/apps/api/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
 )
 
 // SeedanceHandler 暴露「画布素材（图片/视频/音频）的 Seedance 2.0 合规校验」。

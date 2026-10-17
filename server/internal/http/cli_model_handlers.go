@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/james/huabu_studio/apps/api/internal/cliapi"
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/cliapi"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // cliModelRepo 是 CLI 模型接口需要的 models.Repository 子集。

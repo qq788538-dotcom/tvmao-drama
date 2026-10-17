@@ -3,7 +3,7 @@ package agent
 import (
 	"encoding/json"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasstate"
 )
 
 type FrameType string

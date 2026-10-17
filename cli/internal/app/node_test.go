@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/cli/internal/client"
-	"github.com/james/huabu_studio/apps/cli/internal/exitcode"
-	"github.com/james/huabu_studio/apps/cli/internal/workspace"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/client"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/exitcode"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/workspace"
 )
 
 // recordedRequest 记录一次请求，供断言 CLI 到底发了什么。

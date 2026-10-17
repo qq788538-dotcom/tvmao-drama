@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	"github.com/james/huabu_studio/apps/api/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
 )
 
 // AdminGCHandler 是 POST /api/v1/admin/gc：手动触发一次孤儿清扫。清扫逻辑在 library.OrphanSweeper，

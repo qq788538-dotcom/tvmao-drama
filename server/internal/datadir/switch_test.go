@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/datadir"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/datadir"
 )
 
 // 设置页选目录时区分三种情况：空（迁移过去）/ 已有喵剧数据（直接使用）/ 非空且无关（拒绝）。

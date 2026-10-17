@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasinputs"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasinputs"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 )
 
 // ProjectStore 是 Service 需要的 projects.Repository 子集。

@@ -3,7 +3,7 @@ package generation
 import (
 	"context"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // InputDurationError：配置了 gen_control.inputDuration 的模型缺少输入视频。独立类型

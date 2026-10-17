@@ -1,4 +1,4 @@
-module github.com/james/huabu_studio/apps/api
+module github.com/qq788538-dotcom/tvmao-drama/server
 
 go 1.26.0
 

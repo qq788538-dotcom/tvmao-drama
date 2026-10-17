@@ -7,9 +7,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/library"
-	"github.com/james/huabu_studio/apps/api/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 )
 
 // ProjectCleaner 后台异步清理已软删的画布项目。删项目时只软删(秒回)，这里把

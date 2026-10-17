@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/directorlibrary"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/directorlibrary"
 )
 
 // directorFakeLibraryRepo 只实现 ListEnabledJoined；嵌入接口满足其余方法（被调用会 panic，正好暴露误用）。

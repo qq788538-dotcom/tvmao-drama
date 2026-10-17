@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	"github.com/james/huabu_studio/apps/api/internal/users"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/users"
 )
 
 type meUserRepo interface {

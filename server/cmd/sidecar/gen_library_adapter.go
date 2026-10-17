@@ -3,7 +3,7 @@ package main
 import (
 	"database/sql"
 
-	"github.com/james/huabu_studio/apps/api/internal/library"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/library"
 )
 
 // libraryReclaimer 把 library 孤儿回收适配成 generation.ObjectReclaimer

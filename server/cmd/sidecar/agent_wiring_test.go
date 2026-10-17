@@ -13,10 +13,10 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/james/huabu_studio/apps/api/internal/agent"
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
-	apphttp "github.com/james/huabu_studio/apps/api/internal/http"
-	"github.com/james/huabu_studio/apps/api/internal/localauth"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
+	apphttp "github.com/qq788538-dotcom/tvmao-drama/server/internal/http"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/localauth"
 )
 
 const e2eToken = "0123456789abcdef0123456789abcdef"

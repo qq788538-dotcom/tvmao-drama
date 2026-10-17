@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/generation"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/generation"
 )
 
 // isUnsavedOutput：产物没能落本地（重试 3 次仍失败，保留了上游地址）。

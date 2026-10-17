@@ -7,9 +7,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/james/huabu_studio/apps/api/internal/aicharacters"
-	"github.com/james/huabu_studio/apps/api/internal/events"
-	"github.com/james/huabu_studio/apps/api/internal/localauth"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/aicharacters"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/events"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/localauth"
 )
 
 // Deps 是 DI 容器，由 cmd/sidecar 的 wire 填充。

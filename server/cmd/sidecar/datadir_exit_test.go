@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/datadir"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/datadir"
 )
 
 // 等锁超时 → 专用退出码（壳据此保留待办），等待开始时 stdout 打一行 WAITING_MIGRATE_LOCK。

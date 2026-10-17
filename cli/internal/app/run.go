@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/james/huabu_studio/apps/cli/internal/client"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/client"
 )
 
 // pollInterval 是 --wait 的轮询间隔。生成动辄几十秒，3 秒够密了。

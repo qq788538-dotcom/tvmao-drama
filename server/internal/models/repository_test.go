@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 func openTestDB(t *testing.T) *sql.DB {

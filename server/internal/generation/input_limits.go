@@ -3,7 +3,7 @@ package generation
 import (
 	"fmt"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // InputLimitError：提交的输入媒体数量违反模型 gen_control.inputLimits 约束。

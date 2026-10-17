@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/james/huabu_studio/apps/cli/internal/client"
+	"github.com/qq788538-dotcom/tvmao-drama/cli/internal/client"
 )
 
 func newCanvasCommand(st *runtimeState) *cobra.Command {

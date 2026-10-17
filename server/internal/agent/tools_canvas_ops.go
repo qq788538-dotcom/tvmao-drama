@@ -25,7 +25,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
-	"github.com/james/huabu_studio/apps/api/internal/agent/canvasmanifest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent/canvasmanifest"
 )
 
 // CanvasSnapshotReader 是 read_canvas 需要的最小能力（projects.MySQLRepository

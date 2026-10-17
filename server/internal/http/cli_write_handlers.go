@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/james/huabu_studio/apps/api/internal/cliapi"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/cliapi"
 )
 
 // CLI 的写入 handler。

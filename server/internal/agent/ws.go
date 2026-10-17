@@ -9,7 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/james/huabu_studio/apps/api/internal/canvasstate"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasstate"
 )
 
 // Hub 把帧分发到按 (user, project) 维度的 WS 连接，并跟踪进行中 Run 的 cancel

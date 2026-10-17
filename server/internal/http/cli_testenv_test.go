@@ -1,7 +1,7 @@
 package http
 
 import (
-	"github.com/james/huabu_studio/apps/api/internal/localauth"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/localauth"
 )
 
 // 桌面端 CLI 鉴权是 localauth 的静态 CLI token，不是 JWT。

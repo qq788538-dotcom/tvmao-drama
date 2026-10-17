@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/db"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db"
 )
 
 var ErrAgentToolNotFound = errors.New("agent tool not found")

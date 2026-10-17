@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/upstream"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/upstream"
 )
 
 func TestPollUpstream_RetriesTemporaryErrorsAndEventuallySucceeds(t *testing.T) {

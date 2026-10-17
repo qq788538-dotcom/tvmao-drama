@@ -10,7 +10,7 @@ import (
 
 	"github.com/ncruces/go-sqlite3"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 func zeroFinishRetryDelays(t *testing.T) {

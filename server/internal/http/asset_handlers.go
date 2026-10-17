@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/james/huabu_studio/apps/api/internal/assets"
-	"github.com/james/huabu_studio/apps/api/internal/mediaprobe"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/assets"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/mediaprobe"
 )
 
 // uniqueUploadFilename 给上传文件名加随机前缀，避免同用户同名不同内容文件互相覆盖

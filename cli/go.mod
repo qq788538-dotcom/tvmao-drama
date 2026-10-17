@@ -1,4 +1,4 @@
-module github.com/james/huabu_studio/apps/cli
+module github.com/qq788538-dotcom/tvmao-drama/cli
 
 go 1.26.1
 

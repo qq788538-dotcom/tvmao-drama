@@ -11,7 +11,7 @@ import (
 	"github.com/ncruces/go-sqlite3"
 	"github.com/ncruces/go-sqlite3/vfs"
 
-	"github.com/james/huabu_studio/apps/api/internal/db"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db"
 )
 
 // uriRecorder 是只记录 SQLite 交给 VFS 的文件名、然后拒绝打开的 VFS：

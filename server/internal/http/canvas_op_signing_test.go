@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/james/huabu_studio/apps/api/internal/projects"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 )
 
 // signingStorage 的 ExtractKey 只认 media:// 前缀，SignedURL 出一个一眼可辨的

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/db/dbtest"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/db/dbtest"
 )
 
 // §8.2 必跑:lease CAS 的真实并发与旧代次落空——codex 实施审查点名的覆盖缺口。

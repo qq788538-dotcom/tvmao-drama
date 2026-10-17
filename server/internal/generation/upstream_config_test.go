@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/james/huabu_studio/apps/api/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
 )
 
 // 每模型独立上游：执行计划里的地址与 Key 经 models.ResolveUpstream 解析。
