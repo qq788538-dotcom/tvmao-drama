@@ -113,6 +113,16 @@ func (s *runtimeState) idempotencyKey() string {
 	return newIdempotencyKey()
 }
 
+// idempotencyKeyFor 给一条命令里的「附带」写请求（如 node create --left 建的每条连线）派生幂等键。
+// 用户固定了 --idempotency-key 时不能原样复用：服务端同一 scope 下同 key 不同请求体会报
+// IDEMPOTENCY_KEY_REUSED，第二条连线必然失败。按 part 派生，重跑同一条命令仍得到同一组 key。
+func (s *runtimeState) idempotencyKeyFor(part string) string {
+	if s.flagIdemKey != "" {
+		return s.flagIdemKey + ":" + part
+	}
+	return newIdempotencyKey()
+}
+
 func NewRootCommand(deps Dependencies) *cobra.Command {
 	if deps.Stdout == nil {
 		deps.Stdout = os.Stdout

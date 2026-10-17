@@ -1,7 +1,10 @@
 package app
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -179,22 +182,12 @@ func newAssetDownloadCommand(st *runtimeState) *cobra.Command {
 			if fi, err := os.Stat(out); err == nil && fi.IsDir() {
 				target = filepath.Join(out, suggested)
 			}
-			f, err := os.Create(target)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-
 			st.out.Progress("正在下载到 %s …", target)
-			n, err := cl.DownloadURL(cmd.Context(), url, f)
+			n, err := downloadTo(target, func(w io.Writer) (int64, error) {
+				return cl.DownloadURL(cmd.Context(), url, w)
+			})
 			if err != nil {
-				// 失败时删掉半个文件：留着会让下次判断「已下载」时误判。
-				_ = os.Remove(target)
 				return err
-			}
-			if n == 0 {
-				_ = os.Remove(target)
-				return usagef("下载到 0 字节，已删除输出文件")
 			}
 			return st.out.Emit(map[string]any{"path": target, "bytes": n})
 		},
@@ -203,4 +196,55 @@ func newAssetDownloadCommand(st *runtimeState) *cobra.Command {
 	c.Flags().StringVar(&nodeRef, "node", "", "节点引用（取它当前显示的产物）")
 	c.Flags().StringVar(&out, "out", "", "输出文件或目录（必填）")
 	return c
+}
+
+// downloadTo 先下载到 target 同目录的临时文件，成功且非空才改名覆盖 target。
+// 直接 os.Create(target) 会先截断用户已有的同名文件，下载失败再删掉它就等于把原文件弄丢了；
+// 而且 Windows 上文件还开着时 os.Remove 会失败，半截文件删不掉。
+func downloadTo(target string, fetch func(io.Writer) (int64, error)) (int64, error) {
+	if fi, err := os.Stat(target); err == nil && !fi.Mode().IsRegular() {
+		// 设备 / 命名管道（如 /dev/null）没法改名替换，直接写，与原来一样。
+		f, err := os.OpenFile(target, os.O_WRONLY, 0)
+		if err != nil {
+			return 0, err
+		}
+		n, err := fetch(f)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		return n, err
+	}
+	var (
+		f   *os.File
+		tmp string
+		err error
+	)
+	for i := 0; i < 10; i++ {
+		// 随机后缀借用幂等键的生成器（crypto/rand）；O_EXCL 保证不会碰到已有文件。
+		tmp = filepath.Join(filepath.Dir(target), fmt.Sprintf(".%s.%s.part", filepath.Base(target), newIdempotencyKey()))
+		// 0o666 交给 umask，与 os.Create 的权限一致。
+		f, err = os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)
+		if !errors.Is(err, fs.ErrExist) {
+			break
+		}
+	}
+	if err != nil {
+		return 0, err
+	}
+	n, err := fetch(f)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil && n == 0 {
+		err = usagef("下载到 0 字节，未写入输出文件")
+	}
+	if err == nil {
+		err = os.Rename(tmp, target)
+	}
+	if err != nil {
+		// 失败时删掉临时文件：留着半个文件会让下次判断「已下载」时误判。
+		_ = os.Remove(tmp)
+		return 0, err
+	}
+	return n, nil
 }

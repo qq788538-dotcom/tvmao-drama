@@ -1,15 +1,20 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/james/huabu_studio/apps/cli/internal/client"
 	"github.com/james/huabu_studio/apps/cli/internal/exitcode"
 	"github.com/james/huabu_studio/apps/cli/internal/workspace"
 )
@@ -224,6 +229,48 @@ func TestIdempotencyKeyFlagOverrides(t *testing.T) {
 	h.run("project", "create", "--name", "x", "--idempotency-key", "my-fixed-key")
 	if req := rc.find(http.MethodPost, "/projects"); req == nil || req.IdemKey != "my-fixed-key" {
 		t.Fatalf("幂等键 = %+v", req)
+	}
+}
+
+// 固定 --idempotency-key 时，--left 建的每条连线要用各自派生的 key：同一 scope 下复用同一个 key
+// 发不同请求体，服务端会报 IDEMPOTENCY_KEY_REUSED，第二条连线必然失败。重跑同一条命令 key 不变。
+func TestFixedIdempotencyKeyDerivesDistinctEdgeKeys(t *testing.T) {
+	rc := &recorder{responses: map[string]string{
+		"/models/": `{"modelId":"m1","kind":"image"}`,
+		"/resolve": `{"nodeId":"resolved"}`,
+		"/nodes":   `{"id":"n-new"}`,
+		"/edges":   `{"id":"e-1"}`,
+	}}
+	h := nodeHarness(t, rc)
+
+	edgeKeys := func() []string {
+		var keys []string
+		for _, r := range rc.reqs {
+			if r.Method == http.MethodPost && strings.HasSuffix(r.Path, "/edges") {
+				keys = append(keys, r.IdemKey)
+			}
+		}
+		return keys
+	}
+	for _, args := range [][]string{
+		{"node", "create", "--type", "image-generator", "--model", "m1", "--left", "n-a", "--left", "n-b", "--idempotency-key", "K"},
+		{"node", "update", "n-new", "--left", "n-a", "--left", "n-b", "--idempotency-key", "K"},
+	} {
+		rc.reqs = nil
+		if code := h.run(args...); code != exitcode.OK {
+			t.Fatalf("%v: code = %d stderr=%s", args[:2], code, h.stderr.String())
+		}
+		if got := edgeKeys(); len(got) != 2 || got[0] != "K:edge-1" || got[1] != "K:edge-2" {
+			t.Fatalf("%v: 连线幂等键 = %q", args[:2], got)
+		}
+	}
+	if req := rc.find(http.MethodPost, "/nodes"); req != nil {
+		t.Fatalf("update 不应建节点: %+v", req)
+	}
+	rc.reqs = nil
+	h.run("node", "create", "--type", "image-generator", "--model", "m1", "--left", "n-a", "--idempotency-key", "K")
+	if req := rc.find(http.MethodPost, "/nodes"); req == nil || req.IdemKey != "K" {
+		t.Fatalf("建节点仍用用户给的 key: %+v", req)
 	}
 }
 
@@ -568,5 +615,100 @@ func TestNodeMoveRejectsMalformedLocally(t *testing.T) {
 	}
 	if len(rc.reqs) != 0 {
 		t.Fatalf("坏参数不该发请求: %+v", rc.reqs)
+	}
+}
+
+// ---- asset download ----
+
+// 下载失败不能动用户已有的同名文件，也不能留下半截临时文件；成功才整体替换。
+func TestAssetDownloadKeepsExistingFileOnFailure(t *testing.T) {
+	var fail atomic.Bool
+	var srvURL string
+	rc := &recorder{}
+	h := newHarness(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/assets/7"):
+			_, _ = w.Write([]byte(`{"id":7,"url":"` + srvURL + `/blob"}`))
+		case r.URL.Path == "/blob":
+			if fail.Load() {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			_, _ = w.Write([]byte("NEW-CONTENT"))
+		default:
+			rc.handler()(w, r)
+		}
+	})
+	srvURL = h.server.URL
+	dir := t.TempDir()
+	out := dir + "/out.png"
+	if err := os.WriteFile(out, []byte("USER-FILE"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fail.Store(true)
+	if code := h.run("asset", "download", "--asset", "7", "--out", out); code == exitcode.OK {
+		t.Fatal("下载失败应返回非 0")
+	}
+	if b, _ := os.ReadFile(out); string(b) != "USER-FILE" {
+		t.Fatalf("下载失败不能截断 / 删除已有文件，现在是 %q", b)
+	}
+
+	fail.Store(false)
+	if code := h.run("asset", "download", "--asset", "7", "--out", out); code != exitcode.OK {
+		t.Fatalf("code = %d stderr=%s", code, h.stderr.String())
+	}
+	if b, _ := os.ReadFile(out); string(b) != "NEW-CONTENT" {
+		t.Fatalf("内容 = %q", b)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Fatalf("不应留下临时文件: %v", entries)
+	}
+	// 非普通文件（设备）照常直接写，不去它所在目录建临时文件、也不改名替换它
+	if runtime.GOOS != "windows" {
+		if code := h.run("asset", "download", "--asset", "7", "--out", os.DevNull); code != exitcode.OK {
+			t.Fatalf("写 %s: code = %d stderr=%s", os.DevNull, code, h.stderr.String())
+		}
+	}
+}
+
+// Ctrl+C（main 把 SIGINT 转成 context 取消）：run wait 停止等待、提示任务仍在跑，退出码 7（用户取消）。
+func TestRunWaitCancelledContextExits7(t *testing.T) {
+	h := newHarness(t, jsonHandler(`{"taskId":42,"status":"processing"}`))
+	ctx, cancel := context.WithCancel(context.Background())
+	h.ctx = ctx
+	time.AfterFunc(200*time.Millisecond, cancel)
+	start := time.Now()
+	if code := h.run("run", "wait", "42"); code != exitcode.Network {
+		t.Fatalf("code = %d, want %d stderr=%s", code, exitcode.Network, h.stderr.String())
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("取消后应立即返回，用了 %v", time.Since(start))
+	}
+	if !strings.Contains(h.stderr.String(), "仍在服务端运行") {
+		t.Fatalf("应提示任务仍在服务端运行: %s", h.stderr.String())
+	}
+}
+
+// 确认提示里 Ctrl+C（context 取消）要立刻返回「用户取消」，不能卡在读 stdin 上等第二次 Ctrl+C。
+func TestReadLineReturnsOnCancel(t *testing.T) {
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	st := &runtimeState{deps: Dependencies{Stdin: pr}}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(100*time.Millisecond, cancel)
+	var answer string
+	_, err := readLine(ctx, st, &answer)
+	var ne *client.NetworkError
+	if !errors.As(err, &ne) {
+		t.Fatalf("err = %T %v", err, err)
+	}
+
+	pr2, pw2 := io.Pipe()
+	go func() { _, _ = pw2.Write([]byte("y\n")) }()
+	st.deps.Stdin = pr2
+	if _, err := readLine(context.Background(), st, &answer); err != nil || answer != "y\n" {
+		t.Fatalf("answer=%q err=%v", answer, err)
 	}
 }

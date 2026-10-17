@@ -17,17 +17,23 @@ import (
 // 用更长的超时：30 秒传不完一个视频。上传**不带幂等键也不重试**——
 // 重传一个大文件的代价远高于让用户自己重来，而服务端本来就按内容哈希去重。
 func (c *Client) UploadAsset(ctx context.Context, projectID int64, path string) (Asset, error) {
-	blob, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return Asset{}, err
 	}
+	defer f.Close()
+	// 文件直接流进 multipart 缓冲区：先 ReadFile 再写进 buffer 会在内存里同时放两份完整文件
+	// （几百 MB 的视频就是翻倍的内存）。body 仍整体缓冲，因为重连后要能原样重发。
 	var buf bytes.Buffer
+	if fi, err := f.Stat(); err == nil && fi.Size() > 0 {
+		buf.Grow(int(fi.Size()) + 1024)
+	}
 	mw := multipart.NewWriter(&buf)
 	part, err := mw.CreateFormFile("file", filepath.Base(path))
 	if err != nil {
 		return Asset{}, err
 	}
-	if _, err := part.Write(blob); err != nil {
+	if _, err := io.Copy(part, f); err != nil {
 		return Asset{}, err
 	}
 	if err := mw.Close(); err != nil {

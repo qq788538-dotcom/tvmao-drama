@@ -41,8 +41,10 @@ done < <(node scripts/lib/list-resources.mjs src-tauri/tauri.conf.json)
 rm -f "$STAGE/python/README.md" "$STAGE/python/.stamp"
 [ -f "$STAGE/cli-skill/SKILL.md" ] || { echo "缺少 cli-skill" >&2; exit 1; }
 
-# 说明文件：UTF-8 BOM + CRLF，老版本记事本打开也不乱码
-{ printf '\xEF\xBB\xBF'; sed 's/$/\r/' "packaging/首次打开说明-Windows.txt"; } > "$STAGE/首次打开说明.txt"
+# 说明文件：UTF-8 BOM + CRLF，老版本记事本打开也不乱码。
+# 不用 sed 's/$/\r/'：\r 不是 POSIX sed 的转义，macOS 自带的 BSD sed 会把它当成字母 r 追加到行尾；awk 的 \r 是 POSIX 规定的。
+# 源文件若已是 CRLF（Windows 上检出），先去掉原有的 \r，避免变成 \r\r\n。
+{ printf '\xEF\xBB\xBF'; awk '{ sub(/\r$/, ""); printf "%s\r\n", $0 }' "packaging/首次打开说明-Windows.txt"; } > "$STAGE/首次打开说明.txt"
 
 python3 scripts/lib/make_zip.py "$STAGE" "$ZIP"
 echo "已生成 ${ZIP}（$(du -h "$ZIP" | cut -f1)）"

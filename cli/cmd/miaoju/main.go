@@ -5,8 +5,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 
 	"github.com/james/huabu_studio/apps/cli/internal/app"
 )
@@ -30,5 +32,15 @@ func main() {
 		Version: version,
 		WorkDir: wd,
 	})
-	os.Exit(app.Execute(root, os.Args[1:], os.Stderr))
+	// Ctrl+C 取消 context 而不是直接杀进程：进行中的请求随之中止，run --wait 会提示任务仍在服务端运行，
+	// 退出码按契约是 7（用户取消）。第一次 Ctrl+C 之后恢复默认处理，再按一次可以强制退出。
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+	root.SetContext(ctx)
+	code := app.Execute(root, os.Args[1:], os.Stderr)
+	stop()
+	os.Exit(code)
 }

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/james/huabu_studio/apps/cli/internal/client"
 	"github.com/james/huabu_studio/apps/cli/internal/workspace"
 )
 
@@ -129,7 +131,7 @@ func newProjectDeleteCommand(st *runtimeState) *cobra.Command {
 			if err != nil || id <= 0 {
 				return usagef("项目 ID 必须是正整数，收到 %q", args[0])
 			}
-			if err := confirmDestructive(st, yes, "删除项目 %d", id); err != nil {
+			if err := confirmDestructive(cmd.Context(), st, yes, "删除项目 %d", id); err != nil {
 				return err
 			}
 			if err := st.client().DeleteProject(cmd.Context(), id); err != nil {
@@ -196,7 +198,7 @@ func projectFromArgOrBinding(st *runtimeState, args []string) (int64, error) {
 
 // confirmDestructive 处理破坏性操作的确认。
 // **非 TTY 且未传 --yes 时直接失败，不等待交互**——脚本里挂起比报错更糟。
-func confirmDestructive(st *runtimeState, yes bool, format string, a ...any) error {
+func confirmDestructive(ctx context.Context, st *runtimeState, yes bool, format string, a ...any) error {
 	if yes {
 		return nil
 	}
@@ -205,7 +207,7 @@ func confirmDestructive(st *runtimeState, yes bool, format string, a ...any) err
 	}
 	st.out.Warn("即将"+format+"，输入 y 确认：", a...)
 	var answer string
-	if _, err := readLine(st, &answer); err != nil {
+	if _, err := readLine(ctx, st, &answer); err != nil {
 		return err
 	}
 	if strings.ToLower(strings.TrimSpace(answer)) != "y" {
@@ -214,14 +216,30 @@ func confirmDestructive(st *runtimeState, yes bool, format string, a ...any) err
 	return nil
 }
 
-func readLine(st *runtimeState, out *string) (int, error) {
-	buf := make([]byte, 256)
-	n, err := st.deps.Stdin.Read(buf)
-	if n > 0 {
-		*out = string(buf[:n])
+// readLine 读一行确认输入。读 stdin 不响应 context，放到 goroutine 里：Ctrl+C（context 取消）时立即按
+// 「用户取消」返回，不用再按一次（goroutine 随进程退出）。
+func readLine(ctx context.Context, st *runtimeState, out *string) (int, error) {
+	type result struct {
+		s   string
+		n   int
+		err error
 	}
-	if err != nil && n == 0 {
-		return 0, err
+	ch := make(chan result, 1)
+	go func() {
+		buf := make([]byte, 256)
+		n, err := st.deps.Stdin.Read(buf)
+		ch <- result{string(buf[:n]), n, err}
+	}()
+	select {
+	case <-ctx.Done():
+		return 0, &client.NetworkError{Err: ctx.Err()}
+	case r := <-ch:
+		if r.n > 0 {
+			*out = r.s
+		}
+		if r.err != nil && r.n == 0 {
+			return 0, r.err
+		}
+		return r.n, nil
 	}
-	return n, nil
 }

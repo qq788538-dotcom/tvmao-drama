@@ -4,14 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/james/huabu_studio/apps/cli/internal/endpoint"
 )
@@ -515,5 +519,44 @@ func TestConnRefusedReconnectsAtMostOncePerCommand(t *testing.T) {
 	var anr *AppNotRunningError
 	if !errors.As(err, &anr) {
 		t.Fatalf("同一条命令只重连一次，第二次端口变化应直接报错，err=%T %v", err, err)
+	}
+}
+
+// 非契约错误体（如网关的中文 HTML）截断时不能切出半个 UTF-8 字符。
+func TestDecodeAPIErrorTruncatesOnRuneBoundary(t *testing.T) {
+	body := []byte("x" + strings.Repeat("错", 100))
+	err := decodeAPIError(&http.Response{StatusCode: 502, Status: "502 Bad Gateway", Header: http.Header{}}, body)
+	var ae *APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("got %T", err)
+	}
+	if !utf8.ValidString(ae.Message) || !strings.HasSuffix(ae.Message, "…") || len(ae.Message) > 200+len("…") {
+		t.Fatalf("截断结果 = %q", ae.Message)
+	}
+}
+
+// 上传的 multipart 里是文件原样内容与文件名（文件流式写进缓冲区，不再先整份读进内存）。
+func TestUploadAssetSendsFileAsMultipart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "参考 图.png")
+	content := strings.Repeat("\x89PNG-data-", 1000)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var gotName, gotBody string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		f, fh, err := r.FormFile("file")
+		if err != nil {
+			t.Errorf("FormFile: %v", err)
+			return
+		}
+		b, _ := io.ReadAll(f)
+		gotName, gotBody = fh.Filename, string(b)
+		_, _ = w.Write([]byte(`{"id":1}`))
+	})
+	if _, err := c.UploadAsset(context.Background(), 3, path); err != nil {
+		t.Fatal(err)
+	}
+	if gotName != "参考 图.png" || gotBody != content {
+		t.Fatalf("name=%q bodyLen=%d", gotName, len(gotBody))
 	}
 }
