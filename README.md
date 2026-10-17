@@ -95,8 +95,8 @@
 
 | 系统 | 安装包 | 要求 |
 |---|---|---|
-| macOS（Apple 芯片） | `喵剧AI_<版本>_aarch64.dmg` | macOS 14 及以上 |
-| macOS（Intel） | `喵剧AI_<版本>_x64.dmg` | macOS 14 及以上 |
+| macOS（Apple 芯片） | `miaoju-macos-aarch64-<版本>.dmg` | macOS 14 及以上 |
+| macOS（Intel） | `miaoju-macos-x64-<版本>.dmg` | macOS 14 及以上 |
 | Windows | `miaoju-windows-x64-<版本>.zip` | Windows 10 / 11 64 位 |
 
 安装包没有购买代码签名证书，第一次打开时系统会拦截，按 [macOS 首次打开说明](packaging/首次打开说明-macOS.txt) 或 [Windows 首次打开说明](packaging/首次打开说明-Windows.txt) 放行一次即可。

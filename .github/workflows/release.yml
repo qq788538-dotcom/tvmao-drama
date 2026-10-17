@@ -1,7 +1,8 @@
 name: Release
 
 # 推 v<版本> 标签时构建三个安装包并发布到 GitHub Releases：
-#   喵剧AI_<版本>_aarch64.dmg / 喵剧AI_<版本>_x64.dmg（macOS runner 上跑 scripts/release-macos.sh）
+#   miaoju-macos-aarch64-<版本>.dmg / miaoju-macos-x64-<版本>.dmg（macOS runner 上跑 scripts/release-macos.sh，
+#   上传前改成纯 ASCII 文件名：GitHub 会删掉附件名里的中文，“喵剧AI_1.0.0_x64.dmg”会变成“AI_1.0.0_x64.dmg”）
 #   miaoju-windows-x64-<版本>.zip（Linux runner 上用 cargo-xwin 跑 scripts/package-windows.sh）
 # 改动本文件的 PR 和手动触发只构建、把产物留在 Actions 里，不发 Release。
 on:
@@ -153,6 +154,9 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           cd dist
+          for arch in aarch64 x64; do
+            mv "喵剧AI_${VERSION}_${arch}.dmg" "miaoju-macos-${arch}-${VERSION}.dmg"
+          done
           sha256sum *.dmg *.zip > SHA256SUMS.txt
           cat SHA256SUMS.txt
           cat > ../notes.md <<EOF
@@ -160,8 +164,8 @@ jobs:
 
           | 系统 | 安装包 | 要求 |
           |---|---|---|
-          | macOS（Apple 芯片 M1/M2/M3/M4） | \`喵剧AI_${VERSION}_aarch64.dmg\` | macOS 14 及以上 |
-          | macOS（Intel） | \`喵剧AI_${VERSION}_x64.dmg\` | macOS 14 及以上 |
+          | macOS（Apple 芯片 M1/M2/M3/M4） | \`miaoju-macos-aarch64-${VERSION}.dmg\` | macOS 14 及以上 |
+          | macOS（Intel） | \`miaoju-macos-x64-${VERSION}.dmg\` | macOS 14 及以上 |
           | Windows | \`miaoju-windows-x64-${VERSION}.zip\` | Windows 10 / 11 64 位 |
 
           ## 首次打开

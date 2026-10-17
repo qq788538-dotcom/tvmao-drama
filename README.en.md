@@ -73,8 +73,8 @@ Get the latest build from [Releases](../../releases):
 
 | OS | Package | Requirement |
 |---|---|---|
-| macOS (Apple silicon) | `喵剧AI_<version>_aarch64.dmg` | macOS 14+ |
-| macOS (Intel) | `喵剧AI_<version>_x64.dmg` | macOS 14+ |
+| macOS (Apple silicon) | `miaoju-macos-aarch64-<version>.dmg` | macOS 14+ |
+| macOS (Intel) | `miaoju-macos-x64-<version>.dmg` | macOS 14+ |
 | Windows | `miaoju-windows-x64-<version>.zip` | Windows 10 / 11 x64 |
 
 The builds are not code-signed, so the OS will block the first launch. On macOS, allow it under System Settings → Privacy & Security; on Windows, click "More info → Run anyway".
