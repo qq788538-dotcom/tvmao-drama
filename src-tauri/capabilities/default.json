@@ -1,0 +1,25 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口的最小权限：前端只用到事件监听（core:event:default）和 getVersion（core:app:allow-version），不授予 core:default——它还带 core:image:allow-from-path（按任意路径读图片并把像素交给网页）、core:path（解析主目录等路径）、core:menu / core:tray（建菜单、托盘图标）等用不到的能力；core:webview:allow-internal-toggle-devtools 只供 debug 构建的开发者工具快捷键。自定义命令 server_info / sidecar_status / restart_sidecar / get_data_dir / set_data_dir / apply_data_dir_change / data_dir_status / dismiss_data_dir_error / save_media / save_media_batch / save_bytes / cli_tool_status / install_cli_tool / uninstall_cli_tool 由本应用注册，默认只对本应用窗口开放。dialog:allow-open 只供设置 → 数据目录选择文件夹（P4），它只返回路径、不写盘；save_media / save_media_batch / save_bytes 的保存对话框在 Rust 侧弹出（tauri-plugin-dialog 的 Rust API），前端刻意不授予 dialog:allow-save / fs:* 权限：写盘路径只能来自用户在 Rust 对话框里的选择（SEC4）。opener:allow-open-url 只放行 qqdao 官网（设置 → 上游服务里的申请账号链接），用系统浏览器打开。",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:event:default",
+    "core:app:allow-version",
+    "core:webview:allow-internal-toggle-devtools",
+    "dialog:allow-open",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://www.qqdao.com"
+        },
+        {
+          "url": "https://www.qqdao.com/*"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,207 @@
+// 设置页与 sidecar（/api/v1/settings/*）和 Tauri 壳之间的全部调用。
+import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
+import { authHeaders, buildHttpUrl, getServerInfo, restartSidecar } from '@/shared/server';
+
+export class SettingsApiError extends Error {
+  constructor(public status: number, message: string, public field?: string) {
+    super(message);
+    this.name = 'SettingsApiError';
+  }
+}
+
+export function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+async function request<T>(method: 'GET' | 'PUT' | 'PATCH' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
+  const info = await getServerInfo();
+  const headers: Record<string, string> = { ...authHeaders(info) };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  let resp: Response;
+  try {
+    resp = await fetch(buildHttpUrl(info, `/api/v1/settings${path}`), {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    // 网络层失败时浏览器给的是英文 "Failed to fetch"，换成中文提示。
+    throw new Error('连接本地服务失败，请稍后重试');
+  }
+  const text = await resp.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+  if (!resp.ok) {
+    throw new SettingsApiError(resp.status, data?.error ?? `请求失败（HTTP ${resp.status}）`, data?.field);
+  }
+  return data as T;
+}
+
+// ---- 通用 ----
+export interface GeneralSettings {
+  version: string;
+  dataDir: string;
+  baseDomain: string;
+  baseDomainModified: boolean;
+  apiKeySet: boolean;
+  apiKeyMasked: string;
+  /** 设置页"还没有账号"的申请链接，由 sidecar 给出。 */
+  signupUrl?: string;
+}
+export interface UpstreamUpdate {
+  baseDomain?: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+}
+export const getGeneral = () => request<GeneralSettings>('GET', '/general');
+export const updateUpstream = (u: UpstreamUpdate) => request<GeneralSettings>('PUT', '/upstream', u);
+export const restoreBaseDomain = () => request<GeneralSettings>('POST', '/upstream/base-domain/restore-default');
+/** 所选数据目录的状态：empty → 迁移过去；existing → 已有喵剧数据，可直接使用（不迁移）。非空且无关时接口返回 400。 */
+export type DataDirTargetState = 'empty' | 'existing';
+export interface DataDirCheck {
+  path: string;
+  state: DataDirTargetState;
+}
+export const checkDataDir = (path: string) => request<DataDirCheck>('POST', '/data-dir/check', { path });
+
+// ---- 模型中心 ----
+export type UISchema = Record<string, { label?: string; default?: string | number; options?: { label?: string; value: string | number }[] }>;
+export interface GenControl {
+  concurrency?: number;
+  modules?: Record<string, { maxRetries?: number; retryIntervalSec?: number }>;
+  inputLimits?: Record<string, { min?: number | null; max?: number | null }>;
+  inputDuration?: unknown;
+}
+export interface ModelView {
+  id: number;
+  type: string;
+  name: string;
+  modelId: string;
+  enabled: boolean;
+  hidden: boolean;
+  sortOrder: number;
+  basePath: string;
+  imageInputFormat: string;
+  imageRequestMode: string;
+  requestTemplate: unknown;
+  pollingTemplate: unknown;
+  uiSchema: UISchema | null;
+  genControl: GenControl | null;
+  modifiedFields: string[];
+  references: string[];
+  /** 模型单独配置的上游；未配置时 configured=false，走全局。 */
+  upstream: ModelUpstream;
+}
+export interface ModelUpstream {
+  configured: boolean;
+  baseUrl: string;
+  apiKeyMasked: string;
+}
+export interface ModelPatch {
+  enabled?: boolean;
+  hidden?: boolean;
+  name?: string;
+  sortOrder?: number;
+  uiSchemaDefaults?: Record<string, string | number>;
+  concurrency?: number;
+  canvasMaxRetries?: number;
+  canvasRetryIntervalSec?: number;
+  /** 对象：设置/修改（apiKey 不传表示保留原 Key）；null：清空，恢复走全局；不带：不改。 */
+  upstream?: { baseUrl: string; apiKey?: string } | null;
+}
+export const listModels = () => request<{ data: ModelView[] }>('GET', '/models').then((r) => r.data);
+export const patchModel = (id: number, p: ModelPatch) => request<ModelView>('PATCH', `/models/${id}`, p);
+export const restoreModel = (id: number) => request<ModelView>('POST', `/models/${id}/restore-default`);
+export interface ModelConnectionResult {
+  id: number;
+  modelId: string;
+  ok: boolean;
+  message: string;
+}
+/** 一次测试全部模型的连接。 */
+export const testModelConnections = () => request<{ results: ModelConnectionResult[] }>('POST', '/models/test-connection');
+
+// ---- Tauri 壳 ----
+export interface DataDirStatus {
+  current: string;
+  defaultDir: string;
+  lastError: string | null;
+}
+export const dataDirStatus = () => invoke<DataDirStatus>('data_dir_status');
+/** 写入待迁移目录并重启应用；成功时应用会直接重启，不会返回。 */
+export const applyDataDirChange = (path: string) => invoke<void>('apply_data_dir_change', { path });
+export const dismissDataDirError = () => invoke<void>('dismiss_data_dir_error');
+export interface CliToolStatus {
+  installed: boolean;
+  upToDate: boolean;
+  commandPath: string;
+  binDir: string;
+  skillEntry: string;
+  /** 每个 AI 助手（claude、codex）的 skill 安装状态 */
+  skills: CliSkillStatus[];
+  /** "让 AI 助手安装"页签里的提示词（含本机真实路径） */
+  agentPrompt: string;
+}
+export interface CliSkillStatus {
+  agent: string;
+  path: string;
+  /** 该 AI 助手的主目录（~/.claude、~/.codex）存在 */
+  available: boolean;
+  installed: boolean;
+  /** 已有用户自己的同名目录（或指向别处的链接），没有覆盖 */
+  conflict: boolean;
+  /** 复制安装的 skill 版本与应用不一致，需要重新安装 */
+  outdated: boolean;
+  /** 本次安装 / 卸载该 agent 时出的错 */
+  error: string | null;
+}
+export const cliToolStatus = () => invoke<CliToolStatus>('cli_tool_status');
+export const installCliTool = () => invoke<CliToolStatus>('install_cli_tool');
+export const uninstallCliTool = () => invoke<CliToolStatus>('uninstall_cli_tool');
+/**
+ * 直接使用一个已有喵剧数据的目录：只改 location.json（壳会校验它确实是喵剧数据目录），再重启本地服务，不迁移。
+ * 切换被拒绝时抛出原因；重启失败由 SidecarGate 的失败页显示（那里有“重试”和“改用默认数据目录”）。
+ */
+export async function switchToExistingDataDir(path: string): Promise<void> {
+  await invoke('set_data_dir', { path });
+  await restartSidecar().catch(() => undefined);
+}
+export const appVersion = () => getVersion();
+
+// ---- 对象存储（视频/音频参考素材上传到用户自己的桶）----
+export type ObjectStorageProvider = 'tos' | 'oss';
+export interface ObjectStorageView {
+  configured: boolean;
+  provider: ObjectStorageProvider | '';
+  endpoint: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  accessKey: string;
+  secretKeySet: boolean;
+  secretKeyMasked: string;
+}
+export interface ObjectStorageInput {
+  provider: ObjectStorageProvider;
+  endpoint: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  accessKey: string;
+  /** 留空 = 沿用已保存的值 */
+  secretKey: string;
+}
+export interface ProbeResult {
+  ok: boolean;
+  step?: 'config' | 'upload' | 'presign' | 'download' | 'delete';
+  message: string;
+}
+export const getObjectStorage = () => request<ObjectStorageView>('GET', '/object-storage');
+export const saveObjectStorage = (b: ObjectStorageInput) => request<ObjectStorageView>('PUT', '/object-storage', b);
+export const clearObjectStorage = () => request<ObjectStorageView>('DELETE', '/object-storage');
+export const testObjectStorage = (b: ObjectStorageInput) => request<ProbeResult>('POST', '/object-storage/test', b);

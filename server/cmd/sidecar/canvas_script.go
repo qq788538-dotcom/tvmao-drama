@@ -1,0 +1,60 @@
+package main
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log"
+	"path/filepath"
+
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/canvasscript"
+	apphttp "github.com/qq788538-dotcom/tvmao-drama/server/internal/http"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/skillbundle"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/skillruntime"
+)
+
+// skillMaxIterations 是 Skill 执行的最大迭代轮数（重流程 skill 正常就近 20 轮）。
+const skillMaxIterations = 40
+
+// wireCanvasScript 装配脚本节点：释放内置 Skill、找内置 Python、启动回收与 worker。
+// 找不到 Python 不阻止启动，只打印警告；任务执行时以“内置 Python 运行时缺失”失败。
+func wireCanvasScript(ctx context.Context, conn *sql.DB, dataDir, pythonHome string) (*apphttp.CanvasScriptHandler, []<-chan struct{}, error) {
+	runtimeDir := filepath.Join(dataDir, "runtime")
+	skillsDir, err := skillbundle.Extract(filepath.Join(runtimeDir, "skills"))
+	if err != nil {
+		return nil, nil, err
+	}
+	catalog, err := skillruntime.NewCatalog(skillsDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("加载内置 Skill: %w", err)
+	}
+	workspace, err := skillruntime.NewRunWorkspace(filepath.Join(runtimeDir, "skill-runs"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("创建 Skill Run 工作区: %w", err)
+	}
+	// wctx 让失败路径能单独停掉已启动的清理器，不依赖调用方取消根 ctx。
+	wctx, wcancel := context.WithCancel(ctx)
+	cleanerDone := goDone(func() { skillruntime.NewWorkspaceCleaner(workspace.Root()).Run(wctx) })
+
+	python, err := skillruntime.LocatePython(pythonHome)
+	if err != nil {
+		log.Printf("警告: %v；脚本节点任务将失败", err)
+	} else {
+		log.Printf("内置 Python: %s", python)
+	}
+	shellFactory := skillruntime.RestrictedShellFactory(skillruntime.RestrictedShellConfig{Python: python})
+	rt := skillruntime.NewRuntime(catalog, workspace, nil, skillMaxIterations, shellFactory)
+
+	settingsRepo := settings.NewSQLiteRepository(conn)
+	svc := canvasscript.NewService(conn, settingsRepo, models.NewSQLiteRepository(conn), settingsUpstreamKey{settings: settingsRepo}, rt)
+	if err := svc.RecoverOnStartup(ctx); err != nil {
+		wcancel()
+		<-cleanerDone
+		return nil, nil, fmt.Errorf("回收上次未完成的脚本任务: %w", err)
+	}
+	workerDone := goDone(func() { svc.RunWorker(ctx) })
+	_ = wcancel // wctx 随根 ctx 结束；成功路径不需要单独取消
+	return apphttp.NewCanvasScriptHandler(svc), []<-chan struct{}{cleanerDone, workerDone}, nil
+}

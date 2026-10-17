@@ -1,0 +1,317 @@
+// Package http 装配 sidecar 的全部 HTTP 路由，业务 handler 直接落在这个包里。
+package http
+
+import (
+	nethttp "net/http"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/aicharacters"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/events"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/localauth"
+)
+
+// Deps 是 DI 容器，由 cmd/sidecar 的 wire 填充。
+type Deps struct {
+	Auth    localauth.Config
+	DataDir string
+	Version string
+
+	// Events 是项目变更事件中心；非 nil 时挂项目 SSE 路由。
+	Events *events.Hub
+
+	MediaSigner       *MediaSigner
+	Media             *MediaHandler
+	Me                *MeHandler
+	Asset             *AssetHandler
+	Project           *ProjectHandler
+	CanvasMutation    *CanvasMutationHandler
+	CanvasAssetImport *CanvasAssetImportHandler
+	LibraryFolder     *LibraryFolderHandler
+	LibraryItem       *LibraryItemHandler
+	LibraryBridge     *LibraryBridgeHandler
+	AdminGC           *AdminGCHandler
+
+	// Generation 是生成链路的 HTTP 入口（nil 字段不注册对应路由）。
+	Generation GenerationRoutes
+	// GenerationRepersist 是节点「未保存到本地」的重试接口。
+	GenerationRepersist *GenerationRepersistHandler
+	// ── 后处理、AI 角色、Seedance、导演台 ──
+	CanvasPostprocess *CanvasPostprocessHandler
+	GenImagePreset    *GenImagePresetHandler
+	MultiAngle        *MultiAngleHandler
+	LightControl      *LightControlHandler
+	AICharacter       *AICharacterHandler
+	// AICharacterImages 包在 /media/* 外面：角色形象图本地没有时先下载缓存。nil = 不包。
+	AICharacterImages *aicharacters.ImageCache
+	Seedance          *SeedanceHandler
+	DirectorModel     *DirectorModelHandler
+	DirectorLibrary   *DirectorLibraryHandler
+
+	// ── Agent ── 为 nil 时不注册对应路由（路由测试与 wire() 的 e2e 不装配 Agent）。
+	// sidecar 的 main 总会装配（wireAgent 需要根 ctx，所以不在 wire() 里）。
+	Agent      *AgentHandler
+	Skills     *SkillsHandler
+	AdminAgent *AdminAgentHandler
+
+	// CanvasScript 脚本节点接口；nil 时不注册，便于只测其他路由。
+	CanvasScript *CanvasScriptHandler
+	// SettingsCenter 是设置页接口（/api/v1/settings/*）的依赖；为 nil 的那部分接口不注册。
+	SettingsCenter SettingsCenterDeps
+
+	// CLI 契约。鉴权在最外层 localauth 按 /api/v1/cli/ 前缀分流，
+	// 这里不另挂鉴权；userID 由 LocalIdentity 固定为 1。
+	CLI      *CLIHandler
+	CLIModel *CLIModelHandler
+	CLIAsset *CLIAssetHandler
+}
+
+// MustWireCLI 在启动期校验 CLI 契约的依赖都接上了，缺一个就 panic。
+func MustWireCLI(d Deps) {
+	var missing []string
+	if d.CLI == nil {
+		missing = append(missing, "CLI")
+	}
+	if d.CLIModel == nil {
+		missing = append(missing, "CLIModel")
+	}
+	if d.CLIAsset == nil {
+		missing = append(missing, "CLIAsset")
+	}
+	if len(missing) > 0 {
+		panic("CLI 依赖未接线（检查 cmd/sidecar/wire.go 的 Deps）: " + strings.Join(missing, ", "))
+	}
+}
+
+// MustWire 在启动期校验业务 handler 都已装配，缺一个就 panic。路由按字段注册，漏装配不会编译失败，
+// 直到有请求进来才 nil 解引用（与 MustWireCLI 同一思路）。不放进 NewRouter：路由测试
+// 只装配了 ping/diag，放进去会把它们打挂。
+func MustWire(d Deps) {
+	var missing []string
+	for name, ok := range map[string]bool{
+		"MediaSigner": d.MediaSigner != nil, "Media": d.Media != nil, "Me": d.Me != nil, "Asset": d.Asset != nil,
+		"Project": d.Project != nil, "CanvasMutation": d.CanvasMutation != nil, "CanvasAssetImport": d.CanvasAssetImport != nil,
+		"LibraryFolder": d.LibraryFolder != nil, "LibraryItem": d.LibraryItem != nil, "LibraryBridge": d.LibraryBridge != nil,
+		"AdminGC":              d.AdminGC != nil,
+		"Generation.CanvasGen": d.Generation.CanvasGen != nil, "Generation.Generation": d.Generation.Generation != nil,
+		"Generation.Apply": d.Generation.Apply != nil, "Generation.Models": d.Generation.Models != nil,
+		"GenerationRepersist": d.GenerationRepersist != nil,
+		"CanvasPostprocess":   d.CanvasPostprocess != nil, "GenImagePreset": d.GenImagePreset != nil,
+		"MultiAngle": d.MultiAngle != nil, "LightControl": d.LightControl != nil, "AICharacter": d.AICharacter != nil,
+		"Seedance": d.Seedance != nil, "DirectorModel": d.DirectorModel != nil, "DirectorLibrary": d.DirectorLibrary != nil,
+		"SettingsCenter.Settings": d.SettingsCenter.Settings != nil, "SettingsCenter.Models": d.SettingsCenter.Models != nil,
+		"SettingsCenter.ModelEdit": d.SettingsCenter.ModelEdit != nil, "SettingsCenter.SettingEdit": d.SettingsCenter.SettingEdit != nil,
+		"SettingsCenter.Agent": d.SettingsCenter.Agent != nil,
+	} {
+		if !ok {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		panic("sidecar 依赖未接线（检查 cmd/sidecar/wire.go）: " + strings.Join(missing, ", "))
+	}
+}
+
+func NewRouter(d Deps) nethttp.Handler {
+	r := chi.NewRouter()
+	// 鉴权必须挂在最外层：挂在 Group 里的话，预检请求（OPTIONS）打到只注册了
+	// GET 的路径会先被 chi 判成 405，根本走不到中间件。
+	r.Use(localauth.Middleware(d.Auth))
+
+	// 本地媒体文件：<img>/<video> 直接请求，token 走 ?token=（媒体专用 token 只能访问这里）。
+	// 角色形象图本地没有时先下载缓存再交给 Media.Serve。
+	mediaMW := func(next nethttp.Handler) nethttp.Handler {
+		if d.AICharacterImages == nil {
+			return next
+		}
+		return d.AICharacterImages.Middleware(next)
+	}
+	r.With(mediaMW).Get("/media/*", d.Media.Serve)
+	r.With(mediaMW).Head("/media/*", d.Media.Serve)
+
+	// 生成链路：registerGenerationRoutes / registerRepersistRoute 注册的是 /api/v1/... 绝对路径，
+	// 所以挂在根路由的 Group 上（与下面 /api/v1 子路由里的业务路由同样套 LocalIdentity）。
+	// chi 先匹配静态段，这些路径不会被 /api/v1 子路由的通配吞掉。
+	r.Group(func(r chi.Router) {
+		r.Use(LocalIdentity)
+		registerGenerationRoutes(r, d.Generation)
+		registerRepersistRoute(r, d.GenerationRepersist)
+	})
+
+	// 设置页：mountSettingsCenter 注册的是 /api/v1/settings 绝对前缀，同样挂在根路由的 LocalIdentity 组上。
+	// DataDir / Version 缺省时取 sidecar 自身的值。
+	sc := d.SettingsCenter
+	if sc.DataDir == "" {
+		sc.DataDir = d.DataDir
+	}
+	if sc.Version == "" {
+		sc.Version = d.Version
+	}
+	r.Group(func(r chi.Router) {
+		r.Use(LocalIdentity)
+		mountSettingsCenter(r, sc)
+	})
+
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/ping", func(w nethttp.ResponseWriter, _ *nethttp.Request) {
+			writeJSON(w, nethttp.StatusOK, map[string]any{"ok": true, "version": d.Version})
+		})
+		// WebSocket 回显诊断在 /diag/ws，/api/v1/agent/ws 归 Agent（见下方 LocalIdentity 组）。
+		r.Get("/diag/ws", wsEcho)
+		// 诊断页（“设置 → 环境诊断”）。
+		diag := &diagHandler{dir: d.DataDir}
+		r.Post("/diag/upload", diag.upload)
+		r.Get("/diag/media/{name}", diag.media)
+
+		// 自由画布 CLI 契约：自己的稳定 DTO 与错误模型，与网页 handler 互不复用。
+		// 鉴权在最外层 localauth 按 /api/v1/cli/ 前缀分流（只认 CLI token），这里只补身份。
+		r.Route("/cli", func(r chi.Router) {
+			r.Use(CLIRequestID, LocalIdentity)
+			r.Get("/ping", cliPing(d.Version))
+			// handler 为 nil 也照常注册（方法值不解引用），
+			// 漏装配由 MustWireCLI 在启动期兜住；单测只装自己关心的 handler。
+			r.Get("/projects", d.CLI.ListProjects)
+			r.Route("/projects/{projectID}", func(r chi.Router) {
+				r.Get("/", d.CLI.GetProject)
+				r.Get("/canvas", d.CLI.GetCanvas)
+				r.Get("/nodes", d.CLI.ListNodes)
+				// /nodes/resolve 必须在 /nodes/{nodeID} 之前——chi 虽然静态段
+				// 优先，但显式排前免得后来者插队时踩坑。
+				r.Get("/nodes/resolve", d.CLI.ResolveNode)
+				r.Get("/nodes/{nodeID}", d.CLI.GetNode)
+				r.Get("/edges", d.CLI.ListEdges)
+
+				r.Patch("/", d.CLI.UpdateProject)
+				r.Delete("/", d.CLI.DeleteProject)
+				r.Post("/nodes", d.CLI.CreateNode)
+				// 批量几何在单节点 PATCH 之前注册，理由同上面的 /nodes/resolve。
+				r.Patch("/nodes/positions", d.CLI.PatchNodePositions)
+				r.Patch("/nodes/{nodeID}", d.CLI.PatchNode)
+				r.Delete("/nodes/{nodeID}", d.CLI.DeleteNode)
+				r.Post("/edges", d.CLI.CreateEdge)
+				r.Delete("/edges/{edgeID}", d.CLI.DeleteEdge)
+				r.Post("/nodes/{nodeID}/runs", d.CLI.RunNode)
+				r.Post("/assets", d.CLIAsset.Upload)
+				// Seedance 2.0 合规校验。doubao-seedance* 的生成强制要求输入图
+				// 先过校验，网页那两个端点 CLI token 进不去，不给 CLI 一条路就等于 CLI 跑不了 seedance。
+				r.Post("/nodes/{nodeID}/compliance", d.CLI.VerifyNodeMedia)
+				r.Get("/compliance", d.CLI.ListCompliance)
+			})
+			r.Get("/runs/{taskID}", d.CLI.GetRun)
+			r.Get("/assets/{assetID}", d.CLIAsset.Get)
+			r.Get("/assets/{assetID}/download", d.CLIAsset.Download)
+			r.Post("/projects", d.CLI.CreateProject)
+
+			r.Get("/models", d.CLIModel.List)
+			r.Get("/models/{modelID}", d.CLIModel.Get)
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(LocalIdentity)
+
+			r.Get("/me", d.Me.Me)
+
+			r.Get("/projects", d.Project.List)
+			r.Post("/projects", d.Project.Create)
+			r.Route("/projects/{projectID}", func(r chi.Router) {
+				r.Use(ProjectFromURL)
+				r.Get("/", d.Project.Get)
+				r.Put("/", d.Project.Update)
+				r.Delete("/", d.Project.Delete)
+				r.Get("/snapshot", d.Project.GetSnapshot)
+				if d.Events != nil {
+					r.Get("/events", ProjectEvents(d.Events))
+				}
+				r.Get("/images", d.Project.ListImages)
+				r.Put("/cover", d.Project.SetCover)
+				r.Post("/duplicate", d.Project.Duplicate)
+				// 「复制节点」跨项目粘贴后的资产引用登记。
+				r.Post("/assets/import-refs", d.CanvasAssetImport.ImportRefs)
+				// 编辑锁三个端点保留（前端协议不变），本地实现恒放行。
+				r.Get("/canvas-owner/probe", d.CanvasMutation.ProbeOwner)
+				r.Post("/canvas/owner/claim", d.CanvasMutation.ClaimOwner)
+				r.Post("/canvas/owner/heartbeat", d.CanvasMutation.HeartbeatOwner)
+				r.Post("/canvas/nodes", d.CanvasMutation.UpsertNode)
+				r.Patch("/canvas/nodes/positions", d.CanvasMutation.PatchNodePositions)
+				r.Patch("/canvas/nodes/{nodeID}", d.CanvasMutation.PatchNode)
+				r.Delete("/canvas/nodes", d.CanvasMutation.DeleteNodes)
+				r.Post("/canvas/connections", d.CanvasMutation.UpsertConnection)
+				r.Delete("/canvas/connections/{connectionID}", d.CanvasMutation.DeleteConnection)
+			})
+
+			r.Post("/assets", d.Asset.Upload)
+			r.Get("/assets", d.Asset.List)
+
+			// 画布展示层批量换缩略图 URL；本地不生成缩略图，返回原图 URL。
+			r.Post("/media/thumbs", MediaThumbs(d.MediaSigner))
+			// 节点右键「在访达/资源管理器中显示」。
+			r.Post("/media/reveal", d.Media.Reveal)
+
+			r.Route("/library", func(r chi.Router) {
+				r.Get("/folders", d.LibraryFolder.List)
+				r.Post("/folders", d.LibraryFolder.Create)
+				r.Patch("/folders/{folderID}", d.LibraryFolder.Update)
+				r.Delete("/folders/{folderID}", d.LibraryFolder.Delete)
+				r.Post("/folders/{folderID}/items/upload", d.LibraryItem.Upload)
+				r.Get("/items", d.LibraryItem.List)
+				r.Patch("/items/{itemID}", d.LibraryItem.Update)
+				r.Delete("/items/{itemID}", d.LibraryItem.Delete)
+				r.Post("/items/{itemID}/apply-to-canvas", d.LibraryBridge.ApplyToCanvas)
+			})
+			r.Post("/projects/{projectID}/assets/{assetID}/save-to-library", d.LibraryBridge.SaveToLibrary)
+			r.Post("/library/save-from-url", d.LibraryBridge.SaveFromURL)
+
+			// ── 后处理、预设、多角度、打光 ──
+			r.Get("/canvas/postprocess-config", d.CanvasPostprocess.GetConfig)
+			r.Get("/canvas/gen-image-presets", d.GenImagePreset.UserGet)
+			r.Get("/canvas/multi-angle", d.MultiAngle.UserGet)
+			r.Get("/canvas/light-control", d.LightControl.UserGet)
+			r.Post("/canvas-tasks/desub", d.CanvasPostprocess.Desub)
+			r.Post("/canvas-tasks/postprocess-estimate", d.CanvasPostprocess.Estimate)
+			r.Post("/canvas-tasks/upscale", d.CanvasPostprocess.Upscale)
+			r.Post("/canvas-tasks/whitemodel", d.CanvasPostprocess.WhiteModel)
+			// ── AI 角色库、Seedance 合规 ──
+			r.Get("/canvas/ai-characters", d.AICharacter.List)
+			r.Post("/seedance/verify", d.Seedance.Verify)
+			r.Post("/seedance/status", d.Seedance.Status)
+			r.Get("/seedance/config", d.Seedance.Config)
+			// ── 3D 导演台 ──
+			r.Post("/director/models", d.DirectorModel.Upload)
+			r.Get("/director/models", d.DirectorModel.List)
+			r.Delete("/director/models/{modelID}", d.DirectorModel.Delete)
+			r.Get("/director/library", d.DirectorLibrary.List)
+			// /admin/canvas/* 不在这里注册。
+
+			// 手动触发孤儿清扫（sidecar 也会在启动时和每天自动跑）。
+			r.Post("/admin/gc", d.AdminGC.Run)
+
+			// ── Agent、Skill、backbone 管理 ──
+			if d.Agent != nil {
+				r.Get("/agent/ws", d.Agent.WS)
+				r.With(ProjectFromURL).Get("/projects/{projectID}/agent/threads", d.Agent.ListThreads)
+				r.With(ProjectFromURL).Post("/projects/{projectID}/agent/threads", d.Agent.CreateThread)
+				r.With(ProjectFromURL).Put("/projects/{projectID}/agent/threads/{threadID}", d.Agent.UpdateThread)
+				r.With(ProjectFromURL).Delete("/projects/{projectID}/agent/threads/{threadID}", d.Agent.DeleteThread)
+				r.With(ProjectFromURL).Get("/projects/{projectID}/agent/threads/{threadID}/messages", d.Agent.ListMessages)
+			}
+			if d.Skills != nil {
+				r.Get("/skills", d.Skills.List)
+				r.Get("/skills/categories", d.Skills.Categories)
+				r.Get("/skills/featured", d.Skills.Featured)
+			}
+			if d.AdminAgent != nil {
+				// 只读列表。Agent 模型写死为内置值，不注册任何写接口。
+				r.Get("/admin/agent/backbone-models", d.AdminAgent.List)
+			}
+
+			// ── 脚本节点 ──
+			if d.CanvasScript != nil {
+				r.Get("/canvas-script/styles", d.CanvasScript.Styles)
+				r.Post("/canvas-script-tasks", d.CanvasScript.Submit)
+				r.Get("/canvas-script-tasks/{taskID}", d.CanvasScript.Status)
+			}
+		})
+	})
+	return r
+}

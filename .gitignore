@@ -1,0 +1,28 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/
+
+# Go
+server/bin/
+
+# 本地数据与打包产物
+/out/
+.claude/
+.superpowers/
+.worktrees/
+
+# 内置 Python（scripts/fetch-python.sh 生成）
+src-tauri/resources/python/*
+!src-tauri/resources/python/README.md
+src-tauri/resources/cli-skill/
+
+# AI 角色库数据包不随开源仓库分发（见 seed/README.md）
+seed/seedance_characters.jsonl
+server/internal/aicharacters/seeddata/*.jsonl
+server/internal/aicharacters/images/*.webp
