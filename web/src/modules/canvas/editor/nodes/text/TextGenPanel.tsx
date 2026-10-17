@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { ArrowUp, Check, ChevronDown, ImageIcon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useCanvasStore } from '../../store';
+import { useCanvasStore, useConnectedInputs } from '../../store';
 import { persistNodeById, flushNodePatch, scheduleNodePatch } from '../../persistence/canvasMutations';
 import { listRuntimeModels, submitCanvasTask } from '@/shared/api';
 
@@ -12,7 +12,7 @@ export function TextGenPanel({ nodeId }: { nodeId: string }) {
   const node = useCanvasStore((s) => s.nodes.find((n) => n.id === nodeId));
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
-  const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
+  const linked = useConnectedInputs(nodeId);
   const [modelOpen, setModelOpen] = useState(false);
 
   const modelsQuery = useQuery({
@@ -37,12 +37,13 @@ export function TextGenPanel({ nodeId }: { nodeId: string }) {
   //（gen-image 的字段名，语义是「生成媒体的提示词」，混用会让 CLI/agent 误读）。
   const genPrompt = (node.settings?.genPrompt as string | undefined) ?? '';
   const isGenerating = node.status === 'generating';
-  const linkedImageCount = getConnectedInputs(nodeId).images.length;
+  const linkedImageCount = linked.images.length;
   const canSubmit = !isGenerating && Boolean(selectedModelId) && genPrompt.trim().length > 0;
 
   const handleGenerate = async () => {
     if (!canSubmit) return;
-    const linked = getConnectedInputs(nodeId);
+    // 提交时现取一次：与渲染期订阅值等价，但不依赖这次渲染是否已追上 store。
+    const linked = useCanvasStore.getState().getConnectedInputs(nodeId);
     const inputs: Record<string, unknown> = { prompt: genPrompt.trim() };
     if (linked.images.length > 0) {
       // 与 gen-image 的入参命名对齐：images 全量 + image 首张，模板端两种写法都好接。

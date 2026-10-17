@@ -52,7 +52,7 @@ describe('useExternalChanges', () => {
     expect(FakeES.all[0].url).toBe('http://127.0.0.1:1234/api/v1/projects/14/events?token=t%20k');
     act(() => FakeES.all[0].open());
     act(() => FakeES.all[0].emit({ projectId: 14, version: 4, source: 'cli' }));
-    await waitFor(() => expect(reload).toHaveBeenCalledWith(14));
+    await waitFor(() => expect(reload).toHaveBeenCalledWith(14, expect.any(Function)));
     await waitFor(() => expect(onReloaded).toHaveBeenCalledWith(4));
     // 同版本或更旧的事件不再触发
     act(() => FakeES.all[0].emit({ projectId: 14, version: 4, source: 'cli' }));

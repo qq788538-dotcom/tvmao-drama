@@ -1,21 +1,18 @@
 import { useCallback, useRef, useState } from 'react';
 import { Maximize2, Split } from 'lucide-react';
-import { useCanvasStore } from '../store';
+import { useCanvasStore, useConnectedInputs } from '../store';
 import { ThumbImg } from '../ThumbImg';
 import { NodeShell } from '../NodeShell';
 
 export function ImageCompareNode({ id }: { id: string }) {
   const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
-  const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
+  const linked = useConnectedInputs(id);
   const setLightbox = useCanvasStore((s) => s.setLightbox);
 
   const [sliderPos, setSliderPos] = useState(50);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
-  if (!node) return null;
-
-  const linked = getConnectedInputs(id);
   const imgA = linked.images[0];
   const imgB = linked.images[1];
 
@@ -45,6 +42,9 @@ export function ImageCompareNode({ id }: { id: string }) {
     },
     [handleMove],
   );
+
+  // 提前 return 必须在所有 hook 之后（原先夹在 useCallback 前面，违反 hooks 规则）。
+  if (!node) return null;
 
   return (
     <NodeShell

@@ -57,7 +57,7 @@ export function useExternalChanges(opts: {
       reloading = true;
       let v: number | null = null;
       try {
-        v = await reloadCanvasFromServer(projectId);
+        v = await reloadCanvasFromServer(projectId, () => !disposed);
       } catch {
         v = null;
       } finally {

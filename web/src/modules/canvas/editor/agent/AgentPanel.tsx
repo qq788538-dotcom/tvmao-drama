@@ -9,7 +9,7 @@
 // 注意：agent thread 的 CRUD 在 API 上还是只读的（暂时没有 delete/rename
 // 端点），所以会话下拉里跳过了那些操作。
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { nanoid } from 'nanoid';
 import {
   Bot,
@@ -148,8 +148,6 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
   // threads.length 分不清「还没拉」和「拉回是空」；交接单若在拉回前就 send() 建了
   // thread，晚到的 setThreads([]) 会把这个新 thread 从列表里抹掉。
   const [threadsLoadedFor, setThreadsLoadedFor] = useState<number | null>(null);
-
-  const canvasNodes = useCanvasStore((s) => s.nodes);
 
   const threads = useAgentStore((s) => s.threads);
   const setThreads = useAgentStore((s) => s.setThreads);
@@ -491,19 +489,19 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
   // 已经内联渲染在 assistant 文本回复里的媒体 URL——用来 dedupe：tool_event 缩略图
   // 只有在它的图片/视频已经显示在某条 assistant 消息的 markdown 里时才隐藏。回复里
   // 没带 URL 的纯生成则保留缩略图（那是它唯一的来源）。
-  const shownImageUrls = useMemo(() => {
-    const re = /https?:\/\/[^\s"'<>)]+?\.(?:png|jpe?g|webp|gif|mp4|webm|mov)(?:\?[^\s"'<>)]*)?/gi;
+  // 流式回复每个 delta 都换 messages：按消息对象缓存扫描结果（未变的消息引用不变），
+  // 只重扫变了的那条；集合按内容键稳定引用，MessageBubble 的 memo 才不会被它击穿。
+  const shownImageUrlsKey = useMemo(() => {
     const set = new Set<string>();
     for (const m of messages) {
-      if (m.role !== 'assistant') continue;
-      for (const b of m.blocks) {
-        if (b.type === 'text' && b.text) {
-          for (const u of b.text.match(re) ?? []) set.add(u);
-        }
-      }
+      for (const u of inlineMediaUrlsOf(m)) set.add(u);
     }
-    return set;
+    return [...set].join('\n');
   }, [messages]);
+  const shownImageUrls = useMemo(
+    () => new Set(shownImageUrlsKey ? shownImageUrlsKey.split('\n') : []),
+    [shownImageUrlsKey],
+  );
 
   const switchThread = async (id: string) => {
     selectThread(id);
@@ -642,6 +640,8 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
     // 进来——这些没有 image_url 语义，作为代码块追加（buildInlineSections，
     // 统一 50KB 上限）。文字节点的正文发送时从画布现读：chip 插入后用户可能
     // 还在编辑节点，chip 上存的快照只作节点已删除时的兜底。
+    // 发送时现取画布节点（不订阅：面板常驻挂载，订阅 nodes 会随画布每帧拖动重渲染整个消息列表）。
+    const canvasNodes = useCanvasStore.getState().nodes;
     const findChipNode = (artifactId: string) =>
       canvasNodes.find((n) => {
         const meta = n.settings as { agentMeta?: { artifactId?: string } } | undefined;
@@ -982,12 +982,11 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
           </div>
         </div>
         {mentionActive && (
-          <MentionPicker
+          <CanvasMentionPicker
             query={mentionActive.query}
-            nodes={buildCanvasSummary(canvasNodes)}
             onClose={() => setMentionActive(null)}
             onPick={(node) => {
-              const fullNode = canvasNodes.find((n) => n.id === node.id);
+              const fullNode = useCanvasStore.getState().nodes.find((n) => n.id === node.id);
               const settings = fullNode?.settings as
                 | { agentMeta?: { artifactId?: string } }
                 | undefined;
@@ -1013,6 +1012,30 @@ export function AgentPanel({ projectId, open, width, onWidthChange, onClose, onA
       />
     </div>
   );
+}
+
+const INLINE_MEDIA_URL_RE = /https?:\/\/[^\s"'<>)]+?\.(?:png|jpe?g|webp|gif|mp4|webm|mov)(?:\?[^\s"'<>)]*)?/gi;
+const inlineMediaUrlsCache = new WeakMap<AgentMessage, string[]>();
+
+// assistant 文本块里内联的媒体 URL（shownImageUrls 的去重来源），按消息对象缓存。
+function inlineMediaUrlsOf(m: AgentMessage): string[] {
+  if (m.role !== 'assistant') return [];
+  const cached = inlineMediaUrlsCache.get(m);
+  if (cached) return cached;
+  const urls: string[] = [];
+  for (const b of m.blocks) {
+    if (b && b.type === 'text' && b.text) urls.push(...(b.text.match(INLINE_MEDIA_URL_RE) ?? []));
+  }
+  inlineMediaUrlsCache.set(m, urls);
+  return urls;
+}
+
+// 只在 @ 选择器打开时订阅画布节点：AgentPanel 打开过一次就常驻挂载，整个面板
+// 订阅 nodes 的话，画布上每帧拖动都会把整个消息列表重渲染一遍。
+function CanvasMentionPicker(props: Omit<ComponentProps<typeof MentionPicker>, 'nodes'>) {
+  const nodes = useCanvasStore((s) => s.nodes);
+  const summary = useMemo(() => buildCanvasSummary(nodes), [nodes]);
+  return <MentionPicker {...props} nodes={summary} />;
 }
 
 function ThreadRow({

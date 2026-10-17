@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 import { useQuery } from '@tanstack/react-query';
 import { PlayCircle } from 'lucide-react';
-import { useCanvasStore } from '../store';
+import { useCanvasStore, useConnectedInputs } from '../store';
 import { persistNodeById } from '../persistence/canvasMutations';
 import { NodeShell } from '../NodeShell';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
@@ -30,7 +30,7 @@ export function SubtitleEraseNode({ id }: { id: string }) {
   useReconcileCanvasTask(id);
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
-  const inputs = useCanvasStore((s) => s.getConnectedInputs(id));
+  const inputs = useConnectedInputs(id);
   // 「直接上游」= 连进这个节点的第一条视频连线。去字幕天然是单输入操作，不需要
   // 像 gen-video 那样处理多路 @ 引用。
   const srcRef = inputs.refs.find((r) => r.kind === 'video');

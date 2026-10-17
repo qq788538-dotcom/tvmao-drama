@@ -1,19 +1,18 @@
 import { Download } from 'lucide-react';
 import { App as AntApp } from 'antd';
 import { extFromUrl, saveManyMediaToDisk, saveMediaToDisk, saveWithFeedback } from '@/shared/saveToDisk';
-import { useCanvasStore } from '../store';
+import { useCanvasStore, useConnectedInputs } from '../store';
 import { ThumbImg } from '../ThumbImg';
 import { NodeShell } from '../NodeShell';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 
 export function LocalSaveNode({ id }: { id: string }) {
   const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
-  const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
+  const linked = useConnectedInputs(id);
   const { message } = AntApp.useApp();
 
   if (!node) return null;
 
-  const linked = getConnectedInputs(id);
   const allUrls = [...linked.images, ...linked.videos];
   const hasContent = allUrls.length > 0;
 

@@ -77,9 +77,11 @@ export function Minimap() {
     // 画 connection
     ctx.strokeStyle = '#3f3f46';
     ctx.lineWidth = 0.5;
+    // 平移/拖动每帧都重画：按 id 建索引，别对每条连线线性扫两遍节点（O(E·N)）。
+    const byId = new Map(nodes.map((n) => [n.id, n]));
     for (const conn of connections) {
-      const from = nodes.find((n) => n.id === conn.from);
-      const to = nodes.find((n) => n.id === conn.to);
+      const from = byId.get(conn.from);
+      const to = byId.get(conn.to);
       if (!from || !to) continue;
       const a = toMap(from.x + from.width, from.y + from.height / 2);
       const b = toMap(to.x, to.y + to.height / 2);

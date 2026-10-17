@@ -2,7 +2,7 @@
 //   菜单态（新建空节点，「尝试: 自己编写内容」）→ 编辑态（Tiptap + 浮动工具栏）
 //   → 失焦后按内容分流：有内容 = 只读 markdown 渲染态；无内容 = 「请编写内容」占位态。
 // 存储始终是 settings.text 里的 markdown 字符串（纯文本是合法 markdown，存量零迁移）。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { App as AntApp } from 'antd';
 import { FileText, Loader2 } from 'lucide-react';
 import { EditorContent } from '@tiptap/react';
@@ -22,6 +22,7 @@ import { TextGenPanel } from './text/TextGenPanel';
 import { CharCount } from './text/CharCount';
 import { commitTextDraft, flushTextDraft } from './text/textNodeDraft';
 import { renderTextMarkdown } from './text/renderTextMarkdown';
+import { interceptMarkdownLink } from '../utils/markdownLinks';
 
 // LibTV 空态那组「横线」示意图形。用 div 画而不是找图标：lucide 没有对应形状。
 function LinesGlyph() {
@@ -147,8 +148,16 @@ export function TextNode({ id }: { id: string }) {
     return undefined;
   }, [node?.status, node?.taskId, id, updateNode, updateNodeSettings]);
 
+  const text = (node?.settings?.text as string | undefined) ?? '';
+  // marked + DOMPurify 对长文本不便宜；不缓存的话拖动/选中本节点每一帧都整篇重解析。
+  const renderedHtml = useMemo(() => renderTextMarkdown(text), [text]);
+  // 「点一下进编辑」和「按住拖动节点」共用同一片区域。mousedown 不能
+  // stopPropagation——那会吞掉 NodeShell 的选中+拖拽（曾导致节点拖不动、
+  // Delete 删不了、生成面板因 isSelected 永远起不来而点不到）。这里只记录
+  // 按下坐标，click 时超过阈值判定为拖动，不进编辑。（hook 必须在提前 return 之前。）
+  const pressRef = useRef<{ x: number; y: number } | null>(null);
+
   if (!node) return null;
-  const text = (node.settings?.text as string | undefined) ?? '';
   const hasContent = text.trim().length > 0;
 
   const startEdit = () => {
@@ -157,11 +166,6 @@ export function TextNode({ id }: { id: string }) {
     setEditing(true);
   };
 
-  // 「点一下进编辑」和「按住拖动节点」共用同一片区域。mousedown 不能
-  // stopPropagation——那会吞掉 NodeShell 的选中+拖拽（曾导致节点拖不动、
-  // Delete 删不了、生成面板因 isSelected 永远起不来而点不到）。这里只记录
-  // 按下坐标，click 时超过阈值判定为拖动，不进编辑。
-  const pressRef = useRef<{ x: number; y: number } | null>(null);
   const trackPress = (e: React.MouseEvent) => {
     pressRef.current = { x: e.clientX, y: e.clientY };
   };
@@ -258,10 +262,12 @@ export function TextNode({ id }: { id: string }) {
             className={`markdown-body flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-3 text-sm ${readOnly ? '' : 'cursor-text'}`}
             onMouseDown={trackPress}
             onClick={(e) => {
+              // 链接只拦默认导航（否则整个应用窗口被带走），点击语义仍是进编辑。
+              interceptMarkdownLink(e);
               if (!clickWasDrag(e)) startEdit();
             }}
             // renderTextMarkdown 里已过 DOMPurify，见该函数注释。
-            dangerouslySetInnerHTML={{ __html: renderTextMarkdown(text) }}
+            dangerouslySetInnerHTML={{ __html: renderedHtml }}
           />
         ) : touched && !readOnly ? (
           <div

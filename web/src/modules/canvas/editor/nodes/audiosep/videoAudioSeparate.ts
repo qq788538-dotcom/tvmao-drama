@@ -33,7 +33,14 @@ export async function separateAudioVideo(
   // 先探测音轨:mediabunny 在「输出容器装不下某轨」时只是静默 discard,
   // 不探测的话无音轨视频会安静产出一个 0 时长 wav。
   const probe = new Input({ formats: ALL_FORMATS, source: new UrlSource(url) });
-  if (!(await probe.getPrimaryAudioTrack())) {
+  let hasAudio: boolean;
+  try {
+    hasAudio = Boolean(await probe.getPrimaryAudioTrack());
+  } finally {
+    // 探测完立刻释放(同 trimVideo):下面两段转码各开自己的 Input。
+    probe.dispose();
+  }
+  if (!hasAudio) {
     throw new Error(NO_AUDIO_TRACK_ERROR);
   }
 
@@ -45,20 +52,24 @@ export async function separateAudioVideo(
     progressSpan: number,
   ): Promise<Blob> => {
     const input = new Input({ formats: ALL_FORMATS, source: new UrlSource(url) });
-    const target = new BufferTarget();
-    const output = new Output({ format, target });
-    const conversion = await Conversion.init({
-      input,
-      output,
-      ...options,
-      showWarnings: false,
-    });
-    if (onProgress) conversion.onProgress = (p) => onProgress(progressBase + p * progressSpan);
-    await conversion.execute();
-    if (!target.buffer) throw new Error('转码未产出数据');
-    return new Blob([target.buffer], {
-      type: format instanceof WavOutputFormat ? 'audio/wav' : 'video/mp4',
-    });
+    try {
+      const target = new BufferTarget();
+      const output = new Output({ format, target });
+      const conversion = await Conversion.init({
+        input,
+        output,
+        ...options,
+        showWarnings: false,
+      });
+      if (onProgress) conversion.onProgress = (p) => onProgress(progressBase + p * progressSpan);
+      await conversion.execute();
+      if (!target.buffer) throw new Error('转码未产出数据');
+      return new Blob([target.buffer], {
+        type: format instanceof WavOutputFormat ? 'audio/wav' : 'video/mp4',
+      });
+    } finally {
+      input.dispose();
+    }
   };
 
   const video = await convert(

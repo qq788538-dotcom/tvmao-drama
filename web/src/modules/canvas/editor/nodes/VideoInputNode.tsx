@@ -98,8 +98,8 @@ export function VideoInputNode({ id }: { id: string }) {
     if (!videoUrl) return;
     updateNodeSettings(id, { extractingFrames: true });
 
+    const video = document.createElement('video');
     try {
-      const video = document.createElement('video');
       video.crossOrigin = 'anonymous';
       video.preload = 'auto';
       video.muted = true;
@@ -119,8 +119,16 @@ export function VideoInputNode({ id }: { id: string }) {
       const newFrames: Frame[] = [];
 
       for (let t = 0; t < duration; t += interval) {
-        video.currentTime = t;
-        await new Promise<void>((r) => { video.onseeked = () => r(); });
+        // 目标时间等于当前位置时 `currentTime = t` 不触发 seeked（同 AdvancedEditDialog
+        // 的 captureFrame）——首帧 t=0 必踩，死等会让「抽帧中」永远转圈。loadeddata
+        // 之后当前帧已可画，直接取。
+        if (Math.abs(video.currentTime - t) > 0.001) {
+          await new Promise<void>((resolve, reject) => {
+            video.onseeked = () => resolve();
+            video.onerror = () => reject(new Error('视频定位失败'));
+            video.currentTime = t;
+          });
+        }
         ctx.drawImage(video, 0, 0);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         newFrames.push({ url: dataUrl, time: t });
@@ -131,6 +139,12 @@ export function VideoInputNode({ id }: { id: string }) {
     } catch (err) {
       console.error('抽帧失败', err);
       updateNodeSettings(id, { extractingFrames: false });
+    } finally {
+      // 脱离 DOM 的 <video> 在 GC 前一直占着解码器和缓冲（WebKit 尤甚），主动释放。
+      video.onseeked = null;
+      video.onerror = null;
+      video.removeAttribute('src');
+      video.load();
     }
   };
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
-import { useCanvasStore } from '../store';
+import { useCanvasStore, useConnectedInputs } from '../store';
 import { NodeShell } from '../NodeShell';
 import { uploadFileIntoNode } from '../utils/uploadIntoNode';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
@@ -13,7 +13,6 @@ export function InputImageNode({ id }: { id: string }) {
   const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
   const resizeNode = useCanvasStore((s) => s.resizeNode);
-  const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
   const setLightbox = useCanvasStore((s) => s.setLightbox);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { onContextMenu, overlay: menuOverlay, badge: seedanceBadge } = useMediaNodeMenu({
@@ -24,7 +23,7 @@ export function InputImageNode({ id }: { id: string }) {
 
   // 提前算好 displayUrl（不靠 `node` 短路），这样下面的 auto-fit effect
   // 才能无条件执行——hooks 必须在任何提前 return 之前。
-  const linked = getConnectedInputs(id);
+  const linked = useConnectedInputs(id);
   const displayUrl = node?.content || linked.images[0] || '';
   // 节点内展示走缩略图；Lightbox/生成 inputs 仍读 displayUrl（原图）。
   const thumbUrl = useThumbUrl(displayUrl);

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Tooltip } from 'antd';
-import { useCanvasStore } from '../store';
+import { useCanvasStore, useConnectedInputs } from '../store';
 import { useStoryboardMode } from '../../storyboard/StoryboardContext';
 import {
   flushNodePatch,
@@ -55,9 +55,8 @@ export function GenAudioNode({ id }: { id: string }) {
   useReconcileCanvasTask(id);
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
-  const getConnectedInputs = useCanvasStore((s) => s.getConnectedInputs);
+  const linked = useConnectedInputs(id);
   const addNode = useCanvasStore((s) => s.addNode);
-  const allNodes = useCanvasStore((s) => s.nodes);
   const isSelected = useCanvasStore((s) => s.selectedIds.has(id));
   // 截取/变速模式条挂节点正下方（对标 liblib 的位置），与提示词面板抢同一块
   // 空间——编辑会话期间面板让位隐藏，退出后随选中态自然回来。
@@ -211,7 +210,6 @@ export function GenAudioNode({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.status, node.taskId, id, updateNode, updateNodeSettings]);
 
-  const linked = getConnectedInputs(id);
   const connectedAudios = linked.audios;
   // 音频节点只把音频（音色参考）喂给上游——@ 引用也只开放音频，避免 @图片1
   // 序列化出上游拿不到的引用。
@@ -271,7 +269,8 @@ export function GenAudioNode({ id }: { id: string }) {
 
   const handleSendToCanvas = () => {
     if (!currentUrl) return;
-    const existingCount = allNodes.filter(
+    // 点击时现取：订阅整个 nodes 数组会让本节点随画布上任意节点的每帧拖动重渲染。
+    const existingCount = useCanvasStore.getState().nodes.filter(
       (n) =>
         n.type === 'input-audio' &&
         (n.settings?.sourceGenAudioId as string | undefined) === id,

@@ -17,7 +17,7 @@ vi.mock('../../persistence/canvasMutations', () => ({
   persistNodeById: vi.fn(),
 }));
 
-import { DirectorDeskNode } from './DirectorDeskNode';
+import { DirectorDeskNode, resolveCachedAssetUrl } from './DirectorDeskNode';
 import { useCanvasStore } from '../../store';
 import { persistNodeById, scheduleNodePatch } from '../../persistence/canvasMutations';
 import { setDirectorHostAdapter } from './desk/editor/io/hostAdapter';
@@ -128,5 +128,67 @@ it('打开面板注册 adapter，writeState 走 scheduleNodePatch 写 settings.d
   adapter!.writeState({ version: 1, objects: [] });
   expect(scheduleNodePatch).toHaveBeenCalledWith('dd1', {
     settings: { directorProject: { version: 1, objects: [] } },
+  });
+});
+
+// 回归：writeState 只发 patch、不改内存节点时，关掉再打开导演台 readState 读到的
+// 是快照加载时的旧场景（openScopedScene 随即把旧场景回写服务端），编辑整体丢失。
+it('writeState 同步更新内存节点，重开时 readState 读到最新场景', async () => {
+  const { getDirectorHostAdapter } = await import('./desk/editor/io/hostAdapter');
+  render(<DirectorDeskNode id="dd1" />);
+  fireEvent.click(screen.getByTestId('director-desk-open-panel'));
+  await screen.findByTestId('mock-desk-app');
+
+  const scene = { version: 1, objects: [{ id: 'o1' }] };
+  getDirectorHostAdapter()!.writeState(scene);
+  expect(getDirectorHostAdapter()!.readState()).toEqual(scene);
+});
+
+// 回归：每次打开导演台都 createObjectURL 一个新地址，R3F useLoader 按 URL 缓存
+// 永远命不中（整只模型重新解析），旧 blob 也永不回收。同一资产（去 query 后）
+// 整个会话只能造一个 blob URL；失败回落直连 URL 且不缓存失败结果。
+describe('resolveCachedAssetUrl', () => {
+  const origCaches = (globalThis as { caches?: unknown }).caches;
+  const origFetch = globalThis.fetch;
+  const origCreate = URL.createObjectURL;
+
+  afterEach(() => {
+    (globalThis as { caches?: unknown }).caches = origCaches;
+    globalThis.fetch = origFetch;
+    URL.createObjectURL = origCreate;
+  });
+
+  it('同一资产不同签名 query 复用同一个 blob URL，只下载一次', async () => {
+    const store = new Map<string, Response>();
+    (globalThis as { caches?: unknown }).caches = {
+      open: vi.fn(async () => ({
+        match: vi.fn(async (k: string) => store.get(k)?.clone()),
+        put: vi.fn(async (k: string, r: Response) => void store.set(k, r)),
+      })),
+    };
+    const fetchMock = vi.fn(async () => new Response(new Blob(['m']), { status: 200 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    let n = 0;
+    const createMock = vi.fn(() => `blob:mock-${++n}`);
+    URL.createObjectURL = createMock;
+
+    const a = await resolveCachedAssetUrl('https://oss.example/m/reuse.glb?sig=1');
+    const b = await resolveCachedAssetUrl('https://oss.example/m/reuse.glb?sig=2');
+    expect(a).toBe('blob:mock-1');
+    expect(b).toBe(a);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('下载失败回落原 URL，且下次重试', async () => {
+    (globalThis as { caches?: unknown }).caches = {
+      open: vi.fn(async () => ({ match: vi.fn(async () => undefined), put: vi.fn(async () => {}) })),
+    };
+    const fetchMock = vi.fn(async () => new Response('', { status: 500 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const url = 'https://oss.example/m/fail.glb?sig=1';
+    expect(await resolveCachedAssetUrl(url)).toBe(url);
+    expect(await resolveCachedAssetUrl(url)).toBe(url);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
