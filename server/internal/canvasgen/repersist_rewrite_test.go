@@ -42,7 +42,7 @@ func (n *rewriteNotifier) NotifyCanvasChanged(_ int64, pid, version int64, _ str
 
 func TestRewriteMediaRefReplacesEveryCopyInSnapshotAndBroadcasts(t *testing.T) {
 	old := "https://cloudflarer2.example.com/x/1.png"
-	next := "media://tapnow/u5/gen_task-7-0"
+	next := "media://local/u5/gen_task-7-0"
 	// content 与 history[].url 是同一串;另一个画布(粘贴过去的)也有。
 	snaps := &rewriteSnaps{
 		payloads: map[int64]string{

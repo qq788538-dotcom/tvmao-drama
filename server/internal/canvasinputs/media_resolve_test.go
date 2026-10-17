@@ -21,8 +21,8 @@ func TestConnectedResolvesCanonicalMediaContent(t *testing.T) {
 	}
 	snap := Snapshot{
 		Nodes: []map[string]any{
-			node("g1", "gen-image", "media://tapnow_test/u5/gen_task-793-0", map[string]any{"kind": "image"}),
-			node("g2", "gen-image", "media://tapnow_test/u5/gen_task-794-0", map[string]any{"kind": "image"}),
+			node("g1", "gen-image", "media://local_test/u5/gen_task-793-0", map[string]any{"kind": "image"}),
+			node("g2", "gen-image", "media://local_test/u5/gen_task-794-0", map[string]any{"kind": "image"}),
 			node("empty", "gen-image", "", nil), // 还没生成出内容,两端都跳过
 			node("v", "gen-video", "", nil),
 		},
@@ -32,8 +32,8 @@ func TestConnectedResolvesCanonicalMediaContent(t *testing.T) {
 	}
 	got := Connected(snap, "v", sign)
 	wantImgs := []string{
-		"https://signed.example.com/tapnow_test/u5/gen_task-793-0?sig=abc",
-		"https://signed.example.com/tapnow_test/u5/gen_task-794-0?sig=abc",
+		"https://signed.example.com/local_test/u5/gen_task-793-0?sig=abc",
+		"https://signed.example.com/local_test/u5/gen_task-794-0?sig=abc",
 	}
 	if !reflect.DeepEqual(got.Images, wantImgs) {
 		t.Fatalf("Images = %v, want %v", got.Images, wantImgs)

@@ -112,7 +112,7 @@ interface NodeShellProps {
   /**
    * "hidden"（默认）把 children 裁剪到节点的包围盒内。"visible" 让节点能在
    * 自己的边界之外渲染额外的绝对定位内容——被 GenImageNode 用来在预览方块
-   * 下方浮一个更宽的 Prompt 面板（匹配 app.tapnow.ai 的分栏布局）。选中环
+   * 下方浮一个更宽的 Prompt 面板（分栏布局）。选中环
    * 仍然只框住节点本身的边界；溢出的 children 自己带 border / shadow。
    */
   bodyOverflow?: 'hidden' | 'visible';
@@ -124,7 +124,7 @@ interface NodeShellProps {
   titleExtra?: ReactNode;
   /**
    * 应用到节点外层 wrapper 以及每个内部表面的圆角（px）。默认 12px
-   *（匹配之前 `rounded-xl` 的观感）。AI 绘图 传 16 以匹配 TapNow 的卡片圆角。
+   *（匹配之前 `rounded-xl` 的观感）。AI 绘图传 16，用更大的卡片圆角。
    * 这里用 inline style 而非 Tailwind class，免得动态值被 JIT 丢掉。
    */
   radiusPx?: number;

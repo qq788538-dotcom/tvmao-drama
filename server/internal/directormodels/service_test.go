@@ -85,8 +85,8 @@ func TestValidateUpload(t *testing.T) {
 func TestReferenceNeedles(t *testing.T) {
 	// instr 没有通配符，key 原文拼接即可；两根针分别是 JSON 字符串结束引号与
 	// 嵌套 JSON 里的转义引号。少了 media:// 前缀会把裸 key 出现在别处也算成引用。
-	got := ReferenceNeedles("tapnow/u1/ab12_robot.fbx")
-	want := []any{`media://tapnow/u1/ab12_robot.fbx"`, `media://tapnow/u1/ab12_robot.fbx\`}
+	got := ReferenceNeedles("local/u1/ab12_robot.fbx")
+	want := []any{`media://local/u1/ab12_robot.fbx"`, `media://local/u1/ab12_robot.fbx\`}
 	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("ReferenceNeedles=%q, want %q", got, want)
 	}

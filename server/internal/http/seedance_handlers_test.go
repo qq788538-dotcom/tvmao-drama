@@ -166,13 +166,13 @@ func TestSeedanceStatusKeyedByURL(t *testing.T) {
 // AI 角色图是平台预置、已过校验的公共资产：没有用户记录也应显示“已通过”。
 func TestSeedanceStatusPublicFallback(t *testing.T) {
 	h, svc, _, _ := newSeedanceTestHandler(t, true, seedancePublicSigner)
-	svc.SetPublicAssets(seedanceFakePublic{"tapnow/sd-assets/asset-1.jpg": "asset-1"})
-	rec := seedanceDo(h.Status, http.MethodPost, `{"urls":["media://tapnow/sd-assets/asset-1.jpg"]}`)
+	svc.SetPublicAssets(seedanceFakePublic{"builtin/characters/asset-1.jpg": "asset-1"})
+	rec := seedanceDo(h.Status, http.MethodPost, `{"urls":["media://builtin/characters/asset-1.jpg"]}`)
 	var got map[string]library.SeedanceAsset
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	a := got["media://tapnow/sd-assets/asset-1.jpg"]
+	a := got["media://builtin/characters/asset-1.jpg"]
 	if a.Status != "active" || a.AssetID == nil || *a.AssetID != "asset-1" {
 		t.Fatalf("got %+v", got)
 	}
