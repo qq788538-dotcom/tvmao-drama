@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   // 3D 导演台（modules/canvas/editor/nodes/director/desk）的模型库 import.meta.glob
-  // 需要把 fbx/obj 当资源模块处理——与参考仓 vite 配置一致。
+  // 需要把 fbx/obj 当资源模块处理。
   assetsInclude: ['**/*.fbx', '**/*.obj'],
   plugins: [react()],
   // 资源用站点根的绝对路径：画布路由是 /canvas/:id 这样的多级路径，相对路径 './'
