@@ -5,15 +5,21 @@
 <h1 align="center">喵剧AI</h1>
 
 <p align="center">
-  本地优先的 AI 短剧创作画布：在一张无限画布上把剧本、图片、视频、配音串成完整的创作流程。
+  <b>开源的 LibTV 平替。</b>本地优先的 AI 短剧创作画布：在一张无限画布上把剧本、图片、视频、配音串成完整的创作流程。
 </p>
 
 <p align="center">
   <a href="#下载安装">下载安装</a> ·
+  <a href="docs/tutorial.md">上手教程</a> ·
   <a href="docs/user-guide.md">用户手册</a> ·
   <a href="docs/development.md">开发指南</a> ·
+  <a href="docs/ai-coding-tools.md">接入 Claude Code / Codex</a> ·
   <a href="cli/skill/SKILL.md">命令行工具</a> ·
   <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/canvas.jpg" alt="喵剧AI 画布：剧本、AI 绘图、AI 视频节点连成一条创作流程" width="100%" />
 </p>
 
 ---
@@ -26,6 +32,29 @@
 - **模型自己接。** 应用不提供模型服务，你填写一个兼容 [New API](https://github.com/QuantumNous/new-api) 协议的网关地址和 API Key 即可使用全部内置模型，也可以给单个模型配置独立的上游。
 - **AI 助手可以直接操作画布。** 内置 Agent 对话，能理解画布内容、调用技能、帮你建节点和跑生成；另附命令行工具，让 Claude Code、Codex 等编程助手从终端操作画布。
 
+## 和 LibTV 有什么不同
+
+喵剧AI 对标 LibTV 这类在线 AI 视频创作画布，做的是同一类事：在无限画布上用节点和连线串起剧本、分镜图、视频和配音，一路做出短剧。不同的是它完全开源、跑在你自己电脑上：
+
+| | LibTV 等在线平台 | 喵剧AI |
+|---|---|---|
+| 运行方式 | 网页在线服务，需要注册登录 | 桌面应用，打开即用，不需要账号 |
+| 素材和作品 | 存在平台云端 | 只存在本机数据目录 |
+| 模型和费用 | 用平台提供的模型，按平台价格付费 | 接自己的 New API 兼容网关，模型和费用自己说了算 |
+| 源代码 | 闭源 | MIT 开源，可以自己改代码、加模型、写 Skill |
+
+喵剧AI 是独立的开源项目，与 LibTV 及其运营方没有关联。
+
+## 界面预览
+
+| 画布上的图片工具 | 内置 Agent |
+|---|---|
+| ![选中图片节点后的工具栏和提示词面板](docs/screenshots/image-tools.jpg) | ![Agent 对话面板读取画布内容给出分镜建议](docs/screenshots/agent.jpg) |
+| **故事板视图** | **3D 导演台** |
+| ![按文本、图片、视频分栏的故事板视图](docs/screenshots/storyboard.jpg) | ![3D 导演台里摆放人偶和机位](docs/screenshots/director-desk.jpg) |
+
+截图里的示例画面是为演示画的插画，不是模型生成结果。模型设置界面见 [设置截图](docs/screenshots/settings.jpg)。
+
 ## 主要功能
 
 | 模块 | 能做什么 |
@@ -34,7 +63,7 @@
 | 输入节点 | 上传图片、视频、音频，文字节点（支持 Markdown） |
 | 生成节点 | AI 绘图、AI 视频、AI 音频、保存到本地 |
 | 图片工具 | 宫格切分、标注、旋转镜像、打光、多角度、全景、放大查看 |
-| 视频工具 | 剪辑、裁剪、智能续写、片段重拍、画面编辑、转高清、白模、去字幕、音频分离、逐帧拉片 |
+| 视频工具 | 剪辑、裁剪、智能续写、片段重拍、转高清、白模、去字幕、音频分离、抽帧 |
 | 音频工具 | 截取、变速、波形预览 |
 | 3D 导演台 | 在 3D 场景里摆放人偶和镜头，截图作为分镜参考 |
 | 脚本节点 | 输入剧本或小说，按风格模板拆成分镜，再批量生成视频 |
@@ -74,7 +103,7 @@
 3. 回到画布，右键空白处选「添加节点 → AI 绘图」，写一句提示词，点生成。
 4. 把生成的图片拖一根线接到「AI 视频」节点上，就能图生视频。
 
-更多用法见 [用户手册](docs/user-guide.md)。
+第一次用可以跟着 [上手教程](docs/tutorial.md) 从零做一条短片；想让 Claude Code、Codex 直接操作画布，见 [接入 Claude Code / Codex](docs/ai-coding-tools.md)。更多用法见 [用户手册](docs/user-guide.md)。
 
 ## 数据存放在哪里
 
