@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="https://www.tvmao.net/">Try online</a> ·
+  <a href="#promo-video">Promo video</a> ·
   <a href="#community">Community</a> ·
   <a href="README.md">中文</a> ·
   <a href="docs/user-guide.md">User guide (Chinese)</a> ·
@@ -25,6 +26,14 @@
 </p>
 
 ---
+
+## Promo video
+
+<a href="docs/media/promo.mp4"><img src="docs/media/promo-cover.jpg" alt="Play the Miaoju AI promo video (1:23)" width="100%" /></a>
+
+Hand Miaoju AI a script and it turns it into an episode of AI comic drama: the script is split into shots, the agent uses its director skill to build nodes on the canvas, Claude Code / Codex batch-generate images and video through the CLI, and you polish the result on the canvas. Click the cover to play (1:23, Chinese captions, no voiceover).
+
+The video is a screen recording of the real Miaoju AI interface. Sample images and videos are illustrations drawn for the demo; the terminal segment re-enacts real `miaoju` commands and output.
 
 ## What it is
 

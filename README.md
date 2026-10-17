@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="https://www.tvmao.net/">线上体验</a> ·
+  <a href="#宣传片">宣传片</a> ·
   <a href="#交流群">交流群</a> ·
   <a href="#下载安装">下载安装</a> ·
   <a href="docs/tutorial.md">上手教程</a> ·
@@ -29,6 +30,14 @@
 </p>
 
 ---
+
+## 宣传片
+
+<a href="docs/media/promo.mp4"><img src="docs/media/promo-cover.jpg" alt="点击播放喵剧AI 宣传片（1 分 23 秒）" width="100%" /></a>
+
+给一个剧本，喵剧AI 把它做成一集 AI 漫剧：剧本自动拆分镜，Agent 调用导演技能在画布上建节点，Claude Code / Codex 通过命令行批量出图出视频，最后在画布上精修。点封面播放，1 分 23 秒，无旁白。
+
+片中是喵剧AI 的真实界面录屏，示例图片和视频是为演示画的插画；终端部分按真实的 `miaoju` 命令和输出重演。
 
 ## 这是什么
 
