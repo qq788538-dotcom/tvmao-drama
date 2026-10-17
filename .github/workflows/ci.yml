@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # go.mod 要求 Go 1.26，setup-go 按 go.mod 安装；本地开发用 GOTOOLCHAIN=auto 自动下载同版本。
+  GOTOOLCHAIN: local
+
+jobs:
+  server:
+    name: Go sidecar
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      # mediaprobe / 素材上传测试缺 ffprobe、ffmpeg 会跳过；装上让它们真正跑
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: gofmt
+        working-directory: server
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then echo "以下文件未 gofmt：" >&2; echo "$out" >&2; exit 1; fi
+      - name: go vet
+        working-directory: server
+        run: go vet ./...
+      - name: go test
+        working-directory: server
+        run: go test -race ./...
+      # 发版目标是 macOS 与 Windows，在 Linux 上交叉编译一遍挡住平台相关的编译错误
+      - name: Cross-build (windows/amd64, darwin/arm64)
+        working-directory: server
+        run: |
+          GOOS=windows GOARCH=amd64 go vet ./...
+          GOOS=darwin GOARCH=arm64 go vet ./...
+
+  cli:
+    name: Go CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - name: gofmt
+        working-directory: cli
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then echo "以下文件未 gofmt：" >&2; echo "$out" >&2; exit 1; fi
+      - name: go vet
+        working-directory: cli
+        run: |
+          go vet ./...
+          GOOS=windows GOARCH=amd64 go vet ./...
+          GOOS=darwin GOARCH=arm64 go vet ./...
+      - name: go test
+        working-directory: cli
+        run: go test -race ./...
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        working-directory: web
+        run: npx tsc --noEmit
+      - name: Test
+        working-directory: web
+        run: npx vitest run
+      - name: Build
+        working-directory: web
+        run: npx vite build
+
+  scripts:
+    name: Scripts & version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Version consistency
+        run: bash scripts/version.sh check
+      - name: Script unit tests
+        run: node --test scripts/lib/*.test.mjs
+      - name: Shell syntax
+        run: |
+          set -e
+          for f in $(git ls-files 'scripts/*.sh' 'scripts/**/*.sh'); do bash -n "$f"; done
+
+  tauri:
+    name: Tauri shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libayatana-appindicator3-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # tauri-build 编译期要求 externalBin、resources、frontendDist 存在；单测不需要真实产物，放占位文件即可
+      - name: Build placeholders
+        run: |
+          triple="$(rustc -vV | sed -n 's/^host: //p')"
+          mkdir -p src-tauri/binaries src-tauri/resources/cli-skill web/dist
+          touch "src-tauri/binaries/sidecar-$triple" "src-tauri/binaries/miaoju-cli-$triple"
+          echo "placeholder" > src-tauri/resources/cli-skill/SKILL.md
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --locked

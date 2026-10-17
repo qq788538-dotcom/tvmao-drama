@@ -41,7 +41,6 @@ const (
 	migratedFromName = ".miaoju-migrated-from"
 )
 
-
 // ignorable 是判断“目录为空”时忽略的文件。
 // 指针文件的临时文件（壳写指针时崩溃会留下）同样忽略。
 // Windows 盘符根目录自带的 System Volume Information / $RECYCLE.BIN 也忽略，否则空 U 盘根目录会被判为非空。
