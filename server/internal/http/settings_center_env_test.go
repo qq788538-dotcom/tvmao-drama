@@ -159,7 +159,7 @@ func newSCEnv(t *testing.T) *scEnv {
 		e.modelEdit.defaults[created.ID] = created
 	}
 	for k, v := range map[string]string{
-		"base_domain":               "http://115.191.35.118:3000",
+		"base_domain":               "http://gw.example.com:3000",
 		"canvas_multi_angle":        scMultiAngleSeed,
 		"canvas_script_config":      scScriptSeed,
 		"gen_image_prompt_presets":  scPresetsSeed,

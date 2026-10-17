@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SRC="${HUABU_SKILLS_DIR:-/Users/james/github/huabu_studio/skills}"
+SRC="${HUABU_SKILLS_DIR:?请用 HUABU_SKILLS_DIR 指定 Skill 源目录}"
 DEST=server/internal/skillbundle/skills
 SKILLS=(
   real-person-short-drama-v3
