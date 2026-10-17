@@ -53,4 +53,33 @@ describe('pollCanvasTaskUntilDone 容错', () => {
     await expect(pollCanvasTaskUntilDone(1, { intervalMs: 0 })).rejects.toThrow();
     expect(api.get).toHaveBeenCalledTimes(1);
   });
+
+  it('abort 监听每轮摘掉，不在 signal 上越攒越多；取消时在途请求也拿到 signal', async () => {
+    const ctrl = new AbortController();
+    const add = vi.spyOn(ctrl.signal, 'addEventListener');
+    const remove = vi.spyOn(ctrl.signal, 'removeEventListener');
+    const spy = vi.spyOn(api, 'get');
+    for (let i = 0; i < 5; i++) spy.mockResolvedValueOnce({ data: { status: 'processing' } });
+    spy.mockResolvedValueOnce({ data: { status: 'succeeded' } });
+
+    await pollCanvasTaskUntilDone(1, { intervalMs: 0, signal: ctrl.signal });
+
+    expect(add).toHaveBeenCalledTimes(5);
+    expect(remove).toHaveBeenCalledTimes(5);
+    expect(spy.mock.calls[0][1]).toEqual({ signal: ctrl.signal });
+  });
+
+  it('请求在途时取消：立即以 aborted 结束，不当成网络抖动再重试', async () => {
+    const ctrl = new AbortController();
+    const spy = vi.spyOn(api, 'get').mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          ctrl.signal.addEventListener('abort', () => reject(new Error('canceled')));
+        }),
+    );
+    const p = pollCanvasTaskUntilDone(1, { intervalMs: 10_000, signal: ctrl.signal });
+    ctrl.abort();
+    await expect(p).rejects.toThrow('aborted');
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
 });

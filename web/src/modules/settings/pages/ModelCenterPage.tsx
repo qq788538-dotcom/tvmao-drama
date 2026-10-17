@@ -68,6 +68,10 @@ export function ModelCenterPage() {
 
   const openEditor = (m: ModelView) => {
     setEditing(m);
+    // 先清空：保存成功 / 恢复默认后编辑框是直接关掉的（没走 closeEditor），store 里还留着上一个
+    // 模型的值；setFieldsValue 对 uiDefaults 是深合并，上一个模型有、这个模型没有默认值的参数
+    // 会原样留下，显示在表单里并被当成改动写进这个模型的补丁。
+    form.resetFields();
     form.setFieldsValue(modelToForm(m));
   };
   const closeEditor = () => {

@@ -10,7 +10,7 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
+  const pending: Promise<IDBDatabase> = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -20,10 +20,28 @@ function openDB(): Promise<IDBDatabase> {
         store.createIndex('savedAt', 'savedAt', { unique: false });
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      // 连接被浏览器关掉后（WKWebView 的 IndexedDB 进程被系统回收时会发 close 事件），这个连接
+      // 再开事务只会抛 InvalidStateError；不清缓存的话抽帧缓存要等重启应用才能恢复。
+      const forget = () => {
+        if (dbPromise === pending) dbPromise = null;
+      };
+      db.onclose = forget;
+      db.onversionchange = () => {
+        db.close();
+        forget();
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      // 打开失败不缓存，下次调用再试。
+      if (dbPromise === pending) dbPromise = null;
+      reject(req.error);
+    };
   });
-  return dbPromise;
+  dbPromise = pending;
+  return pending;
 }
 
 export interface CachedFrameSet {

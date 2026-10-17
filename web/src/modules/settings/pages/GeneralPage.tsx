@@ -1,4 +1,4 @@
-import { Alert, App as AntApp, Button, Card, Descriptions, Modal, Space, Typography } from 'antd';
+import { Alert, App as AntApp, Button, Card, Descriptions, Space, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
@@ -51,7 +51,8 @@ export function dataDirChangeDialog(t: DataDirCheck): {
 }
 
 export function GeneralPage() {
-  const { message } = AntApp.useApp();
+  // modal 也从 useApp 取：静态 Modal.confirm 拿不到外层 ConfigProvider 的暗色主题。
+  const { message, modal } = AntApp.useApp();
   const qc = useQueryClient();
   const general = useQuery({ queryKey: ['settings-general'], queryFn: getGeneral });
   const dirs = useQuery({ queryKey: ['settings-datadir'], queryFn: dataDirStatus });
@@ -74,7 +75,7 @@ export function GeneralPage() {
     if (!target) return;
     const { path } = target;
     const d = dataDirChangeDialog(target);
-    Modal.confirm({
+    modal.confirm({
       title: d.title,
       content: (
         <div>

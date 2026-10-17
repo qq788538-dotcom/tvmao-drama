@@ -2,7 +2,9 @@
 import '../testing/domSetup';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { App as AntApp } from 'antd';
+import { App as AntApp, ConfigProvider } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
+import { settingsTheme } from '../theme';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const save = vi.fn();
@@ -60,5 +62,26 @@ describe('ObjectStorageCard', () => {
     await screen.findByDisplayValue('b');
     fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
     expect(await screen.findByText(/HTTP 403/)).toBeTruthy();
+  });
+
+  it('清除配置的确认框跟随外层 ConfigProvider（暗色主题、中文按钮），不是脱离上下文的静态弹框', async () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConfigProvider locale={zhCN} theme={settingsTheme}>
+          <AntApp>
+            <ObjectStorageCard />
+          </AntApp>
+        </ConfigProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /清除配置/ }));
+    expect(await screen.findByText(/已上传到桶里的文件不会被删除/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /取\s*消/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    // 暗色主题：确认框和卡片用的是同一套主题 token（同一个 cssinjs 哈希类）
+    const hashOf = (el: Element | null) => Array.from(el?.classList ?? []).find((c) => c.startsWith('css-'));
+    const cardHash = hashOf(screen.getByText('对象存储', { selector: '.ant-card-head-title' }).closest('.ant-card'));
+    expect(cardHash).toBeTruthy();
+    expect(hashOf(document.querySelector('.ant-modal-confirm'))).toBe(cardHash);
   });
 });

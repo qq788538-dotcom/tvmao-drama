@@ -648,8 +648,8 @@ export async function submitCanvasWhiteModel(
   return data;
 }
 
-export async function getCanvasTask(taskID: number): Promise<CanvasTaskStatus> {
-  const { data } = await api.get<CanvasTaskStatus>(`/canvas-tasks/${taskID}`);
+export async function getCanvasTask(taskID: number, signal?: AbortSignal): Promise<CanvasTaskStatus> {
+  const { data } = await api.get<CanvasTaskStatus>(`/canvas-tasks/${taskID}`, signal ? { signal } : undefined);
   return data;
 }
 
@@ -665,22 +665,35 @@ export async function pollCanvasTaskUntilDone(
 ): Promise<CanvasTaskStatus> {
   const interval = opts.intervalMs ?? 3000;
   const maxConsecutiveFailures = 5;
+  const signal = opts.signal;
   let failures = 0;
+  // 每轮只挂一个 abort 监听，到点就摘掉：长视频任务一轮轮下来不会在 signal 上越攒越多。
   const sleep = () =>
     new Promise<void>((resolve, reject) => {
-      const t = setTimeout(resolve, interval);
-      opts.signal?.addEventListener('abort', () => {
+      if (signal?.aborted) {
+        reject(new Error('aborted'));
+        return;
+      }
+      const onAbort = () => {
         clearTimeout(t);
         reject(new Error('aborted'));
-      });
+      };
+      const t = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, interval);
+      signal?.addEventListener('abort', onAbort, { once: true });
     });
   while (true) {
-    if (opts.signal?.aborted) throw new Error('aborted');
+    if (signal?.aborted) throw new Error('aborted');
     try {
-      const st = await getCanvasTask(taskID);
+      // signal 一并交给请求：节点卸载时在途的那次 GET 也立刻取消。
+      const st = await getCanvasTask(taskID, signal);
       failures = 0;
       if (st.status === 'succeeded' || st.status === 'failed') return st;
     } catch (err: any) {
+      // 主动取消不算失败，也不再重试。
+      if (signal?.aborted) throw new Error('aborted');
       const status = err?.response?.status;
       if (status && status >= 400 && status < 500) throw err;
       failures += 1;

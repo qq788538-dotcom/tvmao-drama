@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, App as AntApp, Button, Card, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd';
+import { Alert, App as AntApp, Button, Card, Form, Input, Select, Space, Tag, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   clearObjectStorage,
@@ -23,7 +23,8 @@ const STEP_LABEL: Record<string, string> = {
 
 /** 视频、音频参考素材上传到用户自己的对象存储（对象存储设计 §3.4）。 */
 export function ObjectStorageCard() {
-  const { message } = AntApp.useApp();
+  // modal 也从 useApp 取：静态 Modal.confirm 拿不到外层 ConfigProvider 的暗色主题。
+  const { message, modal } = AntApp.useApp();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['settings-object-storage'], queryFn: getObjectStorage });
   const [form] = Form.useForm<ObjectStorageInput>();
@@ -70,7 +71,7 @@ export function ObjectStorageCard() {
   });
 
   const confirmClear = () =>
-    Modal.confirm({
+    modal.confirm({
       title: '清除对象存储配置',
       content: '清除后，带本机视频或音频参考素材的生成将无法提交。已上传到桶里的文件不会被删除。',
       okText: '清除',
