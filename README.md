@@ -33,9 +33,9 @@
 
 ## 宣传片
 
-<a href="https://video.twimg.com/amplify_video/2111555586752196608/vid/avc1/1920x1080/kFetFDpwUVyJlCcC.mp4"><img src="docs/media/promo-cover.jpg" alt="点击播放喵剧AI 宣传片（1 分 23 秒）" width="100%" /></a>
+https://github.com/user-attachments/assets/264bea28-2f48-4a55-8ad8-0e497a660b8f
 
-给一个剧本，喵剧AI 把它做成一集 AI 漫剧：剧本自动拆分镜，Agent 调用导演技能在画布上建节点，Claude Code / Codex 通过命令行批量出图出视频，最后在画布上精修。点封面直接播放，1 分 23 秒，无旁白；打不开可以[直接下载 mp4](docs/media/promo.mp4)。
+给一个剧本，喵剧AI 把它做成一集 AI 漫剧：剧本自动拆分镜，Agent 调用导演技能在画布上建节点，Claude Code / Codex 通过命令行批量出图出视频，最后在画布上精修。点击播放，1 分 23 秒，无旁白；打不开可以[直接下载 mp4](docs/media/promo.mp4)。
 
 片中是喵剧AI 的真实界面录屏，示例图片和视频是为演示画的插画；终端部分按真实的 `miaoju` 命令和输出重演。
 
