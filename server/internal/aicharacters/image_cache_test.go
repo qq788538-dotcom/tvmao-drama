@@ -51,7 +51,7 @@ func newCacheFixture(t *testing.T, src fs.FS) (*ImageCache, *memObjectStore) {
 	return NewImageCache(NewSQLiteRepository(conn), src, store), store
 }
 
-const charKey = "tapnow/sd-assets/asset-001.jpg"
+const charKey = "builtin/characters/asset-001.jpg"
 
 func fixtureFS() fstest.MapFS {
 	return fstest.MapFS{"asset-001.jpg": {Data: []byte("JPEGDATA")}}
@@ -121,10 +121,7 @@ func TestMiddlewareCachesBeforeServing(t *testing.T) {
 // 种子里每个角色都必须有对应的内置 WebP，且扩展名一致——/media 按扩展名出
 // Content-Type 并带 nosniff，扩展名和内容对不上图就显示不出来。
 func TestEverySeedCharacterHasEmbeddedWebP(t *testing.T) {
-	raw, err := seedFS.ReadFile("seeddata/seedance_characters.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := requirePack(t)
 	imgs := EmbeddedImages()
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	sc.Buffer(make([]byte, 1<<20), 1<<20)

@@ -12,13 +12,26 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 )
 
 // seeddata/ 是仓库根 seed/seedance_characters.jsonl 的逐字节副本（go:embed 不能引用包目录之外的文件）。
 // 真源是 seed/；改了种子运行 scripts/sync-seed.sh，忘了同步会被 TestEmbeddedSeedMatchesRepoSeed 拦住。
+// 角色数据不随开源仓库分发（.gitignore 已排除）：没有数据包时这里只有 README.md，Import 什么都不做。
 //
-//go:embed seeddata/seedance_characters.jsonl
+//go:embed seeddata
 var seedFS embed.FS
+
+const seedPath = "seeddata/seedance_characters.jsonl"
+
+// readSeed 读内置角色种子；ok=false 表示构建时没放数据包。
+func readSeed() (data []byte, ok bool, err error) {
+	data, err = seedFS.ReadFile(seedPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
+	return data, err == nil, err
+}
 
 // seedFormatVersion 并入种子哈希；导入语义变化时递增，让已安装用户升级后重新导入一次。
 const seedFormatVersion = "p2b-chars-1"
@@ -38,6 +51,12 @@ type seedCharacter struct {
 	ImageURL    string `json:"image_url"`
 }
 
+// HasBuiltinData 报告构建时是否放入了角色数据包。
+func HasBuiltinData() bool {
+	_, ok, _ := readSeed()
+	return ok
+}
+
 // ImportResult 描述一次导入的结果。Skipped 为 true 表示哈希没变、没碰库。
 type ImportResult struct {
 	Skipped                           bool
@@ -45,10 +64,11 @@ type ImportResult struct {
 }
 
 // Import 把内置角色数据导入 seedance_characters。sidecar 每次启动在 builtin.Apply 之后调用一次。
+// 构建时没放数据包则跳过，不碰表里已有的角色。
 func Import(conn *sql.DB) (ImportResult, error) {
-	data, err := seedFS.ReadFile("seeddata/seedance_characters.jsonl")
-	if err != nil {
-		return ImportResult{}, err
+	data, ok, err := readSeed()
+	if err != nil || !ok {
+		return ImportResult{Skipped: true}, err
 	}
 	return importSeed(context.Background(), conn, data)
 }

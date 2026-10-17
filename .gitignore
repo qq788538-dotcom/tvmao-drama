@@ -21,3 +21,8 @@ server/bin/
 src-tauri/resources/python/*
 !src-tauri/resources/python/README.md
 src-tauri/resources/cli-skill/
+
+# AI 角色库数据包不随开源仓库分发（见 seed/README.md）
+seed/seedance_characters.jsonl
+server/internal/aicharacters/seeddata/*.jsonl
+server/internal/aicharacters/images/*.webp

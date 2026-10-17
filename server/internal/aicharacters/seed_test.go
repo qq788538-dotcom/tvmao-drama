@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,12 +23,28 @@ func countChars(t *testing.T, conn *sql.DB) int {
 	return n
 }
 
+// requirePack 返回内置角色种子；构建时没放数据包（开源仓库默认如此）则跳过测试。
+func requirePack(t *testing.T) []byte {
+	t.Helper()
+	data, ok, err := readSeed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Skip("未放入 AI 角色库数据包，见 seed/README.md")
+	}
+	return data
+}
+
 func TestEmbeddedSeedMatchesRepoSeed(t *testing.T) {
-	embedded, err := seedFS.ReadFile("seeddata/seedance_characters.jsonl")
+	embedded, ok, err := readSeed()
 	if err != nil {
 		t.Fatal(err)
 	}
 	repo, err := os.ReadFile(filepath.Join("..", "..", "..", "seed", "seedance_characters.jsonl"))
+	if errors.Is(err, fs.ErrNotExist) && !ok {
+		t.Skip("未放入 AI 角色库数据包")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,13 +53,28 @@ func TestEmbeddedSeedMatchesRepoSeed(t *testing.T) {
 	}
 }
 
+func TestImportWithoutPackLeavesTableAlone(t *testing.T) {
+	if _, ok, _ := readSeed(); ok {
+		t.Skip("已放入数据包")
+	}
+	conn := dbtest.Open(t)
+	if _, err := importSeed(context.Background(), conn, []byte(lineA)); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Import(conn)
+	if err != nil || !res.Skipped || countChars(t, conn) != 1 {
+		t.Fatalf("没有数据包时应跳过且不删已有行: %+v %v 行数 %d", res, err, countChars(t, conn))
+	}
+}
+
 func TestImportFreshDBAndIdempotent(t *testing.T) {
+	want := len(mustParse(t, requirePack(t)))
 	conn := dbtest.Open(t)
 	res, err := Import(conn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Skipped || res.Inserted != 1729 || countChars(t, conn) != 1729 {
+	if res.Skipped || res.Inserted != want || countChars(t, conn) != want {
 		t.Fatalf("首次导入: %+v, 行数 %d", res, countChars(t, conn))
 	}
 	// 列表接口用的 repo 能读到数据。
@@ -66,9 +99,18 @@ func TestImportFreshDBAndIdempotent(t *testing.T) {
 	}
 	var touched int
 	conn.QueryRow(`SELECT COUNT(*) FROM seedance_characters WHERE updated_at <> '2000-01-01 00:00:00'`).Scan(&touched)
-	if touched != 0 || countChars(t, conn) != 1729 {
+	if touched != 0 || countChars(t, conn) != want {
 		t.Fatalf("被改动的行 %d", touched)
 	}
+}
+
+func mustParse(t *testing.T, data []byte) []seedCharacter {
+	t.Helper()
+	rows, err := parseSeed(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
 }
 
 const (
