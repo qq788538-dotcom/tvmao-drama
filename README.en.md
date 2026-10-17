@@ -32,7 +32,7 @@ Miaoju AI is a desktop app for macOS and Windows. You place nodes on a canvas an
 - Video tools: trim, crop, extend, reshoot, edit, upscale, subtitle removal, audio separation, frame extraction
 - Script node that turns a screenplay or novel into shots and batch-generates video
 - 3D director desk for blocking scenes and framing shots
-- Generation history with ZIP export, asset library, and a built-in AI character library
+- Generation history with ZIP export, asset library, and an AI character library (the character data pack is not included in the open-source build)
 - `miaoju` command-line tool plus a skill for AI coding assistants
 
 ## Download
