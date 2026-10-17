@@ -5,13 +5,17 @@
 <h1 align="center">Miaoju AI (喵剧AI)</h1>
 
 <p align="center">
-  A local-first infinite canvas for AI short-drama production: chain scripts, images, video and voice into one workflow.
+  <b>An open-source alternative to LibTV.</b> A local-first infinite canvas for AI short-drama production: chain scripts, images, video and voice into one workflow.
 </p>
 
 <p align="center">
   <a href="README.md">中文</a> ·
   <a href="docs/user-guide.md">User guide (Chinese)</a> ·
   <a href="docs/development.md">Development (Chinese)</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/canvas.jpg" alt="Miaoju AI canvas: a script node feeding AI image and AI video nodes" width="100%" />
 </p>
 
 ---
@@ -24,12 +28,35 @@ Miaoju AI is a desktop app for macOS and Windows. You place nodes on a canvas an
 - **Bring your own models.** The app ships no model service. Point it at any gateway compatible with [New API](https://github.com/QuantumNous/new-api), add your API key, and every built-in model works. Individual models can use their own upstream.
 - **AI assistants can drive the canvas.** A built-in agent understands the canvas, runs skills and creates nodes for you. The bundled `miaoju` CLI lets Claude Code, Codex and other coding assistants operate the canvas from a terminal.
 
+## How it compares to LibTV
+
+Miaoju AI covers the same ground as LibTV and similar online AI video canvases: nodes and links on an infinite canvas that take you from script to storyboard frames, video and voice. The difference is that it is open source and runs on your own computer.
+
+| | LibTV and similar online platforms | Miaoju AI |
+|---|---|---|
+| How it runs | Web service, account required | Desktop app, no account |
+| Your assets | Stored in the platform's cloud | Stored only in a local data directory |
+| Models and cost | The platform's models at the platform's prices | Your own New API compatible gateway, your own models and pricing |
+| Source code | Closed | MIT licensed: change the code, add models, write skills |
+
+Miaoju AI is an independent open-source project and is not affiliated with LibTV or its operator.
+
+## Screenshots
+
+| Image tools on the canvas | Built-in agent |
+|---|---|
+| ![Toolbar and prompt panel of a selected image node](docs/screenshots/image-tools.jpg) | ![Agent panel reading the canvas and suggesting shots](docs/screenshots/agent.jpg) |
+| **Storyboard view** | **3D director desk** |
+| ![Storyboard view with text, image and video columns](docs/screenshots/storyboard.jpg) | ![Placing a mannequin and camera in the 3D director desk](docs/screenshots/director-desk.jpg) |
+
+The sample frames in the screenshots are illustrations drawn for the demo, not model output.
+
 ## Features
 
 - Infinite canvas with undo/redo, minimap, auto-arrange and a storyboard view
 - AI image, video and audio nodes; 20 built-in models including Nano-Banana, gpt-image-2, Seedream 5.0, Seedance 2.0 / 2.5, MiniMax-H3 and more
 - Image tools: grid split, annotate, rotate/mirror, relight, multi-angle, panorama
-- Video tools: trim, crop, extend, reshoot, edit, upscale, subtitle removal, audio separation, frame extraction
+- Video tools: trim, crop, extend, reshoot, upscale, subtitle removal, audio separation, frame extraction
 - Script node that turns a screenplay or novel into shots and batch-generates video
 - 3D director desk for blocking scenes and framing shots
 - Generation history with ZIP export, asset library, and an AI character library (the character data pack is not included in the open-source build)
