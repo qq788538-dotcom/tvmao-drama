@@ -107,6 +107,16 @@ func (c Config) maxAttempts() int {
 	return 2
 }
 
+// hasCandidate 模型是否在当前候选列表里。
+func (c Config) hasCandidate(modelID string) bool {
+	for _, m := range c.ModelCandidates {
+		if m.ModelID == modelID {
+			return true
+		}
+	}
+	return false
+}
+
 type Task struct {
 	ID          int64
 	UserID      int64
@@ -245,14 +255,7 @@ func (s *Service) Submit(ctx context.Context, userID, projectID int64, nodeID, s
 	if model == "" {
 		return 0, userError("请选择模型")
 	}
-	inList := false
-	for _, c := range cfg.ModelCandidates {
-		if c.ModelID == model {
-			inList = true
-			break
-		}
-	}
-	if !inList {
+	if !cfg.hasCandidate(model) {
 		return 0, userError("所选模型不可用")
 	}
 	// 二次校验：堵“拉完候选之后、提交之前模型被删”的竞态。
@@ -314,6 +317,25 @@ func (s *Service) Get(ctx context.Context, userID, taskID int64) (*Task, error) 
 
 const tickInterval = 2 * time.Second
 
+// 失败重排的指数退避：第 n 次失败后等 retryBaseDelay·2^(n-1)，封顶 retryMaxDelay。
+// 上游限流（429）通常要几十秒才恢复，不退避的话 2 秒一拍就把重试次数用完了。
+const (
+	retryBaseDelay = 15 * time.Second
+	retryMaxDelay  = 5 * time.Minute
+)
+
+// retryBackoff 返回第 attempts 次尝试失败后到下次可领的间隔。
+func retryBackoff(attempts int64) time.Duration {
+	d := retryBaseDelay
+	for i := int64(1); i < attempts; i++ {
+		d *= 2
+		if d >= retryMaxDelay {
+			return retryMaxDelay
+		}
+	}
+	return d
+}
+
 // RecoverOnStartup 单进程：启动时遗留的 running 一定属于已退出的上个进程，不必等心跳超时。
 // 未用尽重试的回到 pending；用尽的判失败。
 func (s *Service) RecoverOnStartup(ctx context.Context) error {
@@ -371,12 +393,14 @@ func (s *Service) claimAndRun(ctx context.Context) {
 	}
 }
 
-// claimOne 用一条 UPDATE … RETURNING 原子抢占最早的 pending（无需 SELECT + CAS 两步）。
+// claimOne 用一条 UPDATE … RETURNING 原子抢占最早的、退避已到点的 pending（无需 SELECT + CAS 两步）。
 func (s *Service) claimOne(ctx context.Context) (*Task, bool) {
 	row := s.db.QueryRowContext(ctx, `
 		UPDATE canvas_script_tasks
-		SET status='running', owner_instance=?, heartbeat_at=CURRENT_TIMESTAMP, attempts=attempts+1
-		WHERE id = (SELECT id FROM canvas_script_tasks WHERE status='pending' ORDER BY id LIMIT 1)
+		SET status='running', owner_instance=?, heartbeat_at=CURRENT_TIMESTAMP, attempts=attempts+1, next_attempt_at=NULL
+		WHERE id = (SELECT id FROM canvas_script_tasks
+		            WHERE status='pending' AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
+		            ORDER BY id LIMIT 1)
 		  AND status='pending'
 		RETURNING id, user_id, project_id, node_id, skill_name, duration_sec, script, model, attempts`, s.instanceID)
 	var t Task
@@ -394,17 +418,25 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	// 收尾、sidecar 等 worker 退出后才关库，这时写库仍然安全。曾经直接用 ctx 写，
 	// 关闭瞬间刚跑完的结果写不进去，任务停在 running，下次启动再整个重跑一遍。
 	dbCtx := context.WithoutCancel(ctx)
-	// 失败分流：还有重试额度 → 重排 pending；用尽 → failed。
+	// 失败分流：还有重试额度 → 按指数退避重排 pending；用尽 → failed。
 	// msg 存库并展示给用户，不得含路径等内部细节；detail 只写日志。
 	fail := func(msg, detail string) {
 		log.Printf("canvasscript: task=%d 失败详情: %s", t.ID, detail)
 		if int(t.Attempts) < cfg.maxAttempts() {
-			log.Printf("canvasscript: task=%d attempt=%d 失败将重试: %s", t.ID, t.Attempts, msg)
+			delay := retryBackoff(t.Attempts)
+			log.Printf("canvasscript: task=%d attempt=%d 失败将在 %s 后重试: %s", t.ID, t.Attempts, delay, msg)
 			_, _ = s.db.ExecContext(dbCtx, `
-				UPDATE canvas_script_tasks SET status='pending', owner_instance=NULL, heartbeat_at=NULL, error=?
-				WHERE id=? AND status='running'`, msg, t.ID)
+				UPDATE canvas_script_tasks SET status='pending', owner_instance=NULL, heartbeat_at=NULL, error=?,
+				       next_attempt_at=datetime('now', ?)
+				WHERE id=? AND status='running'`, msg, fmt.Sprintf("+%d seconds", int(delay/time.Second)), t.ID)
 			return
 		}
+		_, _ = s.db.ExecContext(dbCtx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=? AND status='running'`, msg, t.ID)
+	}
+	// 配置类错误（模型已不在候选、skill 不存在、上游没配）重试多少次都一样，直接判失败，
+	// 不占着重试额度空转；用户改完配置重新提交即可。
+	failConfig := func(msg, detail string) {
+		log.Printf("canvasscript: task=%d 配置错误，不重试: %s", t.ID, detail)
 		_, _ = s.db.ExecContext(dbCtx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=? AND status='running'`, msg, t.ID)
 	}
 
@@ -413,9 +445,14 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 			"任务未记录模型，请重新提交", t.ID)
 		return
 	}
+	// 提交后模型被移出候选：按停用处理，不再拿它跑。
+	if !cfg.hasCandidate(t.Model) {
+		failConfig("所选模型已不可用，请重新选择后提交", "模型 "+t.Model+" 不在候选列表")
+		return
+	}
 	snapshot, err := s.skills.Snapshot(ctx, t.SkillName)
 	if err != nil {
-		fail("风格对应的 skill 不可用", err.Error())
+		failConfig("风格对应的 skill 不可用", err.Error())
 		return
 	}
 	// 上游地址与 Key 经 models.ResolveUpstream 解析：任务记录的模型单独配了上游就用模型的，
@@ -436,11 +473,11 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 		return
 	}
 	if strings.TrimSpace(baseDomain) == "" {
-		fail("服务未配置上游地址，请在设置中配置", "base_domain 未配置")
+		failConfig("服务未配置上游地址，请在设置中配置", "base_domain 未配置")
 		return
 	}
 	if strings.TrimSpace(sk) == "" {
-		fail("上游 API Key 未配置，请在设置中配置", "上游 API Key 未配置")
+		failConfig("上游 API Key 未配置，请在设置中配置", "上游 API Key 未配置")
 		return
 	}
 

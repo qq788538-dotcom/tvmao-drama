@@ -298,10 +298,102 @@ func TestExecuteFailRequeuesThenFails(t *testing.T) {
 	if status, msg, _ := taskRow(t, conn, id); status != StatusPending || !strings.Contains(msg, "生成失败") {
 		t.Fatalf("第 1 次失败应重排: status=%s err=%s", status, msg)
 	}
+	// 重排带退避：到点前领不到；把时间拨到过去再领。
+	if _, ok := svc.claimOne(context.Background()); ok {
+		t.Fatal("退避未到点不应被领走")
+	}
+	expireBackoff(t, conn, id)
 	task, _ = svc.claimOne(context.Background())
 	svc.execute(context.Background(), task, testConfig())
 	if status, msg, attempts := taskRow(t, conn, id); status != StatusFailed || attempts != 2 || !strings.Contains(msg, "生成失败") || strings.Contains(msg, "上游 500") {
 		t.Fatalf("用尽重试应判失败: status=%s attempts=%d err=%s", status, attempts, msg)
+	}
+}
+
+// expireBackoff 把任务的退避时间拨到过去，模拟等够了。
+func expireBackoff(t *testing.T, conn *sql.DB, id int64) {
+	t.Helper()
+	if _, err := conn.Exec(`UPDATE canvas_script_tasks SET next_attempt_at=datetime('now', '-1 seconds') WHERE id=?`, id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRetryBackoff(t *testing.T) {
+	for _, c := range []struct {
+		attempts int64
+		want     time.Duration
+	}{{1, 15 * time.Second}, {2, 30 * time.Second}, {3, time.Minute}, {5, 4 * time.Minute}, {6, 5 * time.Minute}, {11, 5 * time.Minute}} {
+		if got := retryBackoff(c.attempts); got != c.want {
+			t.Errorf("attempts=%d: got %s want %s", c.attempts, got, c.want)
+		}
+	}
+}
+
+// 失败重排写下次可领时间（约 15s 后）；退避中的任务不挡后面已到点的任务。
+func TestFailRequeueSetsBackoffAndClaimSkipsIt(t *testing.T) {
+	sk := &fakeSkills{runErr: errors.New("上游 429")}
+	svc, conn := newTestService(t, testConfig(), sk, fakeModels{})
+	first := submitOne(t, svc)
+	task, _ := svc.claimOne(context.Background())
+	svc.execute(context.Background(), task, testConfig())
+	var delta float64
+	if err := conn.QueryRow(`SELECT (julianday(next_attempt_at) - julianday('now')) * 86400 FROM canvas_script_tasks WHERE id=?`, first).Scan(&delta); err != nil {
+		t.Fatal(err)
+	}
+	if delta < 10 || delta > 16 {
+		t.Fatalf("第 1 次失败应退避约 15s, got %.1fs", delta)
+	}
+	second := submitOne(t, svc)
+	got, ok := svc.claimOne(context.Background())
+	if !ok || got.ID != second {
+		t.Fatalf("应跳过退避中的 %d 领到 %d: ok=%v got=%+v", first, second, ok, got)
+	}
+	expireBackoff(t, conn, first)
+	got, ok = svc.claimOne(context.Background())
+	if !ok || got.ID != first {
+		t.Fatalf("退避到点后应能领到 %d: ok=%v got=%+v", first, ok, got)
+	}
+	var next sql.NullString
+	_ = conn.QueryRow(`SELECT next_attempt_at FROM canvas_script_tasks WHERE id=?`, first).Scan(&next)
+	if next.Valid {
+		t.Fatalf("领走后应清掉退避时间: %v", next)
+	}
+}
+
+// 配置类错误不重试：第一次就判 failed，不占重试额度。
+func TestExecuteConfigErrorsFailImmediately(t *testing.T) {
+	cases := []struct {
+		name string
+		prep func(svc *Service, sk *fakeSkills) Config
+		want string
+	}{
+		{"模型移出候选", func(svc *Service, sk *fakeSkills) Config {
+			cfg := testConfig()
+			cfg.ModelCandidates = []ModelCandidate{{ModelID: "other"}}
+			return cfg
+		}, "所选模型已不可用"},
+		{"skill 不存在", func(svc *Service, sk *fakeSkills) Config {
+			sk.snapErr = errors.New("no such skill")
+			return testConfig()
+		}, "skill 不可用"},
+		{"上游地址未配置", func(svc *Service, sk *fakeSkills) Config {
+			_ = svc.settings.Set("base_domain", "")
+			return testConfig()
+		}, "未配置上游地址"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			sk := &fakeSkills{content: validCandidate}
+			svc, conn := newTestService(t, testConfig(), sk, fakeModels{})
+			id := submitOne(t, svc)
+			cfg := c.prep(svc, sk)
+			task, _ := svc.claimOne(context.Background())
+			svc.execute(context.Background(), task, cfg)
+			status, msg, attempts := taskRow(t, conn, id)
+			if status != StatusFailed || attempts != 1 || !strings.Contains(msg, c.want) || len(sk.runs) != 0 {
+				t.Fatalf("status=%s attempts=%d err=%s runs=%d", status, attempts, msg, len(sk.runs))
+			}
+		})
 	}
 }
 
