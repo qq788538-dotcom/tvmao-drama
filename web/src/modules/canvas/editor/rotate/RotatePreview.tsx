@@ -45,7 +45,7 @@ export function RotatePreview({
   const [saving, setSaving] = useState(false);
   // 源节点的显示尺寸决定预览幽灵的世界尺寸；源节点被删时组件随节点子树卸载，
   // 这里不用防御 undefined 之外的情况。
-  const source = useCanvasStore((s) => s.nodes.find((n) => n.id === sourceNodeId));
+  const source = useCanvasStore((s) => s.nodesById.get(sourceNodeId));
 
   // Esc 取消；保存中不响应（避免上传途中卸载留下半截状态）。
   useEffect(() => {

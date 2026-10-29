@@ -8,7 +8,8 @@ import { CanvasContextMenu } from './CanvasContextMenu';
 import { GenerationHistoryPickerModal } from './GenerationHistoryPickerModal';
 import { applyLibraryItemToCanvas, currentProjectId, importAssetRefs } from '@/shared/api';
 import { persistNodeById } from './persistence/canvasMutations';
-import { saveLocalView } from './persistence/localView';
+import { flushLocalView, scheduleSaveLocalView } from './persistence/localView';
+import { createFrameTask } from './utils/frameTask';
 import type { NodeType, ViewState } from './types';
 import {
   classifyWheel,
@@ -107,17 +108,17 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
   const [fileHover, setFileHover] = useState(false);
   const dragDepthRef = useRef(0);
 
-  const screenToWorld = useCallback(
-    (screenX: number, screenY: number) => {
-      const rect = viewportRef.current?.getBoundingClientRect();
-      if (!rect) return { x: 0, y: 0 };
-      return {
-        x: (screenX - rect.left - view.x) / view.zoom,
-        y: (screenY - rect.top - view.y) / view.zoom,
-      };
-    },
-    [view],
-  );
+  // 调用时才读 view，不把 view 收进依赖：否则平移/缩放每帧都换一个新函数，
+  // 依赖它的 paste/drop 监听会跟着反复摘挂（P32）。
+  const screenToWorld = useCallback((screenX: number, screenY: number) => {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    const view = useCanvasStore.getState().view;
+    return {
+      x: (screenX - rect.left - view.x) / view.zoom,
+      y: (screenY - rect.top - view.y) / view.zoom,
+    };
+  }, []);
 
   const openContextMenuAt = useCallback(
     (clientX: number, clientY: number, sourceNodeId?: string, kind: 'actions' | 'add-node' = 'add-node') => {
@@ -156,17 +157,29 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
       return false;
     };
 
-    const applyView = (next: ViewState) => {
+    // 滚轮/捏合按帧合并：一帧内的多个事件在 pendingView 上累积，下一帧 setView
+    // 一次（P21）。累积必须基于 pendingView 而不是 store 里的 view——后者在本帧还
+    // 没更新，用它算会把同帧前面几个事件的增量丢掉。
+    let pendingView: ViewState | null = null;
+    const viewFrame = createFrameTask(() => {
+      const next = pendingView;
+      pendingView = null;
+      if (!next) return;
       setView(next);
-      // pan/zoom 不再作为服务端内容，只按项目写本地存储。
-      if (projectId) saveLocalView(projectId, next);
+      // pan/zoom 不再作为服务端内容，只按项目写本地存储（去抖，停手后写一次）。
+      if (projectId) scheduleSaveLocalView(projectId, next);
+    });
+    const currentView = () => pendingView ?? useCanvasStore.getState().view;
+    const applyView = (next: ViewState) => {
+      pendingView = next;
+      viewFrame.schedule();
     };
 
     const onWheelNative = (e: WheelEvent) => {
       const kind = classifyWheel(e, isPhysicalCtrlHeld());
       if (kind === 'pan' && inScrollable(e.target)) return;
       e.preventDefault();
-      const view = useCanvasStore.getState().view;
+      const view = currentView();
       if (kind === 'pan') {
         applyView(panView(view, e.deltaX, e.deltaY));
         return;
@@ -183,14 +196,14 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
     let gestureStartZoom: number | null = null;
     const onGestureStart = (e: Event) => {
       e.preventDefault();
-      gestureStartZoom = useCanvasStore.getState().view.zoom;
+      gestureStartZoom = currentView().zoom;
     };
     const onGestureChange = (e: Event) => {
       e.preventDefault();
       if (gestureStartZoom == null) return;
       const g = e as Event & { scale: number; clientX: number; clientY: number };
       const rect = el.getBoundingClientRect();
-      const view = useCanvasStore.getState().view;
+      const view = currentView();
       applyView(
         zoomViewAt(view, g.clientX - rect.left, g.clientY - rect.top, gestureStartZoom * g.scale),
       );
@@ -205,6 +218,9 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
     el.addEventListener('gesturechange', onGestureChange, { passive: false });
     el.addEventListener('gestureend', onGestureEnd, { passive: false });
     return () => {
+      // 卸载前把最后一帧的视口落下并立即写本地，用户最后那下滚动不丢。
+      viewFrame.flush();
+      flushLocalView();
       el.removeEventListener('wheel', onWheelNative);
       el.removeEventListener('gesturestart', onGestureStart);
       el.removeEventListener('gesturechange', onGestureChange);
@@ -217,6 +233,16 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
     (startClientX: number, startClientY: number) => {
       const startView = { ...useCanvasStore.getState().view };
       let moved = false;
+      // 位移相对起点算，按帧只提交最后一个位置（同滚轮的合帧）。
+      let latest: { clientX: number; clientY: number } | null = null;
+      const panFrame = createFrameTask(() => {
+        if (!latest) return;
+        setView({
+          x: startView.x + (latest.clientX - startClientX),
+          y: startView.y + (latest.clientY - startClientY),
+          zoom: startView.zoom,
+        });
+      });
       const onMove = (ev: MouseEvent) => {
         if (
           !moved &&
@@ -224,15 +250,13 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
         ) {
           moved = true;
         }
-        setView({
-          x: startView.x + (ev.clientX - startClientX),
-          y: startView.y + (ev.clientY - startClientY),
-          zoom: startView.zoom,
-        });
+        latest = { clientX: ev.clientX, clientY: ev.clientY };
+        panFrame.schedule();
       };
       const onUp = () => {
+        panFrame.flush();
         // 平移过程中只改本地 view，松手后写一次本地存储（避免每帧写 localStorage）。
-        if (moved && projectId) saveLocalView(projectId, useCanvasStore.getState().view);
+        if (moved && projectId) scheduleSaveLocalView(projectId, useCanvasStore.getState().view);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
       };
@@ -272,6 +296,7 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
         const onUp = (ev: MouseEvent) => {
           const rect = viewportRef.current?.getBoundingClientRect();
           if (rect) {
+            const view = useCanvasStore.getState().view;
             const minX = Math.min(start.x, ev.clientX) - rect.left;
             const minY = Math.min(start.y, ev.clientY) - rect.top;
             const maxX = Math.max(start.x, ev.clientX) - rect.left;
@@ -304,7 +329,7 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
       clearSelection();
       beginPan(e.clientX, e.clientY);
     },
-    [view, setView, clearSelection, selectMany, projectId, beginPan],
+    [clearSelection, selectMany, beginPan],
   );
 
   // 按住 Space = 临时抓手：盖一层透明 overlay 接管 mousedown，节点拖拽/框选
@@ -347,7 +372,7 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
       const v = useCanvasStore.getState().view;
       const next = zoomViewAt(v, rect.width / 2, rect.height / 2, v.zoom * factor);
       setView(next);
-      if (projectId) saveLocalView(projectId, next);
+      if (projectId) scheduleSaveLocalView(projectId, next);
     },
     [setView, projectId],
   );
@@ -357,7 +382,7 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
     if (!rect) return;
     const next = fitView(useCanvasStore.getState().nodes, rect.width, rect.height);
     setView(next);
-    if (projectId) saveLocalView(projectId, next);
+    if (projectId) scheduleSaveLocalView(projectId, next);
   }, [setView, projectId]);
 
   useEffect(() => {
@@ -804,7 +829,7 @@ export function CanvasEditor({ projectId }: CanvasEditorProps = {}) {
           ['--inv-zoom' as string]: String(1 / view.zoom),
         }}
       >
-        <ConnectionLayer nodes={nodes} />
+        <ConnectionLayer />
         {nodes.map((node) => (
           <CanvasNodeView key={node.id} type={node.type} id={node.id} />
         ))}

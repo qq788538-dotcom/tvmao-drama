@@ -25,7 +25,7 @@ export function isLimitedAvailable(upstreamExpire: string | undefined, now: Date
 }
 
 export function SubtitleEraseNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
   const updateNode = useCanvasStore((s) => s.updateNode);
@@ -36,7 +36,7 @@ export function SubtitleEraseNode({ id }: { id: string }) {
   const srcRef = inputs.refs.find((r) => r.kind === 'video');
   const sourceNodeId = srcRef?.nodeId;
   const sourceUrl = inputs.videos[0];
-  const srcNode = useCanvasStore((s) => s.nodes.find((n) => n.id === sourceNodeId));
+  const srcNode = useCanvasStore((s) => (sourceNodeId ? s.nodesById.get(sourceNodeId) : undefined));
   const upstreamExpire = srcNode?.settings?.upstreamExpire as string | undefined;
 
   const cfgQuery = useQuery({

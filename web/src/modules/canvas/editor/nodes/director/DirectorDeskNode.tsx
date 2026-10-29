@@ -246,7 +246,7 @@ export async function resolveCachedAssetUrl(url: string): Promise<string> {
 }
 
 export function DirectorDeskNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   // 面板开合是纯 UI 状态（同 ScriptNode）：刷新画布后默认收起。3D 场景
   // 持久化在本节点 settings.directorProject（走画布快照链路），localStorage 仅在
   // desk 独立运行（无 adapter）时作为回落。

@@ -52,7 +52,7 @@ func TestPersistOutputsReplayIdempotent(t *testing.T) {
 	}
 	urls := []string{"data:image/png;base64,aGk=", "data:image/png;base64,aG8="}
 
-	out1, ids1, mimes1, _ := svc.persistOutputs(context.Background(), uid, tid, nil, urls, 0)
+	out1, ids1, mimes1, _, _ := svc.persistOutputs(context.Background(), uid, tid, nil, urls, 0)
 	if len(out1) != 2 || ids1[0] == 0 || ids1[1] == 0 {
 		t.Fatalf("首轮应落 2 个槽位, out=%v ids=%v", out1, ids1)
 	}
@@ -66,7 +66,7 @@ func TestPersistOutputsReplayIdempotent(t *testing.T) {
 	}
 
 	// 重放:行数/用量/对象集全部不变,asset id 与 URL 原样复用。
-	out2, ids2, mimes2, _ := svc.persistOutputs(context.Background(), uid, tid, nil, urls, 0)
+	out2, ids2, mimes2, _, _ := svc.persistOutputs(context.Background(), uid, tid, nil, urls, 0)
 	if out2[0] != out1[0] || out2[1] != out1[1] || ids2[0] != ids1[0] || ids2[1] != ids1[1] {
 		t.Fatalf("重放应复用槽位, out1=%v out2=%v ids1=%v ids2=%v", out1, out2, ids1, ids2)
 	}

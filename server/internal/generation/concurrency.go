@@ -85,3 +85,25 @@ func (r *ConcurrencyRegistry) Acquire(modelID string, limit int) func() {
 	var once sync.Once
 	return func() { once.Do(l.release) }
 }
+
+// Occupy 不阻塞地占一个该模型的名额(只 active++,可以超出上限),返回归还函数。
+//
+// 只给孤儿续跑用:续跑的任务在上个进程里本就占着名额、上游正在跑,重启后必须让同模型的
+// 新任务看到它们,否则新任务还能再开满一轮。续跑路径**不能**阻塞在 Acquire 上——心跳起来
+// 之前阻塞,周期性 recover 会再次接管同一个任务;心跳之后阻塞,又会吃掉剩余的轮询窗口。
+// 所以只记账不等待,下载峰值交给全局下载闸(downloadSem)。超出上限期间新的 Acquire 照常等待。
+func (r *ConcurrencyRegistry) Occupy(modelID string) func() {
+	r.mu.Lock()
+	l := r.byModel[modelID]
+	if l == nil {
+		// 容量由该模型下一次 Acquire 按配置刷新,这里先按兜底默认值建。
+		l = newModelLimiter(defaultModelConcurrency)
+		r.byModel[modelID] = l
+	}
+	r.mu.Unlock()
+	l.mu.Lock()
+	l.active++
+	l.mu.Unlock()
+	var once sync.Once
+	return func() { once.Do(l.release) }
+}

@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useCanvasStore } from './store';
-import type { CanvasNode } from './types';
 
-export function ConnectionLayer({ nodes }: { nodes: CanvasNode[] }) {
+// 自己订阅 nodesById / connections，不再从 CanvasEditor 收 nodes：父组件在平移
+//（每帧改 view）、框选（每帧改 marquee）时都会重渲染，连线层只在节点几何、连线
+// 或选中真的变了时才需要重算全部路径（P14）。memo 挡住的就是父组件的这些重渲染。
+export const ConnectionLayer = memo(function ConnectionLayer() {
   const connections = useCanvasStore((s) => s.connections);
+  const nodeMap = useCanvasStore((s) => s.nodesById);
   const removeConnection = useCanvasStore((s) => s.removeConnection);
   const selectedIds = useCanvasStore((s) => s.selectedIds);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
 
   return (
     <svg
@@ -104,4 +105,4 @@ export function ConnectionLayer({ nodes }: { nodes: CanvasNode[] }) {
       })}
     </svg>
   );
-}
+});
