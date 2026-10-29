@@ -717,7 +717,12 @@ func (s *Service) finalize(ctx, lost context.Context, taskID, lease int64, model
 	persistedURLs, assetIDs, mimes, persistErrs, perr := s.persistOutputs(pctx, userID, taskID, projectID, result.OutputURLs, durMs)
 	cancelPersist()
 	if perr != nil {
-		// 只有 file:// / data: 槽位会走到这里（persistOutputs 注释）。上游已出图、钱已冻结,
+		// 项目在生成期间被删除（P9）：产物不入库，任务走失败退款收口。
+		if errors.Is(perr, errProjectDeleted) {
+			_, _ = s.finishFailureTx(context.Background(), taskID, lease, projectDeletedReason, note)
+			return nil, perr
+		}
+		// 其余只有 file:// / data: 槽位会走到这里（persistOutputs 注释）。上游已出图、钱已冻结,
 		// 但产物没法交付——保守退款,与「上游调用错误」同一收口。
 		_, _ = s.finishFailureTx(context.Background(), taskID, lease, "产物保存失败，已退款，请重试", note)
 		return nil, perr
@@ -1476,6 +1481,11 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 			}
 		}
 		stored, assetID, mime, err := s.persistSlotWithRetry(ctx, userID, taskID, pid, i, rawURL, durationMs)
+		if errors.Is(err, errProjectDeleted) {
+			// 项目已删除：不论产物形态，整个任务按「项目已删除」失败收口（finalize）。
+			log.Printf("generation: persist output skipped task=%d idx=%d: project %d deleted", taskID, i, pid)
+			return nil, nil, nil, nil, err
+		}
 		if err != nil {
 			// file:// 与 data: 都是"内容只在本进程手里"的产物：没有上游地址可留、也无从
 			// 手动重试，落盘失败只能判失败退款。data: 绝不能原样写进 output/画布：
@@ -1549,45 +1559,38 @@ func (s *Service) persistSlot(ctx context.Context, userID, taskID, projectID int
 	}
 	var assetID int64
 	if s.assets != nil && s.db != nil {
-		// asset 行与存储用量同一事务:Insert 成功 AddStorage 失败的
-		// 「永久少计存储」窗口随事务消失;唯一键兜底并发重放,只有真正新插入才计量。
-		err := func() error {
-			tx, err := s.db.BeginTx(ctx, nil)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = tx.Rollback() }()
-			var slotDuration int64
-			if strings.HasPrefix(mime, "video/") {
-				slotDuration = durationMs // 生成参数时长;非 video 保持 0 → NULL
-			}
-			id, inserted, err := s.assets.InsertSlotTx(tx, assets.AssetRecord{
-				UserID:       userID,
-				ProjectID:    projectID,
-				SourceTaskID: taskID,
-				ObjectKey:    key,
-				SourceKind:   "generation",
-				URL:          stored.URL,
-				SizeBytes:    stored.Size,
-				MimeType:     mime,
-				DurationMs:   slotDuration,
-			}, i)
-			if err != nil {
-				return err
-			}
-			if inserted && s.users != nil && stored.Size > 0 {
-				if err := s.users.AddStorageTx(tx, userID, stored.Size); err != nil {
-					return err
-				}
-			}
-			if err := tx.Commit(); err != nil {
-				return err
-			}
-			assetID = id
-			return nil
-		}()
-		if err != nil {
+		var slotDuration int64
+		if strings.HasPrefix(mime, "video/") {
+			slotDuration = durationMs // 生成参数时长;非 video 保持 0 → NULL
+		}
+		id, err := s.recordSlotAsset(ctx, assets.AssetRecord{
+			UserID:       userID,
+			ProjectID:    projectID,
+			SourceTaskID: taskID,
+			ObjectKey:    key,
+			SourceKind:   "generation",
+			URL:          stored.URL,
+			SizeBytes:    stored.Size,
+			MimeType:     mime,
+			DurationMs:   slotDuration,
+		}, i)
+		switch {
+		case errors.Is(err, errProjectDeleted):
+			// 对象已在事务里登记孤儿（见 recordSlotAssetOnce），任务由调用方按「项目已删除」收口。
+			return "", 0, "", err
+		case err != nil:
 			log.Printf("generation: persist asset slot failed task=%d idx=%d: %v", taskID, i, err)
+			if isRemoteURL(rawURL) {
+				// http(s) 产物：没有 asset 行的对象既不计配额、删任务也回收不到。登记孤儿交给 GC，
+				// 返回错误让 persistOutputs 保留上游地址，节点显示「未保存到本地」可手动补搬（P26）。
+				s.markSlotOrphan(ctx, key, userID, stored.Size)
+				return "", 0, "", fmt.Errorf("%w: %v", errSlotAssetRecord, err)
+			}
+			// file:// 与 data: 的内容只在本进程手里，返回错误会被判失败退款，而文件其实已经写好
+			// （方案第 5 节第 6 条）。照旧交付本地地址、assetId 记 0；对象不登记孤儿——它正被
+			// 任务产物引用，登记了会在 7 天后被 GC 删掉。
+		default:
+			assetID = id
 		}
 	}
 	return stored.URL, assetID, mime, nil

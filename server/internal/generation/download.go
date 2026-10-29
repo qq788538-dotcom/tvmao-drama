@@ -138,7 +138,8 @@ func (e *fetchStatusError) retryable() bool {
 // isRetryablePersistError 判断一次 http(s) 产物落盘失败是否值得重试。
 // 超限和非瞬时 4xx 直接放弃；网络错误、存储写失败等其余错误照旧重试。
 func isRetryablePersistError(err error) bool {
-	if errors.Is(err, errOutputTooLarge) {
+	// 资产事务已在 persistSlot 内部有界重试过，项目已删除是确定性的：都不值得把文件再下一遍。
+	if errors.Is(err, errOutputTooLarge) || errors.Is(err, errSlotAssetRecord) || errors.Is(err, errProjectDeleted) {
 		return false
 	}
 	var se *fetchStatusError
