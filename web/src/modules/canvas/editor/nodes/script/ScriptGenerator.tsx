@@ -119,10 +119,10 @@ export function ScriptGenerator({ nodeId }: { nodeId: string }) {
   const selectedModel = candidates.find((c) => c.modelId === model);
   // 上游文字节点的内容也是剧本来源：连线 text → script 即接入，多个按连线顺序
   // 拼接，提交时排在输入框文本前面。selector 返回拼接串（string 相等即不重渲染）。
+  // 入边与上游节点都从 store 索引取：每次 set 都会跑这个 selector（P4）。
   const upstreamText = useCanvasStore((s) =>
-    s.connections
-      .filter((c) => c.to === nodeId)
-      .map((c) => s.nodes.find((n) => n.id === c.from))
+    (s.incomingByNode.get(nodeId) ?? [])
+      .map((c) => s.nodesById.get(c.from))
       .filter((n) => n?.type === 'text-node')
       .map((n) => ((n!.settings?.text as string | undefined) ?? '').trim())
       .filter(Boolean)
