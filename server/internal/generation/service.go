@@ -830,12 +830,34 @@ func (s *Service) ResumeOrphanedTasks() {
 			_, _ = s.finishFailureTx(context.Background(), task.ID, lease, "orphaned: model no longer configured for polling", ledgerNote(model, inputCapture.Note))
 			continue
 		}
+		// 续跑纳入并发名额记账(不阻塞,见 Occupy),completeAsync 结束时归还。
+		release := s.concurrency.Occupy(model.ModelID)
+		delay := s.resumeDelay(resumed)
 		s.tracker().Go(func() {
+			defer release()
+			if delay > 0 {
+				time.Sleep(delay)
+			}
 			s.completeAsync(task.ID, lease, model, apiKey, baseDomain, task.UpstreamTaskID, task.UserID, task.ProjectID, task.FrozenCents, reqInputs, ledgerNote(model, inputCapture.Note), task.CreatedAt)
 		})
 		resumed++
 	}
 	log.Printf("generation: ResumeOrphanedTasks resumed %d/%d processing tasks", resumed, len(tasks))
+}
+
+// resumeStagger 是相邻两个续跑任务的启动间隔。重启后所有在途任务的首轮轮询都是立即发的,
+// 错开一点,免得同时出片的任务同时开始下载。包级变量:测试可置零。
+var resumeStagger = 300 * time.Millisecond
+
+// resumeDelay 给第 n 个(从 0 起)续跑任务的启动延迟。延迟发生在 claim 之后、completeAsync
+// 起心跳之前,所以封顶在租约超时的 1/3:等太久,周期性 recover 会把这行当孤儿再接管一次。
+// ResumeOrphanedTasks 本身不 sleep——启动时它在 StartBackground 里同步执行。
+func (s *Service) resumeDelay(n int) time.Duration {
+	d := time.Duration(n) * resumeStagger
+	if max := time.Duration(s.staleSec()) * time.Second / 3; d > max {
+		return max
+	}
+	return d
 }
 
 // upstreamFingerprintChanged 报告任务提交时记下的上游指纹与当前凭据是否不一致；空指纹（旧任务）视为一致。
