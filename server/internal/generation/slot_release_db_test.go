@@ -240,6 +240,49 @@ func TestCallAndCompleteSlotWaitDoesNotConsumeDeadline(t *testing.T) {
 	}
 }
 
+// 排名额排过原时限后再失租：顺延后的 ctx 仍要跟着失租取消，在途的上游请求立刻中止。
+// 父 ctx 已因到期结束，extendDeadline 转发不到之后的失租，必须由 lost 直接取消。
+func TestCallAndCompleteLeaseLostAfterOriginalDeadlineCancelsUpstream(t *testing.T) {
+	conn, svc, uid := newRecoverDBHarness(t)
+	svc.concurrency = NewConcurrencyRegistry()
+	svc.leaseHeartbeatSec = 1
+
+	hit := make(chan struct{}, 1)
+	gate := make(chan struct{})
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit <- struct{}{}
+		<-gate // 上游一直不回，直到测试结束
+	}))
+	t.Cleanup(func() {
+		close(gate)
+		up.Close()
+	})
+
+	id := insertDirectRunning(t, conn, uid, "m-lost-ext")
+	model := &models.ModelConfig{ModelID: "m-lost-ext", BasePath: "/gen", GenControlRaw: json.RawMessage(`{"concurrency":1}`)}
+	hold := svc.concurrency.Acquire(model.ModelID, model.GenConcurrency())
+
+	// 顺延后拿到名额时还剩 4 秒：失租（心跳 1 秒一拍）应在这之前就把请求取消。
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.callAndComplete(ctx, id, 1, model, "k", up.URL, []byte(`{}`), uid, nil, 40, nil, nil, nil, "")
+		done <- err
+	}()
+	time.Sleep(4300 * time.Millisecond) // 原 ctx 已过期
+	hold()
+	waitHit(t, hit)
+	if _, err := conn.Exec(`UPDATE generation_tasks SET lease_version = 2 WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(2500 * time.Millisecond):
+		t.Fatal("失租后在途的上游请求应被取消、callAndComplete 应返回")
+	}
+}
+
 // completeAsync 用提交时的原始 inputs 结算（与续跑路径同形），执行用的 inputs（参考图已内联
 // base64）不随轮询常驻（P19）。用一条只看执行 inputs 才命中的附加计费规则区分两者。
 func TestCompleteAsyncSettlesWithSubmittedInputs(t *testing.T) {

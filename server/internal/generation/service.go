@@ -572,6 +572,10 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 	// 排名额的时间不计入执行 ctx 的总时限：否则拿到名额时 ctx 可能早已过期,调上游立刻失败退款。
 	ctx, cancelExt := extendDeadline(ctx, time.Since(waitStart))
 	defer cancelExt()
+	// 失租直接接到顺延后的 ctx 上：原时限过后父 ctx 已是 DeadlineExceeded，之后的 cancelOnLost
+	// 改不了它的状态，extendDeadline 也就转发不到——排名额排过原时限的任务调上游期间失租会停不下来。
+	stopLostExt := context.AfterFunc(lost, cancelExt)
+	defer stopLostExt()
 
 	// 在真正发出请求之前，先把"已调过上游"这个事实落库。
 	//
