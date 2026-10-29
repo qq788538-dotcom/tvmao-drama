@@ -142,9 +142,10 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	deps.CLIModel = apphttp.NewCLIModelHandler(modelsRepo)
 	deps.CLIAsset = apphttp.NewCLIAssetHandler(assetHandler, assetsRepo, signer)
 
-	// 后处理（去字幕/转高清/转白模）直接入生成管线。
+	// 后处理（去字幕/转高清/转白模）直接入生成管线；懒回填探测的临时文件放进生成临时目录（经启动清理覆盖）。
 	deps.CanvasPostprocess = apphttp.NewCanvasPostprocessHandler(settingsRepo, genW.CanvasGen, projectsRepo, assetsRepo, genW.Gen, modelsRepo, signer).
-		WithObjectStore(storage)
+		WithObjectStore(storage).
+		WithTempDir(genW.TempDir)
 	deps.GenImagePreset = apphttp.NewGenImagePresetHandler(settingsRepo)
 	deps.MultiAngle = apphttp.NewMultiAngleHandler(settingsRepo)
 	deps.LightControl = apphttp.NewLightControlHandler(settingsRepo)

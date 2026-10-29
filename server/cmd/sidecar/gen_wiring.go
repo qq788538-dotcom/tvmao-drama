@@ -55,6 +55,8 @@ type genWiring struct {
 	CanvasGen *canvasgen.Service
 	Routes    apphttp.GenerationRoutes
 	Repersist *apphttp.GenerationRepersistHandler
+	// TempDir 是生成链路的临时目录（启动时 PrepareTempDir 按时效清残骸），后处理探测也用它。
+	TempDir string
 }
 
 // wireGeneration 构造生成链路的全部对象并注册 canvas_node sink。不启动后台循环：
@@ -110,6 +112,7 @@ func wireGeneration(conn *sql.DB, dataDir string, ext genExternal) (*genWiring, 
 		CanvasGen: cg,
 		Routes:    routes,
 		Repersist: apphttp.NewGenerationRepersistHandler(gen, cg, ext.Signer),
+		TempDir:   tmp,
 	}, nil
 }
 

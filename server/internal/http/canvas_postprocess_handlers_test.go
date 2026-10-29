@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -269,6 +271,35 @@ func TestDesub_StandardLazyBackfillSucceeds(t *testing.T) {
 	}
 	if ms, ok := assetsRepo.setCalls["video2.mp4"]; !ok || ms != 6000 {
 		t.Errorf("should backfill video2.mp4=6000, got %v", assetsRepo.setCalls)
+	}
+}
+
+// 懒回填落盘的源视频放进注入的临时目录（sidecar 的 gen tempDir，启动清理覆盖），探测完即删。
+func TestDesub_LazyBackfillSpoolsIntoTempDir(t *testing.T) {
+	assetsRepo := &desubFakeAssets{}
+	h, _ := newDesubTestHandler(
+		[]canvasgen.CanvasDesubBinding{{ModelID: "desub-std", IsTimeLimited: false}},
+		desubSnapshot(t, "node-src", "media://video9.mp4", nil),
+		assetsRepo, nil,
+	)
+	dir := t.TempDir()
+	h.WithTempDir(dir)
+	h.download = fakeDownload([]byte("fake-bytes"))
+	var probed string
+	h.probe = func(_ context.Context, p string) (int64, error) { probed = p; return 6000, nil }
+
+	rec := httptest.NewRecorder()
+	h.Desub(rec, desubReq(map[string]any{
+		"projectId": 2, "nodeId": "node-sub", "sourceNodeId": "node-src", "modelId": "desub-std",
+	}))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202, got %d body=%s", rec.Code, rec.Body)
+	}
+	if filepath.Dir(probed) != dir {
+		t.Fatalf("临时文件应落在注入的目录 %s, got %s", dir, probed)
+	}
+	if left, _ := os.ReadDir(dir); len(left) != 0 {
+		t.Fatalf("探测完应删掉临时文件, 剩 %d 个", len(left))
 	}
 }
 
