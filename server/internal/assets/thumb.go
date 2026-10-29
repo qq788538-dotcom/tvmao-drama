@@ -110,7 +110,9 @@ func (c *ThumbCache) cached(base string, srcMod time.Time) (string, string, bool
 
 // Get 返回 srcPath（key 对应的原文件）缩放到 width 宽后的缓存文件路径和 MIME。
 // 缓存命中直接返回；否则在并发上限内生成，同一 (key, width) 的并发请求只生成一次。
-// 不出缩略图时返回 ErrThumbUnsupported；ctx 只管排队等名额，缩放开始后不中途放弃（结果要落缓存）。
+// 不出缩略图时返回 ErrThumbUnsupported。ctx 只决定本次请求等不等结果：生成是多个请求共享的，
+// 不能随第一个请求取消——否则先发起的那个 <img> 被浏览器中止，排在后面的同图请求全都拿到
+// context.Canceled、回退成原图。已经入队的生成照常跑完落缓存，下次直接命中。
 func (c *ThumbCache) Get(ctx context.Context, key, srcPath string, width int) (string, string, error) {
 	if width <= 0 || width > ThumbMaxWidth {
 		return "", "", ErrThumbUnsupported
@@ -126,12 +128,11 @@ func (c *ThumbCache) Get(ctx context.Context, key, srcPath string, width int) (s
 	if p, m, ok := c.cached(base, st.ModTime()); ok {
 		return p, m, nil
 	}
-	v, err, _ := c.group.Do(base, func() (any, error) {
-		select {
-		case c.sem <- struct{}{}:
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
+	if err := ctx.Err(); err != nil {
+		return "", "", err // 已取消的请求不再入队
+	}
+	ch := c.group.DoChan(base, func() (any, error) {
+		c.sem <- struct{}{}
 		defer func() { <-c.sem }()
 		// 排队期间别的请求可能已经生成好了。
 		if p, m, ok := c.cached(base, st.ModTime()); ok {
@@ -143,11 +144,16 @@ func (c *ThumbCache) Get(ctx context.Context, key, srcPath string, width int) (s
 		}
 		return [2]string{p, m}, nil
 	})
-	if err != nil {
-		return "", "", err
+	select {
+	case res := <-ch:
+		if res.Err != nil {
+			return "", "", res.Err
+		}
+		out := res.Val.([2]string)
+		return out[0], out[1], nil
+	case <-ctx.Done():
+		return "", "", ctx.Err()
 	}
-	out := v.([2]string)
-	return out[0], out[1], nil
 }
 
 // generateThumb 解码 srcPath、按显示方向缩到 width 宽，写到 base+扩展名。

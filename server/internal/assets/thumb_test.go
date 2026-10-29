@@ -347,3 +347,45 @@ func TestPruneThumbCache(t *testing.T) {
 		t.Fatal("新缓存应保留")
 	}
 }
+
+// 共享的生成不随先到请求的 ctx 取消：先发起的请求被中止（浏览器撤掉了那张 <img>），
+// 排在后面的同图请求仍要拿到缩略图，而不是 context.Canceled 后回退原图。
+func TestThumbSharedGenerationSurvivesLeaderCancel(t *testing.T) {
+	c := newThumbCache(t)
+	src := writeFile(t, t.TempDir(), "a.jpg", encodeJPEG(t, halves(1200, 600, red, blue)))
+	for i := 0; i < cap(c.sem); i++ {
+		c.sem <- struct{}{}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	leaderErr := make(chan error, 1)
+	go func() {
+		_, _, err := c.Get(ctx, "k", src, 400)
+		leaderErr <- err
+	}()
+	time.Sleep(30 * time.Millisecond) // 让它先成为这次生成的发起者，卡在等名额
+	type res struct {
+		path string
+		err  error
+	}
+	follower := make(chan res, 1)
+	go func() {
+		p, _, err := c.Get(context.Background(), "k", src, 400)
+		follower <- res{p, err}
+	}()
+	time.Sleep(30 * time.Millisecond)
+	cancel()
+	if err := <-leaderErr; !errors.Is(err, context.Canceled) {
+		t.Fatalf("取消的请求应返回 context.Canceled: %v", err)
+	}
+	for i := 0; i < cap(c.sem); i++ {
+		<-c.sem
+	}
+	select {
+	case r := <-follower:
+		if r.err != nil || r.path == "" {
+			t.Fatalf("后到的同图请求应拿到缩略图: %+v", r)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("后到的请求一直没拿到结果")
+	}
+}
