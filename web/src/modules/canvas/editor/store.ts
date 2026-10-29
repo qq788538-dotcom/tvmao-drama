@@ -743,18 +743,18 @@ export const useCanvasStore = create<CanvasState>()(withDerivedIndexes((set, get
     const offsetX = at.x - (minX + (maxX - minX) / 2);
     const offsetY = at.y - (minY + (maxY - minY) / 2);
 
+    // 粘贴侧再过一遍 sanitizeNodeCopy（它本身就深拷贝 settings）：payload 不一定
+    // 出自本版本的 buildCopyPayload——localStorage 镜像跨升级保留，旧版复制的
+    // payload 里还带着抽帧和脚本任务 id（P8、P11）。对已净化的 payload 是幂等的。
     const idMap = new Map<string, string>();
     const newNodes: CanvasNode[] = nodes.map((n) => {
       const newId = `n-${nanoid(8)}`;
       idMap.set(n.id, newId);
       return {
-        ...n,
+        ...sanitizeNodeCopy(n),
         id: newId,
         x: n.x + offsetX,
         y: n.y + offsetY,
-        settings: n.settings
-          ? (JSON.parse(JSON.stringify(n.settings)) as Record<string, unknown>)
-          : undefined,
       };
     });
 
