@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { NodeContextMenu } from './nodes/NodeContextMenu';
 import { standardNodeMenuItems } from './nodes/standardNodeMenuItems';
+import { clearPollStalled, usePollStalled } from './nodes/pollStall';
 import { isInVideoControlsArea } from './nodes/videoControlsGuard';
 import { useCanvasStore } from './store';
 import { createFrameTask, type FrameTask } from './utils/frameTask';
@@ -157,6 +158,9 @@ export function NodeShell({
   const resizeNode = useCanvasStore((s) => s.resizeNode);
   const commit = useCanvasStore((s) => s.commit);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
+  // 生成任务的轮询挂起了(连续够不着后端,P23):只对仍在 generating 的任务显示。
+  const stalledTaskId = node.status === 'generating' ? node.taskId : undefined;
+  const pollStalled = usePollStalled(stalledTaskId);
 
   const displayLabel = displayLabelFor(node);
   const NodeIcon = iconFor(node);
@@ -575,6 +579,30 @@ export function NodeShell({
           >
             ⚠ {node.error}
           </div>
+        </Tooltip>
+      )}
+      {/* 轮询挂起：同一位置的琥珀色条带。任务可能仍在后台跑，所以不是错误；
+          点了清掉挂起标记，节点的轮询 effect 立刻重来一轮。 */}
+      {pollStalled && stalledTaskId && (
+        <Tooltip title="与本地服务的连接中断，任务可能仍在后台进行，结果不会丢" mouseEnterDelay={0} placement="top">
+          <button
+            type="button"
+            data-testid="poll-stalled-retry"
+            onClick={(e) => {
+              e.stopPropagation();
+              clearPollStalled(stalledTaskId);
+            }}
+            className="absolute left-0 right-0 top-0 bg-amber-950/85 border-0 border-b border-solid border-amber-500/50 text-amber-200 text-[10px] leading-4 px-2 py-0.5 z-20 cursor-pointer text-left"
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              borderTopLeftRadius: radiusPx,
+              borderTopRightRadius: radiusPx,
+            }}
+          >
+            ⚠ 连接中断，点击重新检查
+          </button>
         </Tooltip>
       )}
     </div>

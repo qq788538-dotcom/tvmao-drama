@@ -75,7 +75,7 @@ it('自动抽帧在首帧不等 seeked，能跑完并释放 video', async () => 
       <VideoInputNode id="v1" />
     </QueryClientProvider>,
   );
-  // 挂载后再换 createElement：节点菜单的时长探测也会建 <video>，不归这里管。
+  // 挂载后再换 createElement：只收集本用例要验的临时 <video>，不混进渲染期建的元素。
   stubVideoCreation();
   fireEvent.click(screen.getByText('自动抽帧（2fps）'));
   await act(async () => {

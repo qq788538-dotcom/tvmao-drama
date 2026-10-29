@@ -684,3 +684,56 @@ describe('GenVideoNode 命名引用对账', () => {
     await waitFor(() => expect(promptOf()).toBe('@[图片:img-zs|[角色-张三]]转身'));
   });
 });
+
+// P16：参数面板未选中时只是 opacity:0，参考媒体 chip 不能照样挂媒体元素去加载。
+describe('GenVideoNode 参考 chip 只在选中时挂媒体', () => {
+  const upstreamVideo = 'https://example.test/ref.mp4';
+
+  function setUp(selected: boolean) {
+    useCanvasStore.setState({
+      nodes: [
+        {
+          id: 'video-1', type: 'gen-video', x: 0, y: 0, width: 280, height: 180,
+          status: 'idle', settings: { ratio: '16:9', duration: 5 },
+        },
+        {
+          id: 'v-src', type: 'preview', x: 0, y: -400, width: 200, height: 100,
+          status: 'succeeded', content: upstreamVideo, settings: { kind: 'video' },
+        },
+        {
+          id: 'i-src', type: 'input-image', x: 300, y: -400, width: 200, height: 100,
+          status: 'succeeded', content: 'https://example.test/ref.png', settings: {},
+        },
+      ],
+      connections: [
+        { id: 'c-1', from: 'v-src', to: 'video-1' },
+        { id: 'c-2', from: 'i-src', to: 'video-1' },
+      ],
+      selectedIds: new Set(selected ? ['video-1'] : []),
+      view: { x: 0, y: 0, zoom: 1 },
+      lightbox: null,
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listRuntimeModels).mockResolvedValue([videoModel]);
+    vi.mocked(loadSeedanceStatus).mockResolvedValue(undefined);
+  });
+
+  it('未选中：chip 占位在，但不渲染 <video>/<img>', () => {
+    setUp(false);
+    const { container } = renderNode();
+    expect(container.querySelector('[title="参考视频 1"]')).not.toBeNull();
+    expect(container.querySelector('[title="参考视频 1"] video')).toBeNull();
+    expect(container.querySelector('[title="参考图 1"]')).not.toBeNull();
+    expect(container.querySelector('[title="参考图 1"] img')).toBeNull();
+  });
+
+  it('选中后渲染参考媒体', () => {
+    setUp(true);
+    const { container } = renderNode();
+    expect(container.querySelector('[title="参考视频 1"] video')?.getAttribute('src')).toBe(upstreamVideo);
+    expect(container.querySelector('[title="参考图 1"] img')).not.toBeNull();
+  });
+});
