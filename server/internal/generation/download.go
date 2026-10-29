@@ -7,8 +7,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/upstream"
 )
 
 // 产物下载：http(s) 产物边下边写临时文件，不再整份读进内存（P2）。单文件有上限，
@@ -26,6 +30,92 @@ const (
 	// resolveSpillOutputPath 当成上游 file:// 产物接受。
 	downloadFilePrefix = "dl-"
 )
+
+// 下载超时不再用整请求时限（P24）：600s 整请求限时让慢链路上的大文件确定性失败，
+// 重试又从头开始。改为两段：等响应头有上限（上游挂死在建连/排队），读 body 按「空闲」
+// 计时（只要还在来字节就一直等，连续一段时间一个字节都没有才取消）。
+//
+// 包级变量而非常量：测试置短即可，生产不需要配置。
+var (
+	downloadHeaderTimeout = 60 * time.Second
+	downloadIdleTimeout   = 60 * time.Second
+)
+
+// errDownloadIdle：读 body 期间连续 downloadIdleTimeout 没有收到任何字节。按瞬时错误重试。
+var errDownloadIdle = errors.New("下载停滞：长时间未收到数据")
+
+// newDownloadHTTPClient 是生成链路下载（产物、参考图）用的 client：没有整请求 Timeout，
+// 只在 Transport 上卡响应头等待时长；读 body 的空闲超时由 getWithIdleTimeout 负责。
+func newDownloadHTTPClient() *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.ResponseHeaderTimeout = downloadHeaderTimeout
+	return &http.Client{Transport: tr}
+}
+
+// idleTimeoutBody 包装响应 body：每读到字节就把空闲计时器拨回 d；计时器触发即取消请求
+// ctx（cause=errDownloadIdle），正在阻塞的 Read 随之返回，错误统一换成 errDownloadIdle。
+type idleTimeoutBody struct {
+	io.ReadCloser
+	ctx   context.Context
+	timer *time.Timer
+	d     time.Duration
+	stop  func()
+}
+
+func (b *idleTimeoutBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if n > 0 {
+		b.timer.Reset(b.d)
+	}
+	if err != nil && err != io.EOF && errors.Is(context.Cause(b.ctx), errDownloadIdle) {
+		err = errDownloadIdle
+	}
+	return n, err
+}
+
+func (b *idleTimeoutBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.stop()
+	return err
+}
+
+// getWithIdleTimeout 发一个 GET（hdr 为附加请求头，可为 nil），响应体换成带读空闲超时的
+// idleTimeoutBody。调用方照常 defer resp.Body.Close()（Close 同时停计时器、释放派生 ctx）。
+func (s *Service) getWithIdleTimeout(ctx context.Context, rawURL string, hdr http.Header) (*http.Response, error) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		cancel(nil)
+		return nil, err
+	}
+	for k, vs := range hdr {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
+	client := s.httpClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		cancel(nil)
+		return nil, err
+	}
+	d := downloadIdleTimeout
+	timer := time.AfterFunc(d, func() { cancel(errDownloadIdle) })
+	resp.Body = &idleTimeoutBody{
+		ReadCloser: resp.Body,
+		ctx:        ctx,
+		timer:      timer,
+		d:          d,
+		stop: func() {
+			timer.Stop()
+			cancel(nil)
+		},
+	}
+	return resp, nil
+}
 
 // errOutputTooLarge：产物超过单文件上限。确定性错误，不重试——重试只会把同一个
 // 超大文件再完整下载一遍。
@@ -48,7 +138,8 @@ func (e *fetchStatusError) retryable() bool {
 // isRetryablePersistError 判断一次 http(s) 产物落盘失败是否值得重试。
 // 超限和非瞬时 4xx 直接放弃；网络错误、存储写失败等其余错误照旧重试。
 func isRetryablePersistError(err error) bool {
-	if errors.Is(err, errOutputTooLarge) {
+	// 资产事务已在 persistSlot 内部有界重试过，项目已删除是确定性的：都不值得把文件再下一遍。
+	if errors.Is(err, errOutputTooLarge) || errors.Is(err, errSlotAssetRecord) || errors.Is(err, errProjectDeleted) {
 		return false
 	}
 	var se *fetchStatusError
@@ -137,15 +228,17 @@ func (t *tempDownload) Close() error {
 //     常见的 binary/octet-stream 等）时按前 512 字节嗅探（与 file:// 分支同法），
 //     嗅探出图片再按图片上限复核一次。
 func (s *Service) downloadToTemp(ctx context.Context, rawURL string) (io.ReadCloser, int64, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	f, n, mime, err := s.downloadFile(ctx, rawURL, nil, downloadFilePrefix+"*.part")
 	if err != nil {
 		return nil, 0, "", err
 	}
-	client := s.httpClient
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	return &tempDownload{File: f}, n, mime, nil
+}
+
+// downloadFile 是 downloadToTemp 的本体：hdr 是附加请求头（contentPath 要带上游鉴权），
+// pattern 是 CreateTemp 的文件名模式。成功时返回读指针在开头的文件，删除由调用方负责。
+func (s *Service) downloadFile(ctx context.Context, rawURL string, hdr http.Header, pattern string) (*os.File, int64, string, error) {
+	resp, err := s.getWithIdleTimeout(ctx, rawURL, hdr)
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -160,12 +253,12 @@ func (s *Service) downloadToTemp(ctx context.Context, rawURL string) (io.ReadClo
 		return nil, 0, "", tooLarge(resp.ContentLength, limit)
 	}
 
-	// tempDir 未注入时 s.tempDir() 回退系统临时目录；文件由本函数或返回值的 Close 删除。
-	f, err := os.CreateTemp(s.tempDir(), downloadFilePrefix+"*.part")
+	// tempDir 未注入时 s.tempDir() 回退系统临时目录。
+	f, err := os.CreateTemp(s.tempDir(), pattern)
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("create temp: %w", err)
 	}
-	fail := func(err error) (io.ReadCloser, int64, string, error) {
+	fail := func(err error) (*os.File, int64, string, error) {
 		_ = f.Close()
 		_ = os.Remove(f.Name())
 		return nil, 0, "", err
@@ -188,7 +281,7 @@ func (s *Service) downloadToTemp(ctx context.Context, rawURL string) (io.ReadClo
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return fail(err)
 	}
-	return &tempDownload{File: f}, n, mime, nil
+	return f, n, mime, nil
 }
 
 // needsSniff：上游声明的不是媒体大类就不可信，按内容嗅探。只认 application/octet-stream
@@ -217,4 +310,47 @@ func mediaTypeOnly(mime string) string {
 		mime = mime[:idx]
 	}
 	return strings.TrimSpace(mime)
+}
+
+// contentDownloader 是 pollUpstream 的可选能力：contentPath 产物（上游只给一个要带鉴权的
+// 内容地址，没有可直接下载的 URL）流式落临时文件，不再整份读进内存再转 base64 data URL（P34）。
+// 生产的 pollClient 实现；测试替身不实现时走老的整读路径。
+type contentDownloader interface {
+	downloadContent(ctx context.Context, apiKey, path string) (upstream.SpillFile, error)
+}
+
+// pollClient 把 upstream.Client 与 Service 的下载能力绑在一起交给 pollUpstream（completeAsync 构造）。
+type pollClient struct {
+	*upstream.Client
+	svc     *Service
+	baseURL string
+}
+
+// downloadContent 占一个全局下载名额，经 downloadFile 落进 tempDir 的 spill 文件（out- 前缀，
+// 与 gpt-image 的 b64 落盘同形，产物以 file:// 交给 persistOutputs）。文件由调用方经
+// CallResult.RemoveSpillFiles 删除。
+func (c *pollClient) downloadContent(ctx context.Context, apiKey, path string) (upstream.SpillFile, error) {
+	release, err := c.svc.acquireDownload(ctx)
+	if err != nil {
+		return upstream.SpillFile{}, err
+	}
+	defer release()
+	hdr := http.Header{}
+	if apiKey != "" {
+		hdr.Set("Authorization", "Bearer "+apiKey)
+	}
+	f, n, _, err := c.svc.downloadFile(ctx, strings.TrimRight(c.baseURL, "/")+path, hdr, spillFilePrefix+"*.bin")
+	if err != nil {
+		return upstream.SpillFile{}, err
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return upstream.SpillFile{}, err
+	}
+	// resolveSpillOutputPath 只认绝对路径；tempDir 注入的是相对路径时在这里补齐。
+	if abs, err := filepath.Abs(name); err == nil {
+		name = abs
+	}
+	return upstream.SpillFile{Path: name, Size: n}, nil
 }

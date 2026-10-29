@@ -201,9 +201,19 @@ func TestSignedURLRoundTripsThroughExtractKey(t *testing.T) {
 		if !ok || got != key {
 			t.Fatalf("ExtractKey(%q)=%q,%v want %q", u, got, ok, key)
 		}
+		// 缩略图 URL 必须与原图不同（浏览器分开缓存），带同一个 token，且能认回同一个 key。
 		thumb, _ := s.SignedThumbURL(context.Background(), key, time.Hour, 400)
-		if thumb != u {
-			t.Fatalf("缩略图应等于原图: %q vs %q", thumb, u)
+		if thumb == u || !strings.HasPrefix(thumb, strings.TrimSuffix(u, "?token=mediatoken")+"?w=400&") || !strings.HasSuffix(thumb, "&token=mediatoken") {
+			t.Fatalf("缩略图 URL 不对: %q（原图 %q）", thumb, u)
+		}
+		if got, ok := s.ExtractKey(thumb); !ok || got != key {
+			t.Fatalf("ExtractKey(thumb %q)=%q,%v want %q", thumb, got, ok, key)
+		}
+		if same, _ := s.SignedThumbURL(context.Background(), key, time.Hour, 0); same != u {
+			t.Fatalf("maxWidth<=0 应等于原图: %q", same)
+		}
+		if capped, _ := s.SignedThumbURL(context.Background(), key, time.Hour, 99999); !strings.Contains(capped, "?w=2048&") {
+			t.Fatalf("宽度应封顶 2048: %q", capped)
 		}
 	}
 	if _, err := s.SignedURL(context.Background(), "../x", time.Hour); !errors.Is(err, ErrInvalidKey) {

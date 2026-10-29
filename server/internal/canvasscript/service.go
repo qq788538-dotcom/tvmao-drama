@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 	"github.com/qq788538-dotcom/tvmao-drama/server/internal/skillruntime"
 )
 
@@ -106,6 +107,16 @@ func (c Config) maxAttempts() int {
 	return 2
 }
 
+// hasCandidate 模型是否在当前候选列表里。
+func (c Config) hasCandidate(modelID string) bool {
+	for _, m := range c.ModelCandidates {
+		if m.ModelID == modelID {
+			return true
+		}
+	}
+	return false
+}
+
 type Task struct {
 	ID          int64
 	UserID      int64
@@ -164,9 +175,14 @@ func newInstanceID() string {
 }
 
 // LoadConfig 读配置；未配置返回零值（风格列表为空 = 入口不可用）。
+// 读库失败要报错，不能当「未配置」：worker 拿零值配置跑任务，候选列表为空会把排队的任务
+// 全部按「模型已不可用」判死。
 func (s *Service) LoadConfig() (Config, error) {
 	raw, err := s.settings.Get(SettingKey)
-	if err != nil || strings.TrimSpace(raw) == "" {
+	if err != nil {
+		return Config{}, fmt.Errorf("读取 canvas_script_config: %w", err)
+	}
+	if strings.TrimSpace(raw) == "" {
 		return Config{}, nil
 	}
 	var cfg Config
@@ -221,6 +237,10 @@ func userErrorf(format string, args ...any) error {
 // ErrTaskNotFound 任务不存在或不属于该用户。
 var ErrTaskNotFound = errors.New("任务不存在")
 
+// ErrProjectGone 提交时项目不存在或已软删。它也是 UserError（文案可直接展示），
+// handler 用 errors.Is 单独映射成 404。
+var ErrProjectGone error = &UserError{Msg: projects.GoneMessage}
+
 // Submit 校验并落任务，返回任务 id。
 func (s *Service) Submit(ctx context.Context, userID, projectID int64, nodeID, styleName, script string, durationSec int, model string, userTags []string) (int64, error) {
 	script = strings.TrimSpace(script)
@@ -240,14 +260,7 @@ func (s *Service) Submit(ctx context.Context, userID, projectID int64, nodeID, s
 	if model == "" {
 		return 0, userError("请选择模型")
 	}
-	inList := false
-	for _, c := range cfg.ModelCandidates {
-		if c.ModelID == model {
-			inList = true
-			break
-		}
-	}
-	if !inList {
+	if !cfg.hasCandidate(model) {
 		return 0, userError("所选模型不可用")
 	}
 	// 二次校验：堵“拉完候选之后、提交之前模型被删”的竞态。
@@ -267,6 +280,18 @@ func (s *Service) Submit(ctx context.Context, userID, projectID int64, nodeID, s
 	if _, err := s.skills.Snapshot(ctx, style.SkillName); err != nil {
 		log.Printf("canvasscript: 风格 %q 的 skill 不可用: %v", style.SkillName, err)
 		return 0, userError("风格对应的 skill 不可用")
+	}
+	// 已删项目不再接任务：项目软删后到清理器硬删之间插进来的行，清理器会一并删掉；
+	// 硬删之后再插的就没人收了，所以入口必须挡。projectID=0 是不挂项目的调用，跳过。
+	// 「先校验、后删除」的窄竞态挡不住，那种行最多空跑一次，结果没人取，不影响别的数据。
+	if projectID != 0 {
+		ok, err := projects.ActiveExists(ctx, s.db, projectID)
+		if err != nil {
+			return 0, err
+		}
+		if !ok {
+			return 0, ErrProjectGone
+		}
 	}
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO canvas_script_tasks (user_id, project_id, node_id, skill_name, duration_sec, script, model)
@@ -296,6 +321,25 @@ func (s *Service) Get(ctx context.Context, userID, taskID int64) (*Task, error) 
 }
 
 const tickInterval = 2 * time.Second
+
+// 失败重排的指数退避：第 n 次失败后等 retryBaseDelay·2^(n-1)，封顶 retryMaxDelay。
+// 上游限流（429）通常要几十秒才恢复，不退避的话 2 秒一拍就把重试次数用完了。
+const (
+	retryBaseDelay = 15 * time.Second
+	retryMaxDelay  = 5 * time.Minute
+)
+
+// retryBackoff 返回第 attempts 次尝试失败后到下次可领的间隔。
+func retryBackoff(attempts int64) time.Duration {
+	d := retryBaseDelay
+	for i := int64(1); i < attempts; i++ {
+		d *= 2
+		if d >= retryMaxDelay {
+			return retryMaxDelay
+		}
+	}
+	return d
+}
 
 // RecoverOnStartup 单进程：启动时遗留的 running 一定属于已退出的上个进程，不必等心跳超时。
 // 未用尽重试的回到 pending；用尽的判失败。
@@ -354,12 +398,14 @@ func (s *Service) claimAndRun(ctx context.Context) {
 	}
 }
 
-// claimOne 用一条 UPDATE … RETURNING 原子抢占最早的 pending（无需 SELECT + CAS 两步）。
+// claimOne 用一条 UPDATE … RETURNING 原子抢占最早的、退避已到点的 pending（无需 SELECT + CAS 两步）。
 func (s *Service) claimOne(ctx context.Context) (*Task, bool) {
 	row := s.db.QueryRowContext(ctx, `
 		UPDATE canvas_script_tasks
-		SET status='running', owner_instance=?, heartbeat_at=CURRENT_TIMESTAMP, attempts=attempts+1
-		WHERE id = (SELECT id FROM canvas_script_tasks WHERE status='pending' ORDER BY id LIMIT 1)
+		SET status='running', owner_instance=?, heartbeat_at=CURRENT_TIMESTAMP, attempts=attempts+1, next_attempt_at=NULL
+		WHERE id = (SELECT id FROM canvas_script_tasks
+		            WHERE status='pending' AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
+		            ORDER BY id LIMIT 1)
 		  AND status='pending'
 		RETURNING id, user_id, project_id, node_id, skill_name, duration_sec, script, model, attempts`, s.instanceID)
 	var t Task
@@ -377,18 +423,35 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	// 收尾、sidecar 等 worker 退出后才关库，这时写库仍然安全。曾经直接用 ctx 写，
 	// 关闭瞬间刚跑完的结果写不进去，任务停在 running，下次启动再整个重跑一遍。
 	dbCtx := context.WithoutCancel(ctx)
-	// 失败分流：还有重试额度 → 重排 pending；用尽 → failed。
+	// 失败分流：还有重试额度 → 按指数退避重排 pending；用尽 → failed。
 	// msg 存库并展示给用户，不得含路径等内部细节；detail 只写日志。
 	fail := func(msg, detail string) {
 		log.Printf("canvasscript: task=%d 失败详情: %s", t.ID, detail)
 		if int(t.Attempts) < cfg.maxAttempts() {
-			log.Printf("canvasscript: task=%d attempt=%d 失败将重试: %s", t.ID, t.Attempts, msg)
+			delay := retryBackoff(t.Attempts)
+			log.Printf("canvasscript: task=%d attempt=%d 失败将在 %s 后重试: %s", t.ID, t.Attempts, delay, msg)
 			_, _ = s.db.ExecContext(dbCtx, `
-				UPDATE canvas_script_tasks SET status='pending', owner_instance=NULL, heartbeat_at=NULL, error=?
-				WHERE id=? AND status='running'`, msg, t.ID)
+				UPDATE canvas_script_tasks SET status='pending', owner_instance=NULL, heartbeat_at=NULL, error=?,
+				       next_attempt_at=datetime('now', ?)
+				WHERE id=? AND status='running'`, msg, fmt.Sprintf("+%d seconds", int(delay/time.Second)), t.ID)
 			return
 		}
 		_, _ = s.db.ExecContext(dbCtx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=? AND status='running'`, msg, t.ID)
+	}
+	// 配置类错误（模型已不在候选、skill 不存在、上游没配）重试多少次都一样，直接判失败，
+	// 不占着重试额度空转；用户改完配置重新提交即可。
+	failConfig := func(msg, detail string) {
+		log.Printf("canvasscript: task=%d 配置错误，不重试: %s", t.ID, detail)
+		_, _ = s.db.ExecContext(dbCtx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=? AND status='running'`, msg, t.ID)
+	}
+	// 进程关闭打断的不是任务本身的失败：退回本次计数、回到 pending，下次启动重跑。
+	// 走普通失败分流的话，最后一次尝试会被判成「重试次数用尽」永久失败。
+	requeueInterrupted := func(err error) {
+		log.Printf("canvasscript: task=%d 运行被关闭打断，下次启动重跑: %v", t.ID, err)
+		_, _ = s.db.ExecContext(dbCtx, `
+			UPDATE canvas_script_tasks SET status='pending', owner_instance=NULL, heartbeat_at=NULL,
+			       attempts=MAX(attempts-1, 0)
+			WHERE id=? AND status='running'`, t.ID)
 	}
 
 	if t.Model == "" {
@@ -396,9 +459,19 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 			"任务未记录模型，请重新提交", t.ID)
 		return
 	}
+	// 提交后模型被移出候选：按停用处理，不再拿它跑。
+	if !cfg.hasCandidate(t.Model) {
+		failConfig("所选模型已不可用，请重新选择后提交", "模型 "+t.Model+" 不在候选列表")
+		return
+	}
 	snapshot, err := s.skills.Snapshot(ctx, t.SkillName)
 	if err != nil {
-		fail("风格对应的 skill 不可用", err.Error())
+		if ctx.Err() != nil {
+			// 关闭打断了读 skill，不是 skill 缺失：同下面 Run 被打断的处理，退回计数、回到 pending。
+			requeueInterrupted(err)
+			return
+		}
+		failConfig("风格对应的 skill 不可用", err.Error())
 		return
 	}
 	// 上游地址与 Key 经 models.ResolveUpstream 解析：任务记录的模型单独配了上游就用模型的，
@@ -419,11 +492,11 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 		return
 	}
 	if strings.TrimSpace(baseDomain) == "" {
-		fail("服务未配置上游地址，请在设置中配置", "base_domain 未配置")
+		failConfig("服务未配置上游地址，请在设置中配置", "base_domain 未配置")
 		return
 	}
 	if strings.TrimSpace(sk) == "" {
-		fail("上游 API Key 未配置，请在设置中配置", "上游 API Key 未配置")
+		failConfig("上游 API Key 未配置，请在设置中配置", "上游 API Key 未配置")
 		return
 	}
 
@@ -436,13 +509,7 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	})
 	if err != nil {
 		if ctx.Err() != nil {
-			// 进程关闭打断的不是任务本身的失败：退回本次计数、回到 pending，下次启动重跑。
-			// 走普通失败分流的话，最后一次尝试会被判成「重试次数用尽」永久失败。
-			log.Printf("canvasscript: task=%d 运行被关闭打断，下次启动重跑: %v", t.ID, err)
-			_, _ = s.db.ExecContext(dbCtx, `
-				UPDATE canvas_script_tasks SET status='pending', owner_instance=NULL, heartbeat_at=NULL,
-				       attempts=MAX(attempts-1, 0)
-				WHERE id=? AND status='running'`, t.ID)
+			requeueInterrupted(err)
 			return
 		}
 		fail("生成失败，请稍后重试", err.Error())

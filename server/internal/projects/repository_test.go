@@ -1,6 +1,7 @@
 package projects
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -75,6 +76,31 @@ func TestDeleteIsSoftAndHidesProject(t *testing.T) {
 	pending, err := repo.ListPendingDeletion(10)
 	if err != nil || len(pending) != 1 || pending[0].ID != id || pending[0].UserID != uid {
 		t.Fatalf("pending=%v err=%v", pending, err)
+	}
+}
+
+// 提交入口的轻量校验：存在且未软删才算有效；软删后、硬删后、从未存在都返回 false。
+func TestActiveExists(t *testing.T) {
+	repo, conn := newRepo(t)
+	ctx := context.Background()
+	id := mustCreate(t, repo, "p")
+	if ok, err := repo.ActiveExists(ctx, id); err != nil || !ok {
+		t.Fatalf("新建项目应有效: ok=%v err=%v", ok, err)
+	}
+	if ok, err := ActiveExists(ctx, conn, id+100); err != nil || ok {
+		t.Fatalf("不存在的项目应无效: ok=%v err=%v", ok, err)
+	}
+	if err := repo.Delete(uid, id); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := repo.ActiveExists(ctx, id); err != nil || ok {
+		t.Fatalf("软删后应无效: ok=%v err=%v", ok, err)
+	}
+	if err := repo.HardDelete(id); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := repo.ActiveExists(ctx, id); err != nil || ok {
+		t.Fatalf("硬删后应无效: ok=%v err=%v", ok, err)
 	}
 }
 

@@ -449,6 +449,9 @@ export interface CanvasTaskStatus {
   status: 'processing' | 'succeeded' | 'failed';
   outputUrls?: string[];
   assetIds?: number[]; // 与 outputUrls 同序;节点靠它做「保存素材库」「合规校验」
+  // 与 outputUrls 同序的落盘失败原因（generation 任务 output.persistErrors）。目前 sidecar 的
+  // canvas-tasks 状态接口还没透出，前端按可选字段读，拿不到就只显示通用说明。
+  persistErrors?: string[];
   text?: string; // 文本生成任务的产物(文本节点 AI 生成);与 outputUrls 互斥
   error?: string;
 }
@@ -656,21 +659,48 @@ export async function getCanvasTask(taskID: number, signal?: AbortSignal): Promi
 // 轮询 GET /canvas-tasks/{id} 直到 succeeded/failed。给画布 gen 节点用:拿到结果只为即时展示,
 // 持久化由后端回写快照负责(前端刷新/重开也能看到)。
 //
-// 容错:单次网络错误/5xx 不放弃——曾经任意一次抖动就 reject,调用方把节点判「失败」
-// 并整节点 persist,把后端刚写回快照的成功结果覆盖掉。只有连续失败 5 次才放弃;
-// 4xx 是确定性错误(任务不存在/无权),重试无意义,立即抛。
-export async function pollCanvasTaskUntilDone(
+// 容错(P23):够不着后端不等于任务失败。早先任意一次抖动就 reject,后来改成连续 5 次失败
+// 或任意 4xx 就 reject——调用方都会把节点判「失败」并整节点 persist,而 sidecar 长时间
+// 无响应时后端其实可能已经出片,用户看到失败就会再花一次钱。现在只有两种放弃:
+//   - 连续 MAX_NOT_FOUND 次 404:任务行确实不存在,抛 CanvasTaskGoneError,调用方判死;
+//   - 其余错误(网络/5xx/401 等)连续 MAX_POLL_FAILURES 次:抛 CanvasPollStalledError,
+//     调用方保持 generating、标记 pollStalled,交给 useReconcileCanvasTask 低频对账。
+// 两条都有界,轮询本身不会无限重试。
+const MAX_POLL_FAILURES = 5;
+// 单次 404 可能是提交刚返回、读到了还没提交完的事务,连续这么多次才算查无(同脚本轮询)。
+const MAX_NOT_FOUND = 3;
+
+/** 连续多次够不着后端:任务状态未知,不能判失败。 */
+export class CanvasPollStalledError extends Error {
+  constructor(cause?: unknown) {
+    super('连接中断', { cause });
+    this.name = 'CanvasPollStalledError';
+  }
+}
+
+/** 连续多次 404:任务确实不存在,可以判死。 */
+export class CanvasTaskGoneError extends Error {
+  constructor() {
+    super('生成任务未找到,可能提交未成功,请重试');
+    this.name = 'CanvasTaskGoneError';
+  }
+}
+
+export function isCanvasPollStalled(err: unknown): err is CanvasPollStalledError {
+  return err instanceof CanvasPollStalledError;
+}
+
+async function runCanvasTaskPoll(
   taskID: number,
-  opts: { intervalMs?: number; signal?: AbortSignal } = {},
+  interval: number,
+  signal: AbortSignal,
 ): Promise<CanvasTaskStatus> {
-  const interval = opts.intervalMs ?? 3000;
-  const maxConsecutiveFailures = 5;
-  const signal = opts.signal;
   let failures = 0;
+  let notFound = 0;
   // 每轮只挂一个 abort 监听，到点就摘掉：长视频任务一轮轮下来不会在 signal 上越攒越多。
   const sleep = () =>
     new Promise<void>((resolve, reject) => {
-      if (signal?.aborted) {
+      if (signal.aborted) {
         reject(new Error('aborted'));
         return;
       }
@@ -679,28 +709,98 @@ export async function pollCanvasTaskUntilDone(
         reject(new Error('aborted'));
       };
       const t = setTimeout(() => {
-        signal?.removeEventListener('abort', onAbort);
+        signal.removeEventListener('abort', onAbort);
         resolve();
       }, interval);
-      signal?.addEventListener('abort', onAbort, { once: true });
+      signal.addEventListener('abort', onAbort, { once: true });
     });
   while (true) {
-    if (signal?.aborted) throw new Error('aborted');
+    if (signal.aborted) throw new Error('aborted');
     try {
-      // signal 一并交给请求：节点卸载时在途的那次 GET 也立刻取消。
+      // signal 一并交给请求：没人再等结果时在途的那次 GET 也立刻取消。
       const st = await getCanvasTask(taskID, signal);
       failures = 0;
+      notFound = 0;
       if (st.status === 'succeeded' || st.status === 'failed') return st;
     } catch (err: any) {
       // 主动取消不算失败，也不再重试。
-      if (signal?.aborted) throw new Error('aborted');
-      const status = err?.response?.status;
-      if (status && status >= 400 && status < 500) throw err;
-      failures += 1;
-      if (failures >= maxConsecutiveFailures) throw err;
+      if (signal.aborted) throw new Error('aborted');
+      if (err?.response?.status === 404) {
+        failures = 0;
+        notFound += 1;
+        if (notFound >= MAX_NOT_FOUND) throw new CanvasTaskGoneError();
+      } else {
+        notFound = 0;
+        failures += 1;
+        if (failures >= MAX_POLL_FAILURES) throw new CanvasPollStalledError(err);
+      }
     }
     await sleep();
   }
+}
+
+// 按 taskId 去重的在途轮询(P31):故事板详情会把画布上的同一个节点再挂一份,两份组件的
+// effect 各调一次——这里只跑一路,后到的调用方复用同一个结果。每个调用方的 signal 只管
+// 自己退订;全部退订了才真正停掉那一路。整体收拢到 store 级管理器是方案 3.1 的事。
+interface InflightCanvasPoll {
+  promise: Promise<CanvasTaskStatus>;
+  ctrl: AbortController;
+  refs: number;
+}
+const inflightCanvasPolls = new Map<number, InflightCanvasPoll>();
+
+export function pollCanvasTaskUntilDone(
+  taskID: number,
+  opts: { intervalMs?: number; signal?: AbortSignal } = {},
+): Promise<CanvasTaskStatus> {
+  const signal = opts.signal;
+  if (signal?.aborted) return Promise.reject(new Error('aborted'));
+  let shared = inflightCanvasPolls.get(taskID);
+  if (!shared) {
+    const ctrl = new AbortController();
+    const created: InflightCanvasPoll = {
+      ctrl,
+      refs: 0,
+      promise: runCanvasTaskPoll(taskID, opts.intervalMs ?? 3000, ctrl.signal),
+    };
+    const forget = () => {
+      if (inflightCanvasPolls.get(taskID) === created) inflightCanvasPolls.delete(taskID);
+    };
+    // 无论结局(含全员退订后的 aborted)都摘掉登记;这条分支同时吞掉 rejection,
+    // 免得没人订阅时报未处理。
+    created.promise.then(forget, forget);
+    inflightCanvasPolls.set(taskID, created);
+    shared = created;
+  }
+  const entry = shared;
+  entry.refs += 1;
+  return new Promise<CanvasTaskStatus>((resolve, reject) => {
+    let left = false;
+    const leave = () => {
+      if (left) return false;
+      left = true;
+      signal?.removeEventListener('abort', onAbort);
+      entry.refs -= 1;
+      return true;
+    };
+    function onAbort() {
+      if (!leave()) return;
+      if (entry.refs === 0) {
+        if (inflightCanvasPolls.get(taskID) === entry) inflightCanvasPolls.delete(taskID);
+        entry.ctrl.abort();
+      }
+      reject(new Error('aborted'));
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+    entry.promise.then(
+      (st) => {
+        if (leave()) resolve(st);
+      },
+      (err) => {
+        if (leave()) reject(err);
+      },
+    );
+  });
 }
 
 export interface GenerationTask {
@@ -720,6 +820,8 @@ export interface GenerationTask {
   output?: {
     outputUrls?: string[];
     assetIds?: number[];
+    // 与 outputUrls 同序：仍是上游外链的槽位为什么没保存到本地；全部成功时没有这个字段。
+    persistErrors?: string[];
     raw?: unknown;
     upstreamTaskId?: string;
     // 主产物真实媒体类型的大类(后端按下载 mime 推导)。隐藏模型(如 sd2.0

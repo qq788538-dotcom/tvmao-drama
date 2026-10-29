@@ -1,4 +1,5 @@
 import { useReconcileCanvasTask } from './useReconcileCanvasTask';
+import { stallIfUnreachable, usePollStalled } from './pollStall';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -66,6 +67,8 @@ export function GenImageNode({ id }: { id: string }) {
   const node = useCanvasStore((s) => s.nodesById.get(id));
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
+  // 轮询连续够不着后端时挂起(P23):不判失败,交给对账;NodeShell 上可点「重新检查」。
+  const pollStalled = usePollStalled(node?.taskId);
   const { modal } = AntApp.useApp();
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
@@ -89,6 +92,9 @@ export function GenImageNode({ id }: { id: string }) {
   // 画布上相反——节点只有两三百像素宽，必须用缩略图（一张画布可能挂上百个
   // 节点，全换原图流量翻好几倍），也必须留着双击预览，不然看不清。
   const storyboardMode = useStoryboardMode();
+  // 参数面板未选中时只是 opacity:0，参考图 chip 照样在加载（P16）。只在选中时渲染
+  // 媒体；故事板里面板常显，不门控。
+  const showRefMedia = isSelected || storyboardMode;
   // 故事板里参考区支持连线编辑：
   // 缩略图 hover 出 × 断开、左侧列表卡片拖进参数面板即连上。两个动作都直接
   // 走 store（removeConnection/addConnection 自带 commit 可撤销、去重、落库）。
@@ -306,7 +312,7 @@ export function GenImageNode({ id }: { id: string }) {
   // 同 PreviewNode 的循环，但锚在 gen-image 节点自身上，这样结果落到
   // `node.content` 而不是下游预览。刷新页面会恢复进行中的 poll。
   useEffect(() => {
-    if (node.status === 'generating' && node.taskId) {
+    if (node.status === 'generating' && node.taskId && !pollStalled) {
       const ctrl = new AbortController();
       let cancelled = false;
       // 方案 B:轮询画布任务状态仅为即时展示;结果已由后端权威写回快照节点。
@@ -336,7 +342,9 @@ export function GenImageNode({ id }: { id: string }) {
                 history: next,
                 historyIndex: nextIdx,
                 pendingGen: undefined,
-                assetId: finalTask.assetIds?.[0] || undefined,
+                // 0（文件落了本地但素材记录没写成功）也照存，与服务端 sink 一致——
+                // 「素材未登记」角标靠它认出来（见 desktop/unsavedLocal）。
+                assetId: finalTask.assetIds?.[0] ?? undefined,
                 kind: 'image',
                 // 新结果属于这次任务：清掉上次下载失败留下的标记，否则重试会拿旧任务覆盖新结果。
                 unsaved: undefined,
@@ -359,6 +367,7 @@ export function GenImageNode({ id }: { id: string }) {
         })
         .catch((err: any) => {
           if (cancelled || err?.message === 'aborted') return;
+          if (node.taskId && stallIfUnreachable(node.taskId, err)) return;
           updateNode(id, {
             status: 'failed',
             error: err?.message || '轮询失败',
@@ -375,7 +384,7 @@ export function GenImageNode({ id }: { id: string }) {
     // 闭包里读了 history，但我们不希望用户只是翻 historyIndex 时这个 effect
     // 就重新触发；这个循环只以 status+taskId 为 key。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.status, node.taskId, id, updateNode, updateNodeSettings]);
+  }, [node.status, node.taskId, pollStalled, id, updateNode, updateNodeSettings]);
 
   // 为新建节点在首次挂载时初始化 `settings.ratio`。从 localStorage 读
   // `tvmao:lastImageRatio`；如果该值是当前模型 ratio 选项之一就复用它，否则
@@ -936,7 +945,7 @@ export function GenImageNode({ id }: { id: string }) {
                 title={`参考图 ${i + 1}`}
               >
                 <div className="w-full h-full rounded-[10px] overflow-hidden border border-white/10 bg-popover">
-                  <ThumbImg src={ref.url} alt="" className="w-full h-full object-cover" draggable={false} />
+                  {showRefMedia && <ThumbImg src={ref.url} alt="" className="w-full h-full object-cover" draggable={false} />}
                 </div>
                 {/* hover 出 × 断开这条上游连线。只在故事板给：画布上删连线有
                     自己的交互（点线），这里再放一个会两套入口打架。ref 带

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useMemo, useState, type ReactEventHandler } from 'react';
 import { App as AntApp } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
@@ -57,32 +57,54 @@ function SeedanceRequirementCard({ kind }: { kind: Kind }) {
   );
 }
 
-// useMediaDuration 读视频/音频时长。为什么不从节点 settings 拿：只有 VideoInputNode
-// 存了 videoMeta.duration，GenVideoNode / PreviewNode / SubtitleEraseNode / AudioInputNode
-// 都没有，而合规校验对这些节点一样开放。所以在这里统一探测一次。
-// 拿不到（加载失败、浏览器给 Infinity）返回 null——调用方据此放行，交上游判定。
-function useMediaDuration(url: string | undefined, kind: Kind): number | null {
-  const [duration, setDuration] = useState<number | null>(null);
-  useEffect(() => {
-    if (!url || kind === 'image') {
-      setDuration(null);
-      return;
-    }
-    const el = document.createElement(kind === 'video' ? 'video' : 'audio');
-    el.preload = 'metadata';
-    const onMeta = () => setDuration(Number.isFinite(el.duration) ? el.duration : null);
-    const onError = () => setDuration(null);
-    el.addEventListener('loadedmetadata', onMeta);
-    el.addEventListener('error', onError);
-    el.src = url;
-    return () => {
-      el.removeEventListener('loadedmetadata', onMeta);
-      el.removeEventListener('error', onError);
-      // 断掉正在进行的请求，免得关掉节点后还在后台下载。
-      el.src = '';
-    };
-  }, [url, kind]);
-  return duration;
+/** 挂到节点自己的 <video>/<audio>（VideoPlayer、WaveformPlayer）上，把时长交给菜单。 */
+export interface MediaDurationProps {
+  onLoadedMetadata: ReactEventHandler<HTMLMediaElement>;
+  onError: ReactEventHandler<HTMLMediaElement>;
+}
+
+// useMediaDuration 读视频/音频时长（P15）。来源按优先级：
+//   1. 节点 settings.videoMeta.duration（VideoInputNode 上传时探测并落库）；只在节点
+//      内容就是这个 url 时才信，换片后旧值作废。
+//   2. 节点内播放器的 loadedmetadata：调用方把返回的 mediaProps 挂到自己的播放器上。
+// 以前每个节点再建一个游离的探测元素，首屏媒体请求翻倍、屏幕外节点也照拉，已去掉。
+//
+// 返回值三态：undefined = 还没拿到（probing，合规项置灰等它）；null = 播放器加载失败或
+// 读不出（Infinity）——放行，交上游判定；number = 时长。
+// 不能改成「打开菜单时才探测」：checkSeedanceDuration 对 null 放行，探测完成前那段
+// 窗口里超长视频就能提交。
+function useMediaDuration(
+  url: string | undefined,
+  kind: Kind,
+  nodeId: string,
+): { duration: number | null | undefined; mediaProps: MediaDurationProps } {
+  const metaDuration = useCanvasStore((s) => {
+    const n = s.nodesById.get(nodeId);
+    if (!url || n?.content !== url) return undefined;
+    const d = (n.settings?.videoMeta as { duration?: unknown } | undefined)?.duration;
+    return typeof d === 'number' && Number.isFinite(d) && d > 0 ? d : undefined;
+  });
+  const [probed, setProbed] = useState<{ url: string; duration: number | null } | null>(null);
+  // 只认 src 就是本 url 的那次加载：GenVideoNode 翻历史版本、WaveformPlayer 播放时
+  // 换成 blob 源，都会让播放器的 src 与菜单 url 不一致。
+  const mediaProps = useMemo<MediaDurationProps>(
+    () => ({
+      onLoadedMetadata: (e) => {
+        const el = e.currentTarget;
+        if (!url || el.getAttribute('src') !== url) return;
+        setProbed({ url, duration: Number.isFinite(el.duration) ? el.duration : null });
+      },
+      onError: (e) => {
+        if (!url || e.currentTarget.getAttribute('src') !== url) return;
+        setProbed({ url, duration: null });
+      },
+    }),
+    [url],
+  );
+  if (!url || kind === 'image') return { duration: null, mediaProps };
+  if (metaDuration !== undefined) return { duration: metaDuration, mediaProps };
+  if (probed && probed.url === url) return { duration: probed.duration, mediaProps };
+  return { duration: undefined, mediaProps };
 }
 
 // spawnPostprocessNode 在源视频节点正右方新建一个后处理节点并连线。
@@ -120,8 +142,10 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
   const [saving, setSaving] = useState(false);
 
   const canAct = !!url;
-  const duration = useMediaDuration(url, kind);
-  const durationCheck = checkSeedanceDuration(kind, duration);
+  const { duration, mediaProps } = useMediaDuration(url, kind, nodeId);
+  // 时长还没拿到：合规项先置灰，等播放器读到元数据（节点在视口附近才会加载）。
+  const probing = canAct && duration === undefined;
+  const durationCheck = checkSeedanceDuration(kind, duration ?? null);
   const unsavedBadge = useUnsavedLocalBadge(nodeId);
 
   const statusQuery = useQuery({
@@ -200,12 +224,15 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
       // 已通过校验的同样置灰：自己校验过的图再提交只是服务端幂等空转；公共角色库
       // 的图（永远 active）则会被归属校验拒成 403「media not yours」——两种情况
       // 都是「点了也白点」，明示出来。版本轮换后的重新校验由后台 worker 自动做。
-      disabled: !canAct || !durationCheck.ok || state?.status === 'active',
+      // 时长未知（probing）同样不给点：读不到时长就放行的话，超长视频能趁这段窗口提交。
+      disabled: !canAct || probing || !durationCheck.ok || state?.status === 'active',
       hint: !canAct
         ? `还没有${KIND_LABEL[kind]}内容`
         : state?.status === 'active'
           ? '已通过校验，无需重复提交'
-          : (durationCheck.reason ?? '提交给 Seedance 做素材合规校验'),
+          : probing
+            ? `正在读取${KIND_LABEL[kind]}时长，读到后才能提交`
+            : (durationCheck.reason ?? '提交给 Seedance 做素材合规校验'),
       tip: <SeedanceRequirementCard kind={kind} />,
     },
     ...(extraItems ?? []),
@@ -306,5 +333,5 @@ export function useMediaNodeMenu({ url, kind, nodeId, extraItems }: Options) {
     </>
   );
 
-  return { onContextMenu, overlay, badge, state };
+  return { onContextMenu, overlay, badge, state, mediaProps };
 }

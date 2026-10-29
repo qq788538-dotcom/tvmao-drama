@@ -173,11 +173,11 @@ func NewService(
 		users:       userStorage,
 		reclaimer:   reclaimer,
 		db:          db,
-		// 600s 是整请求限时(连接+读完全部字节)。资产生图一次铺几十个角色时
-		// 几十条连接同挤一个上游中转域名(Cloudflare R2),单连接带宽会掉到几十 KB/s,
-		// 限时太短 4.5MB 的图拉不完 → persistOutputs 保留上游外链 → 上游两周清文件
-		// 后永久裂图。600s 之外的兜底是手动重试(RepersistTask)。
-		httpClient:  &http.Client{Timeout: 600 * time.Second},
+		// 不设整请求限时(P24)：资产生图一次铺几十个角色时几十条连接同挤一个上游中转域名,
+		// 单连接带宽会掉到几十 KB/s,任何整请求限时都会让慢链路上的大文件确定性失败、
+		// 重试又从头下。改为「响应头等待上限 + 读空闲超时」：还在来字节就一直等(见 download.go)。
+		// 之外的兜底是落盘预算(persistBudget)与手动重试(RepersistTask)。
+		httpClient:  newDownloadHTTPClient(),
 		concurrency: NewConcurrencyRegistry(),
 	}
 }
@@ -490,14 +490,14 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (*SubmitResult,
 					_, _ = s.finishFailureTx(context.Background(), taskID, directLease, fmt.Sprintf("internal panic: %v", rec), note)
 				}
 			}()
-			if _, err := s.callAndComplete(bgCtx, taskID, directLease, model, apiKey, baseDomain, payload, input.UserID, input.ProjectID, freezeAmt, normalizedInputs, preparedImages, note); err != nil {
+			if _, err := s.callAndComplete(bgCtx, taskID, directLease, model, apiKey, baseDomain, payload, input.UserID, input.ProjectID, freezeAmt, normalizedInputs, input.Inputs, preparedImages, note); err != nil {
 				log.Printf("generation: forced-async submit failed task=%d: %v", taskID, err)
 			}
 		})
 		return &SubmitResult{TaskID: taskID, Status: "processing"}, nil
 	}
 
-	return s.callAndComplete(ctx, taskID, directLease, model, apiKey, baseDomain, payload, input.UserID, input.ProjectID, freezeAmt, normalizedInputs, preparedImages, note)
+	return s.callAndComplete(ctx, taskID, directLease, model, apiKey, baseDomain, payload, input.UserID, input.ProjectID, freezeAmt, normalizedInputs, input.Inputs, preparedImages, note)
 }
 
 // TaskStatuses 批量取轻量状态，供候选图等业务在 List 时投影重试进度。
@@ -524,31 +524,58 @@ func (s *Service) Estimate(_ context.Context, modelID string, inputs map[string]
 //   - 同步上游：直接 finalize 落库。
 //
 // Submit 的同步路径直接调它；ForceAsync 路径在后台 goroutine 里用独立 ctx 调它。
-func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, model *models.ModelConfig, apiKey, baseDomain string, payload []byte, userID int64, projectID *int64, freezeAmt int64, inputs map[string]any, preparedImages []preparedImageInput, note string) (*SubmitResult, error) {
+// inputs 是执行用的归一化 inputs(data_uri 模型里参考图已内联成 base64);reqInputs 是提交时的
+// 原始 inputs(与 task.Input 快照同源),交给 completeAsync 做结算——轮询可能挂几小时,
+// 不能让参考图 base64 跟着常驻内存(P19)。
+func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, model *models.ModelConfig, apiKey, baseDomain string, payload []byte, userID int64, projectID *int64, freezeAmt int64, inputs, reqInputs map[string]any, preparedImages []preparedImageInput, note string) (*SubmitResult, error) {
+	// 参考图临时文件的兜底删除点：无论上游成功/失败/失租/放弃等名额,本函数返回即清。
+	defer removePreparedFiles(preparedImages)
+
 	// 并发闸(方案 A):全平台所有生成(画布/候选图/材料视频/去字幕/步骤4/资产/agent)都经此函数,
-	// 在这里按模型取一个共享名额(容量=model.GenConcurrency(),缺失取默认 200),持有到整个生成
-	// 生命周期结束才释放——inline 出图在本函数返回时释放;task-id 轮询模型(视频)把释放转交给
-	// completeAsync,在其收尾时释放。这样"同一模型同时在途的生成数"被真实限住,全平台共用一把闸。
+	// 在这里按模型取一个共享名额(容量=model.GenConcurrency(),缺失取默认 200)。名额只管「上游
+	// 在途」这一段:inline 出图在上游调用返回时释放;task-id 轮询模型(视频)把释放转交给
+	// completeAsync,在轮询返回时释放。之后的下载落盘归全局下载闸(downloadSem)管——下载慢时
+	// 不再拖住生成吞吐(P20)。释放后上游压力如实上升,这正是并发配置原本的含义。
 	// 各入口都是 ForceAsync(在后台 goroutine 里跑本函数),故 acquire 阻塞等名额不会卡住 HTTP。
 	//
 	// lease 由领取/建行的 CAS 取得并传入——本函数绝不重新 claim(正常链路只用执行链
 	// 传下来的 lease)。心跳必须在等名额**之前**起:直连任务建行即 running,名额被占满(视频模型
 	// 整段轮询都持有名额)超过 staleSec 时,没有心跳的行会被接管器当直连孤儿判失败退款。
 	// 失租时心跳会 cancel 本 ctx，尽早中止上游调用；心跳在本函数返回时停，轮询类模型由
-	// completeAsync 自己续。
+	// completeAsync 自己续。lost 只在失租时取消,落盘阶段的独立预算 ctx 接在它上面(persistContext)。
+	lost, markLost := context.WithCancel(context.Background())
+	defer markLost()
 	ctx, cancelOnLost := context.WithCancel(ctx)
 	defer cancelOnLost()
-	stopHeartbeat := s.startHeartbeat(taskID, lease, cancelOnLost)
+	stopHeartbeat := s.startHeartbeat(taskID, lease, func() { markLost(); cancelOnLost() })
 	defer stopHeartbeat()
-	release := s.concurrency.Acquire(model.ModelID, model.GenConcurrency())
+
+	// 等名额只响应失租和进程关闭(P29),不响应执行 ctx 的总时限：大批量排队的任务等名额等过
+	// 30 分钟不该被判失败退款。两种放弃都不动钱——失租由新持有者走完;关闭时行留在 running,
+	// 下次启动由接管器分流(没调过上游:队列任务重排,直连任务退款)。
+	waitStart := time.Now()
+	abort, stopAbort := s.slotWaitAbort(lost)
+	release, err := s.concurrency.AcquireAbortable(model.ModelID, model.GenConcurrency(), abort)
+	stopAbort()
+	if err != nil {
+		log.Printf("generation: task=%d 等待并发名额时放弃(失租=%v): %v", taskID, lost.Err() != nil, err)
+		return nil, err
+	}
+	// 名额归还函数由 sync.Once 包装:同步路径在上游返回后提前归还,这里的 defer 只是兜底,
+	// 不会重复释放;转交 completeAsync 后由它负责。
 	releasedToAsync := false
 	defer func() {
 		if !releasedToAsync {
 			release()
 		}
 	}()
-	// 参考图临时文件的兜底删除点：无论上游成功/失败/失租,本函数返回即清。
-	defer removePreparedFiles(preparedImages)
+	// 排名额的时间不计入执行 ctx 的总时限：否则拿到名额时 ctx 可能早已过期,调上游立刻失败退款。
+	ctx, cancelExt := extendDeadline(ctx, time.Since(waitStart))
+	defer cancelExt()
+	// 失租直接接到顺延后的 ctx 上：原时限过后父 ctx 已是 DeadlineExceeded，之后的 cancelOnLost
+	// 改不了它的状态，extendDeadline 也就转发不到——排名额排过原时限的任务调上游期间失租会停不下来。
+	stopLostExt := context.AfterFunc(lost, cancelExt)
+	defer stopLostExt()
 
 	// 在真正发出请求之前，先把"已调过上游"这个事实落库。
 	//
@@ -607,9 +634,11 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 		// 把并发名额的释放转交给 completeAsync：名额要持有到上游真出片(轮询结束)才归还,
 		// 不能在本函数返回 processing 时就释放(那样"限并发"形同虚设)。
 		releasedToAsync = true
+		upstreamTaskID := result.TaskID
+		// 结算只用提交时的原始 inputs(与续跑路径同形),不让执行用的 inputs 随轮询常驻。
+		asyncInputs := sanitizeTaskSnapshot(reqInputs)
 		s.tracker().Go(func() {
-			defer release()
-			s.completeAsync(taskID, lease, model, apiKey, baseDomain, result.TaskID, userID, projectID, freezeAmt, inputs, note, time.Now())
+			s.completeAsync(taskID, lease, model, apiKey, baseDomain, upstreamTaskID, userID, projectID, freezeAmt, asyncInputs, note, time.Now(), release)
 		})
 		return &SubmitResult{
 			TaskID: taskID,
@@ -617,8 +646,9 @@ func (s *Service) callAndComplete(ctx context.Context, taskID, lease int64, mode
 		}, nil
 	}
 
-	// 同步路径：model 直接内联返回结果（生图等）。
-	return s.finalize(ctx, taskID, lease, model, userID, projectID, freezeAmt, inputs, result, note)
+	// 同步路径：model 直接内联返回结果（生图等）。上游已返回,先还生成名额再进下载闸。
+	release()
+	return s.finalize(ctx, lost, taskID, lease, model, userID, projectID, freezeAmt, inputs, result, note)
 }
 
 func (s *Service) callUpstream(ctx context.Context, client *upstream.Client, apiKey string, model *models.ModelConfig, payload []byte, preparedImages []preparedImageInput) (*upstream.CallResult, error) {
@@ -661,7 +691,10 @@ func scalarMultipartFields(payload []byte) map[string]string {
 // finalize 结算计费、把产物持久化到 MinIO 并经 finishSuccessTx 原子收口。
 // 同步 submit 路径和异步 goroutine 共用它。幂等闸门就是 finishTx 里带 lease 的
 // 终态 CAS——不需要 settling 中间态与 ClaimSettlement。
-func (s *Service) finalize(ctx context.Context, taskID, lease int64, model *models.ModelConfig, userID int64, projectID *int64, frozenCredits int64, reqInputs map[string]any, result *upstream.CallResult, note string) (*SubmitResult, error) {
+//
+// lost 只在失租时取消：落盘阶段不沿用执行 ctx 的截止时间(轮询窗口末尾出片时剩余时间可能
+// 不够把大文件搬完,P22),改用 persistContext 给的独立预算,失租仍能及时中止下载。
+func (s *Service) finalize(ctx, lost context.Context, taskID, lease int64, model *models.ModelConfig, userID int64, projectID *int64, frozenCredits int64, reqInputs map[string]any, result *upstream.CallResult, note string) (*SubmitResult, error) {
 	// 出结果后多退少补：按模型计费配置 + 请求/响应 map 算实际积分，
 	// 与冻结额结算。
 	mb := model.BillingConfig()
@@ -684,9 +717,20 @@ func (s *Service) finalize(ctx context.Context, taskID, lease int64, model *mode
 	upstreamURLs := filterHTTPURLs(result.OutputURLs)
 
 	durMs := durationMsFromInputs(reqInputs)
-	persistedURLs, assetIDs, mimes, persistErrs, perr := s.persistOutputs(ctx, userID, taskID, projectID, result.OutputURLs, durMs)
+	// 两个调用方都在名额归还之后才进 finalize：落盘期间记「落盘中」，队列领取据此不把它算作在跑（P20）。
+	endPersist := s.beginPersist(model.ModelID)
+	defer endPersist() // 兜底 panic；正常路径在落盘返回时就结束（sync.Once）
+	pctx, cancelPersist := persistContext(ctx, lost)
+	persistedURLs, assetIDs, mimes, persistErrs, perr := s.persistOutputs(pctx, userID, taskID, projectID, result.OutputURLs, durMs)
+	cancelPersist()
+	endPersist()
 	if perr != nil {
-		// 只有 file:// / data: 槽位会走到这里（persistOutputs 注释）。上游已出图、钱已冻结,
+		// 项目在生成期间被删除（P9）：产物不入库，任务走失败退款收口。
+		if errors.Is(perr, errProjectDeleted) {
+			_, _ = s.finishFailureTx(context.Background(), taskID, lease, projectDeletedReason, note)
+			return nil, perr
+		}
+		// 其余只有 file:// / data: 槽位会走到这里（persistOutputs 注释）。上游已出图、钱已冻结,
 		// 但产物没法交付——保守退款,与「上游调用错误」同一收口。
 		_, _ = s.finishFailureTx(context.Background(), taskID, lease, "产物保存失败，已退款，请重试", note)
 		return nil, perr
@@ -830,15 +874,14 @@ func (s *Service) ResumeOrphanedTasks() {
 			_, _ = s.finishFailureTx(context.Background(), task.ID, lease, "orphaned: model no longer configured for polling", ledgerNote(model, inputCapture.Note))
 			continue
 		}
-		// 续跑纳入并发名额记账(不阻塞,见 Occupy),completeAsync 结束时归还。
+		// 续跑纳入并发名额记账(不阻塞,见 Occupy),completeAsync 在轮询返回时归还。
 		release := s.concurrency.Occupy(model.ModelID)
 		delay := s.resumeDelay(resumed)
 		s.tracker().Go(func() {
-			defer release()
 			if delay > 0 {
 				time.Sleep(delay)
 			}
-			s.completeAsync(task.ID, lease, model, apiKey, baseDomain, task.UpstreamTaskID, task.UserID, task.ProjectID, task.FrozenCents, reqInputs, ledgerNote(model, inputCapture.Note), task.CreatedAt)
+			s.completeAsync(task.ID, lease, model, apiKey, baseDomain, task.UpstreamTaskID, task.UserID, task.ProjectID, task.FrozenCents, reqInputs, ledgerNote(model, inputCapture.Note), task.CreatedAt, release)
 		})
 		resumed++
 	}
@@ -871,7 +914,11 @@ func upstreamChangedMessage(upstreamTaskID string) string {
 
 // completeAsync 在自己的 goroutine 里跑，跟 HTTP 请求解耦：
 // 轮询上游直到任务结束，出错就退款/标记失败，否则结算并持久化。
-func (s *Service) completeAsync(taskID, lease int64, model *models.ModelConfig, apiKey, baseDomain, upstreamTaskID string, userID int64, projectID *int64, frozenCredits int64, reqInputs map[string]any, note string, startedAt time.Time) {
+//
+// releaseSlot 是本任务占的模型并发名额(新提交的 Acquire 或续跑的 Occupy,都由 sync.Once 包装):
+// 轮询一返回就归还,下载落盘只占全局下载闸(P20);defer 兜底异常出口。
+func (s *Service) completeAsync(taskID, lease int64, model *models.ModelConfig, apiKey, baseDomain, upstreamTaskID string, userID int64, projectID *int64, frozenCredits int64, reqInputs map[string]any, note string, startedAt time.Time, releaseSlot func()) {
+	defer releaseSlot()
 	defer func() {
 		if rec := recover(); rec != nil {
 			errMsg := fmt.Sprintf("internal panic during async completion: %v", rec)
@@ -884,14 +931,23 @@ func (s *Service) completeAsync(taskID, lease int64, model *models.ModelConfig, 
 	// 轮询窗口按任务已消耗的寿命折算：新提交给全量 maxWait；孤儿接管(发版强杀后
 	// leader 续跑)只给剩余额度，避免每次接管都重置整窗、任务总超时翻倍。
 	// 兜底 ctx = 窗口+缓冲，保证窗口的友好文案先于 ctx 超时触发。
+	// lost 只在失租时取消：轮询 ctx 派生自它,落盘的独立预算 ctx 也接在它上面(见 finalize)。
 	window := remainingPollWindow(startedAt, maxWaitSeconds(model.PollingTemplate))
-	ctx, cancel := context.WithTimeout(context.Background(), pollCtxTimeout(window))
+	lost, markLost := context.WithCancel(context.Background())
+	defer markLost()
+	ctx, cancel := context.WithTimeout(lost, pollCtxTimeout(window))
 	defer cancel()
-	stopHeartbeat := s.startHeartbeat(taskID, lease, cancel)
+	stopHeartbeat := s.startHeartbeat(taskID, lease, markLost)
 	defer stopHeartbeat()
 
-	client := upstream.NewClient(upstream.ClientOptions{BaseURL: baseDomain})
+	client := &pollClient{Client: upstream.NewClient(upstream.ClientOptions{BaseURL: baseDomain}), svc: s, baseURL: baseDomain}
 	polled, err := s.pollUpstream(ctx, client, apiKey, model.PollingTemplate, upstreamTaskID, window)
+	// 轮询返回即还生成名额(成功走下载闸,失败直接收口)。
+	releaseSlot()
+	if polled != nil {
+		// contentPath 产物落成的临时文件(见 pollClient)：落盘或失败后都删掉。
+		defer polled.RemoveSpillFiles()
+	}
 	if err != nil {
 		log.Printf("generation: pollUpstream failed task=%d: %v", taskID, err)
 		// 权威终态失败先试业务重试：同一任务转 retry_pending 到点重排，
@@ -913,7 +969,7 @@ func (s *Service) completeAsync(taskID, lease int64, model *models.ModelConfig, 
 		polled.TaskID = upstreamTaskID
 	}
 
-	if _, err := s.finalize(ctx, taskID, lease, model, userID, projectID, frozenCredits, reqInputs, polled, note); err != nil {
+	if _, err := s.finalize(ctx, lost, taskID, lease, model, userID, projectID, frozenCredits, reqInputs, polled, note); err != nil {
 		log.Printf("generation: finalize failed for task %d: %v", taskID, err)
 	}
 }
@@ -1087,6 +1143,25 @@ func (s *Service) pollUpstream(ctx context.Context, client upstreamPollClient, a
 			// 没有 URL 字段时，尝试 contentPath（Sora：下载视频流）
 			if len(result.OutputURLs) == 0 && cfg.ContentPath != "" {
 				contentPath := strings.ReplaceAll(cfg.ContentPath, "{{task_id}}", upstreamTaskID)
+				if dl, ok := client.(contentDownloader); ok {
+					// 流式落临时文件，以 file:// 交给落盘（P34）。超限是确定性的，重下只会再超一次。
+					file, err := dl.downloadContent(ctx, apiKey, contentPath)
+					if err != nil {
+						if ctx.Err() != nil {
+							return nil, ctx.Err()
+						}
+						if errors.Is(err, errOutputTooLarge) {
+							return nil, err
+						}
+						temporaryFailures = 1
+						nextDelay = s.nextPollingRetryDelay(temporaryFailures, normalInterval)
+						continue
+					}
+					result.SpillFiles = append(result.SpillFiles, file)
+					result.OutputURLs = append(result.OutputURLs, "file://"+file.Path)
+					upstream.ExtractFields(result.Body, result)
+					return result, nil
+				}
 				contentResult, err := client.Call(ctx, apiKey, "GET", contentPath, nil)
 				if err != nil {
 					if ctx.Err() != nil {
@@ -1414,6 +1489,11 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 			}
 		}
 		stored, assetID, mime, err := s.persistSlotWithRetry(ctx, userID, taskID, pid, i, rawURL, durationMs)
+		if errors.Is(err, errProjectDeleted) {
+			// 项目已删除：不论产物形态，整个任务按「项目已删除」失败收口（finalize）。
+			log.Printf("generation: persist output skipped task=%d idx=%d: project %d deleted", taskID, i, pid)
+			return nil, nil, nil, nil, err
+		}
 		if err != nil {
 			// file:// 与 data: 都是"内容只在本进程手里"的产物：没有上游地址可留、也无从
 			// 手动重试，落盘失败只能判失败退款。data: 绝不能原样写进 output/画布：
@@ -1487,45 +1567,38 @@ func (s *Service) persistSlot(ctx context.Context, userID, taskID, projectID int
 	}
 	var assetID int64
 	if s.assets != nil && s.db != nil {
-		// asset 行与存储用量同一事务:Insert 成功 AddStorage 失败的
-		// 「永久少计存储」窗口随事务消失;唯一键兜底并发重放,只有真正新插入才计量。
-		err := func() error {
-			tx, err := s.db.BeginTx(ctx, nil)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = tx.Rollback() }()
-			var slotDuration int64
-			if strings.HasPrefix(mime, "video/") {
-				slotDuration = durationMs // 生成参数时长;非 video 保持 0 → NULL
-			}
-			id, inserted, err := s.assets.InsertSlotTx(tx, assets.AssetRecord{
-				UserID:       userID,
-				ProjectID:    projectID,
-				SourceTaskID: taskID,
-				ObjectKey:    key,
-				SourceKind:   "generation",
-				URL:          stored.URL,
-				SizeBytes:    stored.Size,
-				MimeType:     mime,
-				DurationMs:   slotDuration,
-			}, i)
-			if err != nil {
-				return err
-			}
-			if inserted && s.users != nil && stored.Size > 0 {
-				if err := s.users.AddStorageTx(tx, userID, stored.Size); err != nil {
-					return err
-				}
-			}
-			if err := tx.Commit(); err != nil {
-				return err
-			}
-			assetID = id
-			return nil
-		}()
-		if err != nil {
+		var slotDuration int64
+		if strings.HasPrefix(mime, "video/") {
+			slotDuration = durationMs // 生成参数时长;非 video 保持 0 → NULL
+		}
+		id, err := s.recordSlotAsset(ctx, assets.AssetRecord{
+			UserID:       userID,
+			ProjectID:    projectID,
+			SourceTaskID: taskID,
+			ObjectKey:    key,
+			SourceKind:   "generation",
+			URL:          stored.URL,
+			SizeBytes:    stored.Size,
+			MimeType:     mime,
+			DurationMs:   slotDuration,
+		}, i)
+		switch {
+		case errors.Is(err, errProjectDeleted):
+			// 对象已在事务里登记孤儿（见 recordSlotAssetOnce），任务由调用方按「项目已删除」收口。
+			return "", 0, "", err
+		case err != nil:
 			log.Printf("generation: persist asset slot failed task=%d idx=%d: %v", taskID, i, err)
+			if isRemoteURL(rawURL) {
+				// http(s) 产物：没有 asset 行的对象既不计配额、删任务也回收不到。登记孤儿交给 GC，
+				// 返回错误让 persistOutputs 保留上游地址，节点显示「未保存到本地」可手动补搬（P26）。
+				s.markSlotOrphan(ctx, key, userID, stored.Size)
+				return "", 0, "", fmt.Errorf("%w: %v", errSlotAssetRecord, err)
+			}
+			// file:// 与 data: 的内容只在本进程手里，返回错误会被判失败退款，而文件其实已经写好
+			// （方案第 5 节第 6 条）。照旧交付本地地址、assetId 记 0；对象不登记孤儿——它正被
+			// 任务产物引用，登记了会在 7 天后被 GC 删掉。
+		default:
+			assetID = id
 		}
 	}
 	return stored.URL, assetID, mime, nil

@@ -112,3 +112,46 @@ func TestClaimLoserDoesNotExecute(t *testing.T) {
 		t.Fatal("CAS 失败时必须返回 false，调用方据此跳过执行")
 	}
 }
+
+// 落盘中的任务（生成名额已还、行仍在跑）不占队列空位（P20）：上限 3、DB 在跑 3、其中 2 个在落盘
+// → 还能领 2 个。扣减不会扣成负数，也不影响别的模型。
+func TestPickupDiscountsPersistingTasks(t *testing.T) {
+	repo := &fakeQueueRepo{
+		running: map[string]int{"video": 3, "image": 1},
+		queued: map[string][]Task{
+			"video": {qTask(1, "video"), qTask(2, "video"), qTask(3, "video")},
+			"image": {qTask(4, "image")},
+		},
+	}
+	reg := NewConcurrencyRegistry()
+	end1 := reg.BeginPersist("video")
+	end2 := reg.BeginPersist("video")
+	endImg := reg.BeginPersist("image")
+	reg.BeginPersist("image") // 多于 DB 在跑数：夹到 0，不变成负数
+	adj := persistAwarePickupRepo{queuePickupRepo: repo, persisting: reg.PersistingByModel}
+
+	got := pickupCandidates(adj, []string{"video", "image"}, map[string]int{"video": 3, "image": 1}, 60)
+	var video, image int
+	for _, task := range got {
+		if task.ModelID == "video" {
+			video++
+		} else {
+			image++
+		}
+	}
+	if video != 2 || image != 1 {
+		t.Fatalf("落盘中的应从在跑数里扣掉: video=%d image=%d", video, image)
+	}
+
+	end1()
+	end1() // 结束函数幂等
+	end2()
+	endImg()
+	if got := reg.PersistingByModel(); got["video"] != 0 || got["image"] != 1 {
+		t.Fatalf("结束后计数不对: %v", got)
+	}
+	got = pickupCandidates(adj, []string{"video"}, map[string]int{"video": 3}, 60)
+	if len(got) != 0 {
+		t.Fatalf("落盘结束后 video 已满，不应再领, got %d", len(got))
+	}
+}

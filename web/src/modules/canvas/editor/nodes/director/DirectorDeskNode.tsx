@@ -44,6 +44,13 @@ const MSG_CAPTURES = 'storyai:director-desk-captures-sent';
 const MAX_IMPORT_BYTES = 30 * 1024 * 1024;
 const STATE_WARN_BYTES = 500 * 1024;
 const ASSET_CACHE_NAME = 'director-desk-assets-v1';
+// Cache Storage 上限（P36）：原来只进不出，换过的模型、删掉的模型永远占着磁盘。
+// 按条目数和总字节两道闸做 LRU 淘汰；一只模型上限 30MB，60 条 / 512MB 足够覆盖
+// 模型库上限加预设。Cache API 不记访问时间，LRU 索引（键 → 最近使用时刻、字节数）
+// 放 localStorage，丢了也只是退化成「未知条目先淘汰」。
+const ASSET_CACHE_MAX_ENTRIES = 60;
+const ASSET_CACHE_MAX_BYTES = 512 * 1024 * 1024;
+const ASSET_CACHE_LRU_KEY = 'director-desk-assets-lru-v1';
 
 // 与 NodeShell 的 currentProjectId 同源逻辑：uploadAsset 需要 projectId 归属
 //（删项目时 ProjectCleaner 按 project_id 收割 assets 行，归属错了清理就漏）。
@@ -213,16 +220,78 @@ function createHostAdapter(nodeId: string, assetIdByUrl: Map<string, number>): D
 // 几份 30MB 级模型泄漏。失败不入表，下次重试。
 const resolvedAssetUrls = new Map<string, Promise<string>>();
 
+type AssetLruIndex = Record<string, { at: number; size: number }>;
+
+function readAssetLru(): AssetLruIndex {
+  try {
+    const raw = window.localStorage.getItem(ASSET_CACHE_LRU_KEY);
+    const v: unknown = raw ? JSON.parse(raw) : null;
+    return v && typeof v === 'object' ? (v as AssetLruIndex) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAssetLru(idx: AssetLruIndex): void {
+  try {
+    window.localStorage.setItem(ASSET_CACHE_LRU_KEY, JSON.stringify(idx));
+  } catch {
+    // 存不下就算了：索引只影响淘汰顺序。
+  }
+}
+
+function touchAssetLru(key: string, size: number): void {
+  const idx = readAssetLru();
+  idx[key] = { at: Date.now(), size };
+  writeAssetLru(idx);
+}
+
+// evictAssetCache 按最近使用时刻从旧到新删，直到条目数和总字节都回到上限内。
+// 索引里没有的条目（索引上线前缓存的、索引被清掉的）视为最久未用、大小按 0 计。
+// keep 是刚写入的那条，永不删（单只超过字节上限时也留着它）。顺带把索引里
+// 缓存已不存在的键清掉。export 仅为测试。
+export async function evictAssetCache(cache: Cache, keep: string): Promise<void> {
+  const idx = readAssetLru();
+  const entries = (await cache.keys()).map((req) => ({
+    req,
+    key: req.url,
+    at: idx[req.url]?.at ?? 0,
+    size: idx[req.url]?.size ?? 0,
+  }));
+  entries.sort((a, b) => a.at - b.at);
+  let count = entries.length;
+  let bytes = entries.reduce((n, e) => n + e.size, 0);
+  const next: AssetLruIndex = {};
+  for (const e of entries) {
+    if (e.key !== keep && (count > ASSET_CACHE_MAX_ENTRIES || bytes > ASSET_CACHE_MAX_BYTES)) {
+      await cache.delete(e.req);
+      count -= 1;
+      bytes -= e.size;
+      continue;
+    }
+    if (idx[e.key]) next[e.key] = idx[e.key];
+  }
+  writeAssetLru(next);
+}
+
 async function fetchCachedAssetBlobUrl(url: string, cacheKey: string): Promise<string> {
   const cache = await caches.open(ASSET_CACHE_NAME);
-  let resp = await cache.match(cacheKey);
-  if (!resp) {
-    const fetched = await fetch(url);
-    if (!fetched.ok) throw new Error(`asset fetch ${fetched.status}`);
-    await cache.put(cacheKey, fetched.clone());
-    resp = fetched;
+  // 与 cache.keys() 返回的 Request.url 同形（绝对地址），索引才对得上。
+  const lruKey = new URL(cacheKey, window.location.href).href;
+  const hit = await cache.match(cacheKey);
+  if (hit) {
+    const blob = await hit.blob();
+    touchAssetLru(lruKey, blob.size);
+    return URL.createObjectURL(blob);
   }
-  return URL.createObjectURL(await resp.blob());
+  const fetched = await fetch(url);
+  if (!fetched.ok) throw new Error(`asset fetch ${fetched.status}`);
+  await cache.put(cacheKey, fetched.clone());
+  const blob = await fetched.blob();
+  touchAssetLru(lruKey, blob.size);
+  // 淘汰失败（无 keys/delete、存储异常）不影响本次加载：缓存只是加速。
+  await evictAssetCache(cache, lruKey).catch(() => {});
+  return URL.createObjectURL(blob);
 }
 
 // 签名 URL 的 query 每次变、路径含 object_key 恒定——去 query 即稳定缓存
