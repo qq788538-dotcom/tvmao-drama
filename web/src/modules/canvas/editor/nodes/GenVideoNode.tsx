@@ -277,7 +277,9 @@ export function GenVideoNode({ id }: { id: string }) {
                 history: next,
                 historyIndex: nextIdx,
                 pendingGen: undefined,
-                assetId: finalTask.assetIds?.[0] || undefined,
+                // 0（文件落了本地但素材记录没写成功）也照存，与服务端 sink 一致——
+                // 「素材未登记」角标靠它认出来（见 desktop/unsavedLocal）。
+                assetId: finalTask.assetIds?.[0] ?? undefined,
                 kind: 'video',
                 // 新结果属于这次任务：清掉上次下载失败留下的标记，否则重试会拿旧任务覆盖新结果。
                 unsaved: undefined,

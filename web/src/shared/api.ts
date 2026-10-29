@@ -449,6 +449,9 @@ export interface CanvasTaskStatus {
   status: 'processing' | 'succeeded' | 'failed';
   outputUrls?: string[];
   assetIds?: number[]; // 与 outputUrls 同序;节点靠它做「保存素材库」「合规校验」
+  // 与 outputUrls 同序的落盘失败原因（generation 任务 output.persistErrors）。目前 sidecar 的
+  // canvas-tasks 状态接口还没透出，前端按可选字段读，拿不到就只显示通用说明。
+  persistErrors?: string[];
   text?: string; // 文本生成任务的产物(文本节点 AI 生成);与 outputUrls 互斥
   error?: string;
 }
@@ -720,6 +723,8 @@ export interface GenerationTask {
   output?: {
     outputUrls?: string[];
     assetIds?: number[];
+    // 与 outputUrls 同序：仍是上游外链的槽位为什么没保存到本地；全部成功时没有这个字段。
+    persistErrors?: string[];
     raw?: unknown;
     upstreamTaskId?: string;
     // 主产物真实媒体类型的大类(后端按下载 mime 推导)。隐藏模型(如 sd2.0
