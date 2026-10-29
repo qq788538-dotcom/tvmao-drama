@@ -99,6 +99,12 @@ export function VideoInputNode({ id }: { id: string }) {
     };
     tempVideo.preload = 'metadata';
     tempVideo.onloadedmetadata = () => {
+      // 探测期间又换了片：这份时长属于上一个视频，写进去就会拿旧片时长给新片做合规预检
+      //（useMediaNodeMenu 优先信 videoMeta）。
+      if (useCanvasStore.getState().nodesById.get(id)?.content !== asset.url) {
+        release();
+        return;
+      }
       updateNodeSettings(id, {
         videoMeta: { duration: tempVideo.duration, w: tempVideo.videoWidth, h: tempVideo.videoHeight },
       });

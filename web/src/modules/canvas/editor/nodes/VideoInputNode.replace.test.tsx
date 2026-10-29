@@ -56,7 +56,11 @@ beforeEach(() => {
   vi.mocked(saveFrames).mockReset().mockResolvedValue(undefined);
   vi.mocked(persistNodeById).mockClear();
   // 每个用例重设：afterEach 的 restoreAllMocks 会把 vi.fn 的实现一并清掉。
-  vi.mocked(uploadFileIntoNode).mockResolvedValue({ id: 7, url: 'https://x/new.mp4', mimeType: 'video/mp4' } as never);
+  // 与真实实现一样把新地址写进节点 content——探测回调要据此确认节点还是这个视频。
+  vi.mocked(uploadFileIntoNode).mockImplementation(async (nodeId) => {
+    useCanvasStore.getState().updateNode(nodeId, { content: 'https://x/new.mp4', status: 'succeeded' });
+    return { id: 7, url: 'https://x/new.mp4', mimeType: 'video/mp4' } as never;
+  });
   useCanvasStore.setState({
     nodes: [
       {
@@ -121,4 +125,19 @@ it('临时 video 加载失败时同样释放', async () => {
   expect(probe.removeAttribute).toHaveBeenCalledWith('src');
   expect(probe.load).toHaveBeenCalled();
   expect(persistNodeById).not.toHaveBeenCalled();
+});
+
+// 探测还没回来就又换了片：上一个视频的时长不能写到新视频头上（合规预检优先信 videoMeta）。
+it('探测期间节点已换成别的视频时丢弃这份元数据', async () => {
+  const { container } = renderNode();
+  stubVideoCreation();
+  await replaceVideo(container);
+
+  const probe = created[0];
+  act(() => useCanvasStore.getState().updateNode('v1', { content: 'https://x/newer.mp4' }));
+  act(() => probe.onloadedmetadata?.());
+  expect((useCanvasStore.getState().nodes[0].settings as Record<string, unknown>).videoMeta).toBeUndefined();
+  expect(persistNodeById).not.toHaveBeenCalled();
+  expect(probe.removeAttribute).toHaveBeenCalledWith('src');
+  expect(probe.load).toHaveBeenCalled();
 });
