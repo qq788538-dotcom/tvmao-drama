@@ -8,6 +8,7 @@ import { persistNodeById } from '../persistence/canvasMutations';
 import { NodeShell } from '../NodeShell';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
 import { VideoPlayer } from './VideoPlayer';
+import { useNodeMediaActive } from './useNodeMediaActive';
 import {
   currentProjectId,
   fetchCanvasPostprocessConfig,
@@ -64,6 +65,7 @@ export function SubtitleEraseNode({ id }: { id: string }) {
   const canSubmit = Boolean(sourceUrl && sourceNodeId && modelId) && !isGenerating;
 
   const mediaMenu = useMediaNodeMenu({ url: node?.content, kind: 'video', nodeId: id });
+  const mediaActive = useNodeMediaActive(id);
 
   // 只要这个节点持有一个进行中的去字幕任务就恢复/驱动 polling——跟 GenVideoNode
   // 同一套「方案 B」：结果由后端权威写回快照，轮询仅用于前端即时展示，刷新页面
@@ -132,6 +134,7 @@ export function SubtitleEraseNode({ id }: { id: string }) {
             {/* 已有产物：展示去字幕结果，可走 useMediaNodeMenu 保存/发送。 */}
             {node.content ? (
               <VideoPlayer
+                active={mediaActive}
                 src={node.content} crossOrigin={mediaCrossOrigin(node.content)}
                 className="w-full h-full object-contain bg-black"
                 playsInline
@@ -141,9 +144,10 @@ export function SubtitleEraseNode({ id }: { id: string }) {
                   mediaMenu.onContextMenu(e);
                 }}
               />
-            ) : sourceUrl ? (
+            ) : sourceUrl && mediaActive ? (
               // 还没有产物：展示上游视频缩略，纯预览。时长不从这里读（见上方预估注释）。
               // 无 controls，没有可保护的控制条——mousedown 放行冒泡，画面可拖动节点。
+              // 离开视口（含一屏边距）就不挂，免得屏幕外的节点也去拉源视频（P15）。
               <video
                 src={sourceUrl} crossOrigin={mediaCrossOrigin(sourceUrl)}
                 className="w-full h-full object-contain bg-black"

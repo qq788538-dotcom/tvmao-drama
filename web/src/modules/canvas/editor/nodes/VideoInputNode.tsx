@@ -24,6 +24,7 @@ import { uploadAsset, currentProjectId } from '@/shared/api';
 import { saveFrames, loadFrames } from '@/shared/frameCache';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
 import { VideoPlayer } from './VideoPlayer';
+import { useNodeMediaActive } from './useNodeMediaActive';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 
 interface Frame {
@@ -48,6 +49,7 @@ export function VideoInputNode({ id }: { id: string }) {
     kind: 'video',
     nodeId: id,
   });
+  const mediaActive = useNodeMediaActive(id);
 
   useEffect(() => {
     if (!frameMenu) return;
@@ -308,7 +310,7 @@ export function VideoInputNode({ id }: { id: string }) {
                 >
                   {/* 控制条区域拦 mousedown 交给播放器；画面区域放行冒泡给 NodeShell
                       拖动——此前完全不拦，按进度条拖动时节点会跟着跑。 */}
-                  <VideoPlayer ref={videoRef} src={node.content} crossOrigin={mediaCrossOrigin(node.content)} className="w-full h-full object-contain" draggable={false} />
+                  <VideoPlayer ref={videoRef} active={mediaActive} src={node.content} crossOrigin={mediaCrossOrigin(node.content)} className="w-full h-full object-contain" draggable={false} />
                 </div>
               );
             })()}

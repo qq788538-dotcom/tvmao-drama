@@ -31,6 +31,7 @@ import { NodeShell } from '../NodeShell';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
 import { VideoActionsBar } from './VideoActionsBar';
 import { VideoPlayer } from './VideoPlayer';
+import { useNodeMediaActive } from './useNodeMediaActive';
 import {
   listRuntimeModels,
   pollCanvasTaskUntilDone,
@@ -127,6 +128,7 @@ export function GenVideoNode({ id }: { id: string }) {
       { key: 'send', label: '发送到画布', onPick: () => sendToCanvasRef.current() },
     ],
   });
+  const mediaActive = useNodeMediaActive(id);
 
   if (!node) return null;
 
@@ -608,6 +610,7 @@ export function GenVideoNode({ id }: { id: string }) {
                 并加一层变暗浮层，直到新视频 resolve，这样用户不会丢失上下文。 */}
             {currentUrl ? (
               <VideoPlayer
+                active={mediaActive}
                 src={currentUrl} crossOrigin={mediaCrossOrigin(currentUrl)}
                 className="w-full h-full object-contain bg-black"
                 playsInline
