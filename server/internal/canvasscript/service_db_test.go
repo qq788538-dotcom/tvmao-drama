@@ -19,6 +19,8 @@ import (
 type fakeSettings struct {
 	mu sync.Mutex
 	m  map[string]string
+	// err 非 nil 时 Get 模拟数据库瞬时错误
+	err error
 }
 
 func newFakeSettings(cfg Config) *fakeSettings {
@@ -29,6 +31,9 @@ func newFakeSettings(cfg Config) *fakeSettings {
 func (f *fakeSettings) Get(key string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.err != nil {
+		return "", f.err
+	}
 	return f.m[key], nil
 }
 
@@ -71,8 +76,11 @@ type fakeSkills struct {
 	beforeReturn func()
 }
 
-func (f *fakeSkills) Snapshot(_ context.Context, name string) (skillruntime.Snapshot, error) {
+func (f *fakeSkills) Snapshot(ctx context.Context, name string) (skillruntime.Snapshot, error) {
 	if f.snapErr != nil {
+		if ctx.Err() != nil {
+			return skillruntime.Snapshot{}, ctx.Err()
+		}
 		return skillruntime.Snapshot{}, f.snapErr
 	}
 	return skillruntime.Snapshot{Name: name}, nil
@@ -394,6 +402,41 @@ func TestExecuteConfigErrorsFailImmediately(t *testing.T) {
 				t.Fatalf("status=%s attempts=%d err=%s runs=%d", status, attempts, msg, len(sk.runs))
 			}
 		})
+	}
+}
+
+// 读 skill 时进程正在关闭（ctx 已取消）：不是配置错误，退回计数、回到 pending，下次启动重跑。
+func TestExecuteSnapshotInterruptedByShutdownRequeues(t *testing.T) {
+	sk := &fakeSkills{content: validCandidate}
+	svc, conn := newTestService(t, testConfig(), sk, fakeModels{})
+	id := submitOne(t, svc)
+	sk.snapErr = errors.New("read skill: context canceled")
+	task, _ := svc.claimOne(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	svc.execute(ctx, task, testConfig())
+	if status, _, attempts := taskRow(t, conn, id); status != StatusPending || attempts != 0 {
+		t.Fatalf("关闭打断应回到 pending 且不计次: status=%s attempts=%d", status, attempts)
+	}
+}
+
+// 读配置遇到数据库瞬时错误：LoadConfig 必须报错，worker 跳过这一拍；不能拿零值配置
+// 去跑任务，否则候选列表为空会把排队任务全部按「模型已不可用」判死。
+func TestLoadConfigErrorDoesNotFailQueuedTasks(t *testing.T) {
+	sk := &fakeSkills{content: validCandidate}
+	svc, conn := newTestService(t, testConfig(), sk, fakeModels{})
+	id := submitOne(t, svc)
+	fs := svc.settings.(*fakeSettings)
+	fs.mu.Lock()
+	fs.err = errors.New("database is locked")
+	fs.mu.Unlock()
+	if _, err := svc.LoadConfig(); err == nil {
+		t.Fatal("读库失败应返回错误")
+	}
+	svc.claimAndRun(context.Background())
+	svc.running.Wait()
+	if status, _, attempts := taskRow(t, conn, id); status != StatusPending || attempts != 0 {
+		t.Fatalf("读配置失败不应动排队任务: status=%s attempts=%d", status, attempts)
 	}
 }
 

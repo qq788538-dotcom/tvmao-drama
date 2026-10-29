@@ -175,9 +175,14 @@ func newInstanceID() string {
 }
 
 // LoadConfig 读配置；未配置返回零值（风格列表为空 = 入口不可用）。
+// 读库失败要报错，不能当「未配置」：worker 拿零值配置跑任务，候选列表为空会把排队的任务
+// 全部按「模型已不可用」判死。
 func (s *Service) LoadConfig() (Config, error) {
 	raw, err := s.settings.Get(SettingKey)
-	if err != nil || strings.TrimSpace(raw) == "" {
+	if err != nil {
+		return Config{}, fmt.Errorf("读取 canvas_script_config: %w", err)
+	}
+	if strings.TrimSpace(raw) == "" {
 		return Config{}, nil
 	}
 	var cfg Config
@@ -439,6 +444,15 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 		log.Printf("canvasscript: task=%d 配置错误，不重试: %s", t.ID, detail)
 		_, _ = s.db.ExecContext(dbCtx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=? AND status='running'`, msg, t.ID)
 	}
+	// 进程关闭打断的不是任务本身的失败：退回本次计数、回到 pending，下次启动重跑。
+	// 走普通失败分流的话，最后一次尝试会被判成「重试次数用尽」永久失败。
+	requeueInterrupted := func(err error) {
+		log.Printf("canvasscript: task=%d 运行被关闭打断，下次启动重跑: %v", t.ID, err)
+		_, _ = s.db.ExecContext(dbCtx, `
+			UPDATE canvas_script_tasks SET status='pending', owner_instance=NULL, heartbeat_at=NULL,
+			       attempts=MAX(attempts-1, 0)
+			WHERE id=? AND status='running'`, t.ID)
+	}
 
 	if t.Model == "" {
 		_, _ = s.db.ExecContext(dbCtx, `UPDATE canvas_script_tasks SET status='failed', error=? WHERE id=?`,
@@ -452,6 +466,11 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	}
 	snapshot, err := s.skills.Snapshot(ctx, t.SkillName)
 	if err != nil {
+		if ctx.Err() != nil {
+			// 关闭打断了读 skill，不是 skill 缺失：同下面 Run 被打断的处理，退回计数、回到 pending。
+			requeueInterrupted(err)
+			return
+		}
 		failConfig("风格对应的 skill 不可用", err.Error())
 		return
 	}
@@ -490,13 +509,7 @@ func (s *Service) execute(ctx context.Context, t *Task, cfg Config) {
 	})
 	if err != nil {
 		if ctx.Err() != nil {
-			// 进程关闭打断的不是任务本身的失败：退回本次计数、回到 pending，下次启动重跑。
-			// 走普通失败分流的话，最后一次尝试会被判成「重试次数用尽」永久失败。
-			log.Printf("canvasscript: task=%d 运行被关闭打断，下次启动重跑: %v", t.ID, err)
-			_, _ = s.db.ExecContext(dbCtx, `
-				UPDATE canvas_script_tasks SET status='pending', owner_instance=NULL, heartbeat_at=NULL,
-				       attempts=MAX(attempts-1, 0)
-				WHERE id=? AND status='running'`, t.ID)
+			requeueInterrupted(err)
 			return
 		}
 		fail("生成失败，请稍后重试", err.Error())
