@@ -76,3 +76,11 @@ func (s *Service) slotWaitAbort(lost context.Context) (context.Context, func()) 
 	}()
 	return abort, cancel
 }
+
+// beginPersist 记一笔落盘中（ConcurrencyRegistry.BeginPersist）；没有注入名额表时（部分测试）是空操作。
+func (s *Service) beginPersist(modelID string) func() {
+	if s.concurrency == nil {
+		return func() {}
+	}
+	return s.concurrency.BeginPersist(modelID)
+}

@@ -717,9 +717,13 @@ func (s *Service) finalize(ctx, lost context.Context, taskID, lease int64, model
 	upstreamURLs := filterHTTPURLs(result.OutputURLs)
 
 	durMs := durationMsFromInputs(reqInputs)
+	// 两个调用方都在名额归还之后才进 finalize：落盘期间记「落盘中」，队列领取据此不把它算作在跑（P20）。
+	endPersist := s.beginPersist(model.ModelID)
+	defer endPersist() // 兜底 panic；正常路径在落盘返回时就结束（sync.Once）
 	pctx, cancelPersist := persistContext(ctx, lost)
 	persistedURLs, assetIDs, mimes, persistErrs, perr := s.persistOutputs(pctx, userID, taskID, projectID, result.OutputURLs, durMs)
 	cancelPersist()
+	endPersist()
 	if perr != nil {
 		// 项目在生成期间被删除（P9）：产物不入库，任务走失败退款收口。
 		if errors.Is(perr, errProjectDeleted) {

@@ -98,6 +98,54 @@ func TestCallAndCompleteReleasesSlotBeforeDownload(t *testing.T) {
 	}
 }
 
+// 名额提前归还对队列任务也要生效（P20）：队列按 DB 行数算空位，下载中的任务行仍是 running，
+// 领取时必须把本进程落盘中的任务扣掉，否则下载一慢同模型的排队任务就领不动。
+func TestQueuePickupNotBlockedByDownloadingTask(t *testing.T) {
+	conn, svc, uid := newRecoverDBHarness(t)
+	svc.concurrency = NewConcurrencyRegistry()
+	svc.storage = &captureStorage{}
+	svc.httpClient = http.DefaultClient
+	svc.tmpDir = t.TempDir()
+
+	dl, hit, release := blockingPNGServer(t)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"url":"` + dl.URL + `/a.png"}]}`))
+	}))
+	t.Cleanup(up.Close)
+
+	id := insertDirectRunning(t, conn, uid, "m-q")
+	res, err := conn.Exec(`INSERT INTO generation_tasks (user_id, model_id, status, input, frozen_cents, sink, lease_version)
+		VALUES (?, 'm-q', 'queued', '{}', 0, '{"kind":"test"}', 0)`, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queuedID, _ := res.LastInsertId()
+	model := &models.ModelConfig{ModelID: "m-q", BasePath: "/gen", GenControlRaw: json.RawMessage(`{"concurrency":1}`)}
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.callAndComplete(context.Background(), id, 1, model, "k", up.URL, []byte(`{}`), uid, nil, 40, nil, nil, nil, "")
+		done <- err
+	}()
+
+	waitHit(t, hit)
+	limits := map[string]int{"m-q": 1}
+	if got := pickupCandidates(svc.repo, []string{"m-q"}, limits, runningFreshSec); len(got) != 0 {
+		t.Fatalf("前提：只看 DB 时下载中的行占着唯一的空位, got %d", len(got))
+	}
+	adj := persistAwarePickupRepo{queuePickupRepo: svc.repo, persisting: svc.concurrency.PersistingByModel}
+	if got := pickupCandidates(adj, []string{"m-q"}, limits, runningFreshSec); len(got) != 1 || got[0].ID != queuedID {
+		t.Fatalf("下载期间同模型的排队任务应能领取, got %+v", got)
+	}
+	release()
+	if err := <-done; err != nil {
+		t.Fatalf("callAndComplete: %v", err)
+	}
+	if got := svc.concurrency.PersistingByModel(); len(got) != 0 {
+		t.Fatalf("落盘结束后计数应归零, got %v", got)
+	}
+}
+
 func TestCompleteAsyncReleasesSlotWhenPollReturns(t *testing.T) {
 	conn, svc, uid := newRecoverDBHarness(t)
 	svc.concurrency = NewConcurrencyRegistry()

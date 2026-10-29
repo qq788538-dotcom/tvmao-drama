@@ -92,10 +92,46 @@ func (l *modelLimiter) release() {
 type ConcurrencyRegistry struct {
 	mu      sync.Mutex
 	byModel map[string]*modelLimiter
+	// persisting：本进程里「生成名额已还、任务行仍在跑」（落盘阶段）的任务数，按模型计。
+	// 队列领取按 DB 里 running/processing/settling 的行数算空位，这些行也数在里面；
+	// 领取时扣掉它们，下载慢才不会拖住队列任务的领取（P20，见 persistAwarePickupRepo）。
+	persisting map[string]int
 }
 
 func NewConcurrencyRegistry() *ConcurrencyRegistry {
-	return &ConcurrencyRegistry{byModel: map[string]*modelLimiter{}}
+	return &ConcurrencyRegistry{byModel: map[string]*modelLimiter{}, persisting: map[string]int{}}
+}
+
+// BeginPersist 记一笔「落盘中」（见 persisting），返回结束函数（sync.Once 包装）。
+// 调用方在名额归还之后、落盘开始时调用，落盘结束（终态收口之前）调结束函数。
+func (r *ConcurrencyRegistry) BeginPersist(modelID string) func() {
+	r.mu.Lock()
+	if r.persisting == nil {
+		r.persisting = map[string]int{}
+	}
+	r.persisting[modelID]++
+	r.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			r.mu.Lock()
+			if r.persisting[modelID]--; r.persisting[modelID] <= 0 {
+				delete(r.persisting, modelID)
+			}
+			r.mu.Unlock()
+		})
+	}
+}
+
+// PersistingByModel 返回各模型落盘中任务数的快照。
+func (r *ConcurrencyRegistry) PersistingByModel() map[string]int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]int, len(r.persisting))
+	for k, v := range r.persisting {
+		out[k] = v
+	}
+	return out
 }
 
 // Acquire 取一个该模型的并发名额(必要时按 limit 刷新容量),返回归还函数。

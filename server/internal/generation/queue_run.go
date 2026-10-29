@@ -63,7 +63,11 @@ func (s *Service) pumpQueueOnce() {
 	if len(models) == 0 {
 		return
 	}
-	candidates := pickupCandidates(s.repo, models, s.modelConcurrencyLimits(models), runningFreshSec)
+	var pickupRepo queuePickupRepo = s.repo
+	if s.concurrency != nil {
+		pickupRepo = persistAwarePickupRepo{queuePickupRepo: s.repo, persisting: s.concurrency.PersistingByModel}
+	}
+	candidates := pickupCandidates(pickupRepo, models, s.modelConcurrencyLimits(models), runningFreshSec)
 	for _, task := range candidates {
 		if s.draining() {
 			return
