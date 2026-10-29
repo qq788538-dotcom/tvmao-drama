@@ -9,7 +9,7 @@ import { persistNodeById, flushNodePatch, scheduleNodePatch } from '../../persis
 import { listRuntimeModels, submitCanvasTask } from '@/shared/api';
 
 export function TextGenPanel({ nodeId }: { nodeId: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === nodeId));
+  const node = useCanvasStore((s) => s.nodesById.get(nodeId));
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
   const linked = useConnectedInputs(nodeId);

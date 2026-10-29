@@ -33,7 +33,7 @@ interface Frame {
 }
 
 export function VideoInputNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
   const setLightbox = useCanvasStore((s) => s.setLightbox);

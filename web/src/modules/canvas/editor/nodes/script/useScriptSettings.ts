@@ -25,7 +25,7 @@ export function useScriptSettings(nodeId: string): {
   moveRow: (rowId: string, toIndex: number) => void;
   replaceRows: (rows: ScriptRow[]) => void;
 } {
-  const rawSettings = useCanvasStore((s) => s.nodes.find((n) => n.id === nodeId)?.settings);
+  const rawSettings = useCanvasStore((s) => s.nodesById.get(nodeId)?.settings);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
   const settings = readScriptSettings(rawSettings);
 

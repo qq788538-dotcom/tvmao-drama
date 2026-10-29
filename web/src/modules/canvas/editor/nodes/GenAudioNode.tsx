@@ -50,7 +50,7 @@ import { AudioActionsBar } from './AudioActionsBar';
 // （音频没有画面），预览区换成 <audio controls> 播放器。上游连线支持文本节点
 // （提示词基底）与音频节点（@音频N 指定音色，走 inputs.audios）。
 export function GenAudioNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
   const updateNode = useCanvasStore((s) => s.updateNode);
