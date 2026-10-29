@@ -14,6 +14,7 @@ import {
   upsertCanvasNode,
 } from '@/shared/api';
 import { applyMergePatch } from '../mergePatch';
+import { cloneWithoutOversizedDataUrls, hasOversizedDataUrl, nodeForServer } from './payloadHygiene';
 import { setCanvasOpSink, useCanvasStore, type CanvasOp } from '../store';
 import type { CanvasNode } from '../types';
 
@@ -187,7 +188,9 @@ function persistNodeState(node: CanvasNode): void {
     sendNodeUpsert(node);
     return;
   }
-  const diff = diffNodeAgainstBaseline(baseline, node);
+  // 与 upsert 同一份「发往服务端的形态」做 diff：抽帧这类本机字段不会被算成变更；
+  // 基线里还留着存量快照带上来的帧时，会算出 null 把服务端那份删掉（P8）。
+  const diff = diffNodeAgainstBaseline(baseline, nodeForServer(node));
   if (diff.kind === 'none') return;
   sendNodePatch(node.id, diff.patch);
 }
@@ -198,7 +201,8 @@ function sendNodeUpsert(node: CanvasNode): void {
   const projectID = context.projectID;
   const token = context.ownerToken;
   if (projectID == null || !token) return;
-  const sent = cloneNode(node);
+  // nodeForServer 已经是深拷贝：去掉本机抽帧字段、拒收超大 dataURL（P8）。
+  const sent = nodeForServer(node);
   const upsert = config.upsertNode ?? upsertCanvasNode;
   void runNodeMutation(context, async () => {
     const result = await upsert(projectID, token, sent as unknown as CanvasMutationNode);
@@ -448,11 +452,16 @@ export async function flushNodePatch(nodeID: string): Promise<void> {
     nodePatchTimers.delete(nodeID);
   }
 
-  const patch = pendingNodePatches.get(nodeID);
-  if (!patch) return;
+  const pending = pendingNodePatches.get(nodeID);
+  if (!pending) return;
   pendingNodePatches.delete(nodeID);
 
-  if (!isMutationContextCurrent(patch)) return;
+  if (!isMutationContextCurrent(pending)) return;
+  // 调用方各自拼的 patch 也要过一遍：超大 dataURL 不进 payload（P8）。只在真的
+  // 夹带时才 JSON 往返拷贝，平常原样发出（Date 等非普通值留给 axios 序列化）。
+  const patch = hasOversizedDataUrl(pending.patch)
+    ? { ...pending, patch: cloneWithoutOversizedDataUrls(pending.patch) }
+    : pending;
 
   await enqueueCanvasMutationInContext(async () => {
     if (patch.projectID == null) {

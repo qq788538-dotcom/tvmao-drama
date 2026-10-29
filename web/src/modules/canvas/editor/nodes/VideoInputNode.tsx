@@ -80,16 +80,29 @@ export function VideoInputNode({ id }: { id: string }) {
     if (!file) return;
     const asset = await uploadFileIntoNode(id, file);
     if (!asset) return;
+    // 换了视频，旧视频的帧就不再属于这个节点：内存和 IndexedDB 缓存一起清掉，
+    // 否则新视频下面挂着旧帧，重开画布还会从缓存里恢复回来（P8）。
+    updateNodeSettings(id, { frames: [], selectedKeyframes: [] });
+    saveFrames(id, [], []).catch(() => {});
     // 尝试获取视频元数据。它比上传晚落定，所以自己再持久化一次——
     // 时长要拿来做 seedance 合规校验，丢了就得重新探测。
     const tempVideo = document.createElement('video');
+    // 探测完（成功或失败）都主动释放：脱离 DOM 的 <video> 要等 GC 才放掉解码器（P35）。
+    const release = () => {
+      tempVideo.onloadedmetadata = null;
+      tempVideo.onerror = null;
+      tempVideo.removeAttribute('src');
+      tempVideo.load();
+    };
     tempVideo.preload = 'metadata';
     tempVideo.onloadedmetadata = () => {
       updateNodeSettings(id, {
         videoMeta: { duration: tempVideo.duration, w: tempVideo.videoWidth, h: tempVideo.videoHeight },
       });
+      release();
       persistNodeById(id);
     };
+    tempVideo.onerror = release;
     tempVideo.src = asset.url;
   };
 

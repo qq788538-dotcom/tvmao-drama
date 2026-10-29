@@ -123,6 +123,33 @@ describe('canvas store 结构性 op 广播', () => {
     expect(dup.taskId).toBeUndefined();
   });
 
+  // P8：抽帧是本机缓存（IndexedDB 按原节点 id 存），副本不带，原节点不受影响。
+  it('duplicateNodes / buildCopyPayload 不复制 video-input 的抽帧字段', () => {
+    const frame = { url: 'data:image/jpeg;base64,AA', time: 0 };
+    const a = useCanvasStore.getState().addNode('video-input', { x: 0, y: 0 });
+    useCanvasStore.getState().updateNodeSettings(a, {
+      frames: [frame], selectedKeyframes: [frame], extractingFrames: true, videoExpanded: false,
+    });
+
+    const payload = useCanvasStore.getState().buildCopyPayload([a])!;
+    expect(payload.nodes[0].settings).toEqual({ videoExpanded: false });
+
+    useCanvasStore.getState().duplicateNodes([a]);
+    const dup = useCanvasStore.getState().nodes.find((n) => n.id !== a)!;
+    expect(dup.settings).toEqual({ videoExpanded: false });
+    const orig = useCanvasStore.getState().nodes.find((n) => n.id === a)!;
+    expect(orig.settings!.frames).toEqual([frame]);
+  });
+
+  it('复制时丢掉超过 64KB 的 data: 字符串', () => {
+    const big = `data:image/png;base64,${'A'.repeat(64 * 1024)}`;
+    const a = useCanvasStore.getState().addNode('gen-image', { x: 0, y: 0 });
+    useCanvasStore.getState().updateNodeSettings(a, { thumb: big, prompt: 'p' });
+    const payload = useCanvasStore.getState().buildCopyPayload([a])!;
+    expect(payload.nodes[0].settings!.thumb).toBeUndefined();
+    expect(payload.nodes[0].settings!.prompt).toBe('p');
+  });
+
   // 副本要能立刻重跑同样的生成,就得连着同样的输入。
   it('duplicateNodes 复制入边,上游仍指向原来的输入源', () => {
     const up = useCanvasStore.getState().addNode('input-image', { x: 0, y: 0 });

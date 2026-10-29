@@ -3,6 +3,7 @@ import { create, type StateCreator } from 'zustand';
 import { nanoid } from 'nanoid';
 import { setApiWritesBlocked } from '@/shared/apiGuards';
 import { remapMentionNodeIds } from './utils/mentions';
+import { cloneWithoutOversizedDataUrls, stripVideoInputLocalSettings } from './persistence/payloadHygiene';
 import type {
   CanvasNode,
   CanvasSnapshot,
@@ -233,10 +234,15 @@ function mergeSnapshotNodes(
  *  各写一套的话，剪贴板粘出来的节点会带着 generating 状态永远转圈。 */
 function sanitizeNodeCopy(node: CanvasNode): CanvasNode {
   const { taskId: _dropTaskId, ...rest } = node;
+  // 深拷贝顺带拒收超大 dataURL；video-input 的抽帧是本机缓存（帧在 IndexedDB
+  // 按原节点 id 存），不跟进副本，也就不会经副本的 upsert 上服务端（P8）。
   const settings = node.settings
-    ? (JSON.parse(JSON.stringify(node.settings)) as Record<string, unknown>)
+    ? cloneWithoutOversizedDataUrls(node.settings)
     : undefined;
-  if (settings) delete settings.pendingGen;
+  if (settings) {
+    delete settings.pendingGen;
+    stripVideoInputLocalSettings(node.type, settings);
+  }
 
   const clone: CanvasNode = { ...rest, settings };
   if (clone.status === 'generating' || clone.status === 'uploading') {
