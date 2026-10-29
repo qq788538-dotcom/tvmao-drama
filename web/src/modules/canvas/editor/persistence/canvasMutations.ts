@@ -142,6 +142,10 @@ export function applyCanvasOp(op: CanvasOp): void {
     case 'upsertNode':
       sendNodeUpsert(op.node);
       break;
+    case 'patchNode':
+      // undo/redo 里前后都存在的节点：与 persistNodeById 同一套「对基线 diff」。
+      persistNodeState(op.node);
+      break;
     case 'deleteNodes':
       // 节点没了，基线也就没了（同 id 的节点将来若再出现，从 upsert 重新建基线）。
       for (const id of op.ids) nodeBaselines.delete(id);
@@ -172,9 +176,13 @@ export function applyCanvasOp(op: CanvasOp): void {
  *   - 无基线（本地新建、或没播种过快照） → UpsertNode 整节点，成功后建立基线。
  */
 export function persistNodeById(nodeID: string): void {
-  const node = useCanvasStore.getState().nodes.find((n) => n.id === nodeID);
+  const node = useCanvasStore.getState().nodesById.get(nodeID);
   if (!node) return;
-  const baseline = nodeBaselines.get(nodeID);
+  persistNodeState(node);
+}
+
+function persistNodeState(node: CanvasNode): void {
+  const baseline = nodeBaselines.get(node.id);
   if (!baseline) {
     sendNodeUpsert(node);
     return;

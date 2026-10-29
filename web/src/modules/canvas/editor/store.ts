@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { create } from 'zustand';
+import { create, type StateCreator } from 'zustand';
 import { nanoid } from 'nanoid';
 import { setApiWritesBlocked } from '@/shared/apiGuards';
 import { remapMentionNodeIds } from './utils/mentions';
@@ -96,8 +96,13 @@ export interface AudioEditState {
 // 它们既被用户编辑调用、也被生成结果的后端回写和拖动每帧调用，需要在组件层
 // 按 debounce/松手/「只补前端字段」等语义显式持久化，避免每帧发请求或与后端
 // 回写打架。
+//
+// patchNode 只出现在 undo/redo 的差量里：节点前后都存在、只是字段变了。持久化层
+// 对基线做 diff，只发真正变了的字段（同 persistNodeById），不再整节点覆盖服务端——
+// 整节点 upsert 会把与服务端无关的旧字段也一并原样重写一遍。
 export type CanvasOp =
   | { kind: 'upsertNode'; node: CanvasNode }
+  | { kind: 'patchNode'; node: CanvasNode }
   | { kind: 'deleteNodes'; ids: string[] }
   | { kind: 'upsertConnection'; connection: Connection }
   | { kind: 'deleteConnection'; id: string };
@@ -114,8 +119,96 @@ function emitCanvasOp(op: CanvasOp): void {
   canvasOpSink?.(op);
 }
 
-function sameStructuralNode(a: CanvasNode, b: CanvasNode): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+// 撤销/重做时「以当前值为准」的字段：这些字段由生成/上传结果写入（后端 sink
+// 或前端轮询回填），不进撤销栈，也不是用户的编辑动作。整张画布按快照回滚会把
+// 别的节点刚生成好的结果一起退掉，并写回服务端（P1）。
+//
+// 清单按 canvasgen sink（server/internal/canvasgen/service.go 的 OnGenerationResult、
+// writeback.go 的 appendHistory、repersist_apply.go）与前端轮询回填
+//（GenImageNode/GenVideoNode/GenAudioNode 成功分支）实际写的字段核对：
+//   - 节点顶层：content / status / taskId / progress / error；
+//   - settings：history / historyIndex / assetId / pendingGen / kind / unsaved /
+//     genTaskId，以及 seedance 产物的 upstreamExpire / srcGenTaskId。
+// settings.text 不在清单里：文本节点的正文同时也是用户手打的内容，撤销打字要能撤回。
+const SERVER_OWNED_NODE_KEYS = ['content', 'status', 'taskId', 'progress', 'error'] as const;
+const SERVER_OWNED_SETTINGS_KEYS = [
+  'history',
+  'historyIndex',
+  'assetId',
+  'pendingGen',
+  'kind',
+  'unsaved',
+  'genTaskId',
+  'upstreamExpire',
+  'srcGenTaskId',
+] as const;
+
+// 快照节点 + 当前节点 → 合并后的节点：几何、参数、提示词等照用快照值（这才是撤销
+// 要撤的东西），服务端权威字段用当前值覆盖。
+//
+// 合并结果与当前节点逐字段引用相同时直接返回当前节点：快照与现状只差生成结果的
+// 节点（典型：移动 B 后 A 出图，再撤销），合并后就是 A 本身，引用不变——
+// emitReconcile 据此跳过它，组件也不会因为撤销而重渲染。
+function keepServerOwnedFields(snap: CanvasNode, cur: CanvasNode): CanvasNode {
+  if (snap === cur) return cur;
+  const merged: CanvasNode = { ...snap };
+  const mergedRecord = merged as unknown as Record<string, unknown>;
+  const curRecord = cur as unknown as Record<string, unknown>;
+  for (const key of SERVER_OWNED_NODE_KEYS) {
+    if (curRecord[key] === undefined) delete mergedRecord[key];
+    else mergedRecord[key] = curRecord[key];
+  }
+  if (snap.settings || cur.settings) {
+    const curSettings = cur.settings ?? {};
+    const settings: Record<string, unknown> = { ...(snap.settings ?? {}) };
+    for (const key of SERVER_OWNED_SETTINGS_KEYS) {
+      if (curSettings[key] === undefined) delete settings[key];
+      else settings[key] = curSettings[key];
+    }
+    merged.settings = settings;
+  }
+  return shallowSameNode(merged, cur) ? cur : merged;
+}
+
+// 顶层字段与 settings 的第一层都按引用比较。settings 每次 updateNodeSettings 都会
+// 换新对象，所以要再往下比一层，否则「内容没变」的节点永远认不出来。
+function shallowSameNode(a: CanvasNode, b: CanvasNode): boolean {
+  const ar = a as unknown as Record<string, unknown>;
+  const br = b as unknown as Record<string, unknown>;
+  if (!sameFieldsShallow(ar, br, 'settings')) return false;
+  if (a.settings === b.settings) return true;
+  return sameFieldsShallow(a.settings ?? {}, b.settings ?? {});
+}
+
+function sameFieldsShallow(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+  skip?: string,
+): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (key === skip) continue;
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+// 撤销/重做落地的节点列表：快照里有、当前也有的节点保留当前的服务端权威字段；
+// 只在快照里有的节点（撤销一次删除而重新出现的）照用快照值——那正是用户要找回的
+// 完整节点。没有节点需要合并时返回快照数组本身，保持引用稳定。
+function mergeSnapshotNodes(
+  snapshotNodes: CanvasNode[],
+  currentById: ReadonlyMap<string, CanvasNode>,
+): CanvasNode[] {
+  let changed = false;
+  const merged = snapshotNodes.map((node) => {
+    const cur = currentById.get(node.id);
+    if (!cur) return node;
+    const next = keepServerOwnedFields(node, cur);
+    if (next !== node) changed = true;
+    return next;
+  });
+  return changed ? merged : snapshotNodes;
 }
 
 /**
@@ -158,9 +251,13 @@ function cloneNodeForDuplicate(node: CanvasNode, id: string): CanvasNode {
 }
 
 // 把 before→after 的节点/连线集合差量翻译成一串结构性 op。undo/redo 会整体
-// 换掉画布状态，无法预知改了哪些，只能对比前后集合逐个补 upsert/delete。
-// 发射顺序（先删节点、再 upsert 节点、再删连线、再 upsert 连线）保证队列串行
+// 换掉画布状态，无法预知改了哪些，只能对比前后集合逐个补 upsert/patch/delete。
+// 发射顺序（先删节点、再 upsert/patch 节点、再删连线、再 upsert 连线）保证队列串行
 // 执行时连线两端节点已存在。
+//
+// 前后都在的节点：引用相同直接跳过（没改过的节点在快照之间本来就共享引用，
+// 不必两次 JSON.stringify 比较，P18）；引用不同发 patchNode，由持久化层对基线
+// diff、只发变化字段。新出现的节点（撤销删除 / 重做新增）才整节点 upsert。
 function emitReconcile(
   before: { nodes: CanvasNode[]; connections: Connection[] },
   after: { nodes: CanvasNode[]; connections: Connection[] },
@@ -172,7 +269,8 @@ function emitReconcile(
   if (removedNodeIds.length > 0) emitCanvasOp({ kind: 'deleteNodes', ids: removedNodeIds });
   for (const [id, node] of afterNodes) {
     const prev = beforeNodes.get(id);
-    if (!prev || !sameStructuralNode(prev, node)) emitCanvasOp({ kind: 'upsertNode', node });
+    if (prev === node) continue;
+    emitCanvasOp(prev ? { kind: 'patchNode', node } : { kind: 'upsertNode', node });
   }
   const beforeConns = new Map(before.connections.map((c) => [c.id, c]));
   const afterConns = new Map(after.connections.map((c) => [c.id, c]));
@@ -187,6 +285,12 @@ function emitReconcile(
 interface CanvasState {
   nodes: CanvasNode[];
   connections: Connection[];
+  // 派生索引（P4）：id → 节点、目标节点 id → 入边（保持 connections 原顺序）。
+  // 由 withDerivedIndexes 在每次 set 时随 nodes/connections 一起换新，任何写入
+  // 路径（含直接 useCanvasStore.setState）都不需要、也不应该手动维护。
+  // 节点组件的 selector 按 id 取（s.nodesById.get(id)），不再每次 set 都 O(N) 扫描。
+  nodesById: ReadonlyMap<string, CanvasNode>;
+  incomingByNode: ReadonlyMap<string, readonly Connection[]>;
   view: ViewState;
   selectedIds: Set<string>;
   undoStack: CanvasSnapshot[];
@@ -304,9 +408,63 @@ interface CanvasState {
   getConnectedInputs: (nodeId: string) => ConnectedInputs;
 }
 
-export const useCanvasStore = create<CanvasState>((set, get) => ({
-  nodes: [],
-  connections: [],
+// 索引按数组引用记忆：同一个 nodes / connections 数组只建一次索引。撤销栈里的
+// 快照数组被原样放回 store 时（撤销无需合并的情况、重做等）直接复用。
+const nodesIndexCache = new WeakMap<CanvasNode[], ReadonlyMap<string, CanvasNode>>();
+const incomingIndexCache = new WeakMap<Connection[], ReadonlyMap<string, readonly Connection[]>>();
+
+function indexNodes(nodes: CanvasNode[]): ReadonlyMap<string, CanvasNode> {
+  let index = nodesIndexCache.get(nodes);
+  if (!index) {
+    index = new Map(nodes.map((n) => [n.id, n]));
+    nodesIndexCache.set(nodes, index);
+  }
+  return index;
+}
+
+function indexIncoming(connections: Connection[]): ReadonlyMap<string, readonly Connection[]> {
+  let index = incomingIndexCache.get(connections);
+  if (!index) {
+    const map = new Map<string, Connection[]>();
+    for (const c of connections) {
+      const list = map.get(c.to);
+      if (list) list.push(c);
+      else map.set(c.to, [c]);
+    }
+    index = map;
+    incomingIndexCache.set(connections, index);
+  }
+  return index;
+}
+
+const EMPTY_CONNECTIONS: readonly Connection[] = [];
+
+// 集中维护派生索引的 set 包装：写入里带了 nodes / connections，就在同一次 set 里
+// 换上对应索引（订阅方看不到数组与索引不一致的中间态）。同时替换 api.setState——
+// Sidebar 自动排布、测试等处直接 useCanvasStore.setState({ nodes }) 也走这里；
+// 只在各个 action 里手动维护的话，这类写入会让索引悄悄过期。
+const withDerivedIndexes =
+  (config: StateCreator<CanvasState>): StateCreator<CanvasState> =>
+  (set, get, api) => {
+    const indexedSet: typeof set = (partial, replace) => {
+      const resolved = typeof partial === 'function' ? partial(get()) : partial;
+      const next: Partial<CanvasState> = { ...resolved };
+      if (resolved.nodes) next.nodesById = indexNodes(resolved.nodes);
+      if (resolved.connections) next.incomingByNode = indexIncoming(resolved.connections);
+      (set as (p: Partial<CanvasState>, r?: boolean) => void)(next, replace);
+    };
+    api.setState = indexedSet;
+    return config(indexedSet, get, api);
+  };
+
+const INITIAL_NODES: CanvasNode[] = [];
+const INITIAL_CONNECTIONS: Connection[] = [];
+
+export const useCanvasStore = create<CanvasState>()(withDerivedIndexes((set, get) => ({
+  nodes: INITIAL_NODES,
+  connections: INITIAL_CONNECTIONS,
+  nodesById: indexNodes(INITIAL_NODES),
+  incomingByNode: indexIncoming(INITIAL_CONNECTIONS),
   view: { x: 0, y: 0, zoom: 1 },
   selectedIds: new Set<string>(),
   undoStack: [],
@@ -713,38 +871,43 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     }));
   },
 
+  // undo/redo 不是把整张画布原样回滚：快照与当前都有的节点，生成结果等服务端
+  // 权威字段保留当前值（见 keepServerOwnedFields）。否则「移动 B → A 出图 → 撤销」
+  // 会把 A 的结果一起撤掉，并经 emitReconcile 写回服务端（P1）。
   undo: () => {
     const before = get();
     if (before.readOnly || before.undoStack.length === 0) return;
     const prev = before.undoStack[before.undoStack.length - 1];
+    const after = { ...prev, nodes: mergeSnapshotNodes(prev.nodes, before.nodesById) };
     set((s) => ({
-      nodes: prev.nodes,
-      connections: prev.connections,
-      view: prev.view,
+      nodes: after.nodes,
+      connections: after.connections,
+      view: after.view,
       undoStack: s.undoStack.slice(0, -1),
       redoStack: [
         ...s.redoStack,
         { nodes: s.nodes, connections: s.connections, view: s.view },
       ],
     }));
-    emitReconcile(before, prev);
+    emitReconcile(before, after);
   },
 
   redo: () => {
     const before = get();
     if (before.readOnly || before.redoStack.length === 0) return;
     const next = before.redoStack[before.redoStack.length - 1];
+    const after = { ...next, nodes: mergeSnapshotNodes(next.nodes, before.nodesById) };
     set((s) => ({
-      nodes: next.nodes,
-      connections: next.connections,
-      view: next.view,
+      nodes: after.nodes,
+      connections: after.connections,
+      view: after.view,
       redoStack: s.redoStack.slice(0, -1),
       undoStack: [
         ...s.undoStack,
         { nodes: s.nodes, connections: s.connections, view: s.view },
       ],
     }));
-    emitReconcile(before, next);
+    emitReconcile(before, after);
   },
 
   getSnapshot: () => ({
@@ -754,22 +917,22 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   }),
 
   getConnectedInputs: (nodeId) => connectedInputsOf(get(), nodeId),
-}));
+})));
 
 // getConnectedInputs 的纯函数本体：组件订阅（useConnectedInputs）要对传入的
 // state 快照求值，不能走 get()。
 function connectedInputsOf(
-  state: Pick<CanvasState, 'nodes' | 'connections'>,
+  state: Pick<CanvasState, 'nodesById' | 'incomingByNode'>,
   nodeId: string,
 ): ConnectedInputs {
-  const incoming = state.connections.filter((c) => c.to === nodeId);
+  const incoming = state.incomingByNode.get(nodeId) ?? EMPTY_CONNECTIONS;
   const images: string[] = [];
   const texts: string[] = [];
   const videos: string[] = [];
   const audios: string[] = [];
   const refs: ConnectedMediaRef[] = [];
   for (const conn of incoming) {
-    const src = state.nodes.find((n) => n.id === conn.from);
+    const src = state.nodesById.get(conn.from);
     if (!src) continue;
     if (src.type === 'text-node') {
       const t = (src.settings?.text as string | undefined) ?? '';
@@ -836,12 +999,29 @@ function sameConnectedInputs(a: ConnectedInputs, b: ConnectedInputs): boolean {
  * 旧的，只能等别的无关更新顺带刷新。
  */
 export function useConnectedInputs(nodeId: string): ConnectedInputs {
-  const cacheRef = useRef<ConnectedInputs | null>(null);
+  const cacheRef = useRef<ConnectedInputsCache | null>(null);
   return useCanvasStore((s) => {
-    const next = connectedInputsOf(s, nodeId);
+    // 只读本节点的入边和对应上游节点（索引取，O(入度)）。入边数组与每个上游节点
+    // 的引用都没变时直接返回上次结果，连临时数组都不分配——平移、拖动别的节点、
+    // 在别处打字时，每次 set 都会把这个 selector 跑一遍。
+    const incoming = s.incomingByNode.get(nodeId) ?? EMPTY_CONNECTIONS;
     const prev = cacheRef.current;
-    if (prev && sameConnectedInputs(prev, next)) return prev;
-    cacheRef.current = next;
-    return next;
+    if (
+      prev &&
+      prev.incoming === incoming &&
+      incoming.every((c, i) => s.nodesById.get(c.from) === prev.sources[i])
+    ) {
+      return prev.value;
+    }
+    const next = connectedInputsOf(s, nodeId);
+    const value = prev && sameConnectedInputs(prev.value, next) ? prev.value : next;
+    cacheRef.current = { incoming, sources: incoming.map((c) => s.nodesById.get(c.from)), value };
+    return value;
   });
+}
+
+interface ConnectedInputsCache {
+  incoming: readonly Connection[];
+  sources: Array<CanvasNode | undefined>;
+  value: ConnectedInputs;
 }
