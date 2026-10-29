@@ -25,6 +25,13 @@ const (
 	genLeaseHeartbeatSec = 15                // 租约心跳间隔（秒）
 	genLeaseStaleSec     = 90                // 租约过期判定（秒）
 	genUpstreamTimeout   = 300 * time.Second // 上游请求超时
+
+	// 产物下载的单文件上限与全局并发闸（generation/download.go）。桌面端目前没有对应的
+	// 设置项，与上面的租约参数一样在装配处定死；值与 generation 内的默认值一致，写在这里
+	// 是为了让装配处看得到、要调时只改这一处（以后接设置中心也从这里换来源）。
+	genMaxImageOutputBytes int64 = 50 << 20 // 图片产物上限 50MB
+	genMaxMediaOutputBytes int64 = 1 << 30  // 音视频产物上限 1GB
+	genDownloadConcurrency       = 4        // 同时落盘下载的产物数（首搬、续跑、补搬共用）
 )
 
 // genCanvasNotifier 与 canvasgen 未导出的 canvasChangeNotifier 同形。
@@ -83,6 +90,8 @@ func wireGeneration(conn *sql.DB, dataDir string, ext genExternal) (*genWiring, 
 		return nil, fmt.Errorf("gen temp dir: %w", err)
 	}
 	gen.SetTempDir(tmp)
+	gen.SetDownloadLimits(genMaxImageOutputBytes, genMaxMediaOutputBytes)
+	gen.SetDownloadConcurrency(genDownloadConcurrency)
 
 	cg := canvasgen.NewService(gen, projectsRepo)
 	generation.RegisterSink("canvas_node", cg.OnGenerationResult)
