@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -361,15 +360,8 @@ func (s *Service) fetchInputImage(ctx context.Context, ref string) ([]byte, stri
 	if !(strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://")) {
 		return nil, "", fmt.Errorf("unsupported image reference")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ref, nil)
-	if err != nil {
-		return nil, "", err
-	}
-	client := s.httpClient
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	// 下载 client 没有整请求时限，读 body 靠空闲超时兜挂死（见 getWithIdleTimeout）。
+	resp, err := s.getWithIdleTimeout(ctx, ref, nil)
 	if err != nil {
 		return nil, "", err
 	}
@@ -422,15 +414,7 @@ func (s *Service) spoolInputImage(ctx context.Context, ref string) (spooledFile,
 		defer rc.Close()
 		src, mime = sniffReader(rc)
 	case strings.HasPrefix(ref, "http://"), strings.HasPrefix(ref, "https://"):
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, ref, nil)
-		if err != nil {
-			return spooledFile{}, err
-		}
-		client := s.httpClient
-		if client == nil {
-			client = http.DefaultClient
-		}
-		resp, err := client.Do(req)
+		resp, err := s.getWithIdleTimeout(ctx, ref, nil)
 		if err != nil {
 			return spooledFile{}, err
 		}

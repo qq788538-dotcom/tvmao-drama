@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { App as AntApp } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import JSZip from 'jszip';
@@ -475,6 +475,30 @@ function ContextMenuItem({
 import { Loader2 } from 'lucide-react';
 import { mediaCrossOrigin } from '../editor/utils/mediaCrossOrigin';
 
+// 列表项进入可视区（上下各留 300px 预载）才挂媒体元素，挂上后不再卸载（P17）。
+// 面板一次最多渲染 200 条，原来打开就是 200 个 <video preload=metadata>/<img>
+// 同时发请求。环境没有 IntersectionObserver 时直接挂载（行为同改造前）。
+export function useLazyMount<T extends Element>(ref: RefObject<T>, rootMargin = '300px 0px'): boolean {
+  const [mounted, setMounted] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    if (mounted) return;
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setMounted(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [mounted, ref, rootMargin]);
+  return mounted;
+}
+
 function HistoryItem({
   task,
   modelType,
@@ -548,6 +572,9 @@ function HistoryItem({
   // 9:16 任务膨胀到约 512px 高。原始宽高比会在 lightbox 预览里以全尺寸保留。
   const mediaHeight = 'h-28';
   void ratio;
+  const hasMedia = status === 'succeeded' && !!url;
+  const mediaRef = useRef<HTMLDivElement>(null);
+  const mediaMounted = useLazyMount(mediaRef);
 
   return (
     <div className={`rounded-lg overflow-hidden relative group ${isSelected ? 'ring-2 ring-green-500/70' : ''}`}>
@@ -568,56 +595,52 @@ function HistoryItem({
         {isSelected && <CheckCircle2 size={16} className="text-white" />}
       </button>
 
-      {/* 媒体区 */}
-      <div className={`bg-black relative ${mediaHeight}`}>
-        {status === 'succeeded' && url ? (
-          kind === 'audio' ? (
-            // 音频没有画面，给图标 + 原生播放器；拖拽/右键挂在容器上（audio 的
-            // 原生控件要留给播放交互）。
-            <div
-              className="w-full h-full flex flex-col items-center justify-center gap-2 px-3"
-              draggable
-              onDragStart={handleDragStart}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onOpenContextMenu(e.clientX, e.clientY);
-              }}
-            >
+      {/* 媒体区。拖拽/右键/双击挂在这一层外壳上：媒体元素懒挂载（见 useLazyMount），
+          还没挂上时照样能拖到画布、右键、双击预览。音频不接双击——原生控件要留给
+          播放交互。 */}
+      <div
+        ref={mediaRef}
+        className={`bg-black relative ${mediaHeight} ${hasMedia && kind !== 'audio' ? 'cursor-zoom-in' : ''}`}
+        draggable={hasMedia}
+        onDragStart={hasMedia ? handleDragStart : undefined}
+        onDoubleClick={hasMedia && kind !== 'audio' ? onPreview : undefined}
+        onContextMenu={hasMedia ? (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpenContextMenu(e.clientX, e.clientY);
+        } : undefined}
+      >
+        {hasMedia ? (
+          !mediaMounted ? (
+            kind === 'audio' ? (
+              <div className="w-full h-full flex items-center justify-center">
+                <Music size={20} className="text-muted-foreground" />
+              </div>
+            ) : null
+          ) : kind === 'audio' ? (
+            // 音频没有画面，给图标 + 原生播放器。
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2 px-3">
               <Music size={20} className="text-muted-foreground" />
               <audio src={url} controls preload="metadata" className="w-full" style={{ maxHeight: 32 }} />
             </div>
           ) : isVideo ? (
             <video
               src={url} crossOrigin={mediaCrossOrigin(url)}
-              className="w-full h-full object-contain cursor-zoom-in"
+              className="w-full h-full object-contain"
               muted
               loop
               playsInline
               preload="metadata"
-              draggable
-              onDragStart={handleDragStart}
-              onDoubleClick={onPreview}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onOpenContextMenu(e.clientX, e.clientY);
-              }}
+              draggable={false}
             />
           ) : (
             // 列表展示走缩略图；双击预览/拖到画布/下载引用的都是闭包里的原图 url。
+            // 元素自身不可拖：拖拽数据由外壳的 handleDragStart 给（原图 url）。
             <ThumbImg
               src={url}
               alt={prompt || '生成的图片'}
-              className="w-full h-full object-contain cursor-zoom-in"
-              draggable
-              onDragStart={handleDragStart}
-              onDoubleClick={onPreview}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onOpenContextMenu(e.clientX, e.clientY);
-              }}
+              className="w-full h-full object-contain"
+              draggable={false}
             />
           )
         ) : (
@@ -633,6 +656,8 @@ function HistoryItem({
               e.stopPropagation();
               onPreview();
             }}
+            // 外壳挂了双击预览，快速连点这个按钮别再触发一次。
+            onDoubleClick={(e) => e.stopPropagation()}
             className="absolute top-2 left-2 p-1 rounded bg-black/60 hover:bg-black/80 text-white border border-white/10 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity z-10"
             title="放大预览"
           >

@@ -1,4 +1,5 @@
 import { useReconcileCanvasTask } from './useReconcileCanvasTask';
+import { stallIfUnreachable, usePollStalled } from './pollStall';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -31,6 +32,7 @@ import { NodeShell } from '../NodeShell';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
 import { VideoActionsBar } from './VideoActionsBar';
 import { VideoPlayer } from './VideoPlayer';
+import { useNodeMediaActive } from './useNodeMediaActive';
 import {
   listRuntimeModels,
   pollCanvasTaskUntilDone,
@@ -65,9 +67,11 @@ import { saveAnnotations } from './advanced-edit/save';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 
 export function GenVideoNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
+  // 轮询连续够不着后端时挂起(P23):不判失败,交给对账;NodeShell 上可点「重新检查」。
+  const pollStalled = usePollStalled(node?.taskId);
   const { modal } = AntApp.useApp();
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
@@ -82,6 +86,9 @@ export function GenVideoNode({ id }: { id: string }) {
   const isSelected = useCanvasStore((s) => s.selectedIds.has(id));
   // 详情面板里参数面板要跟预览盒左右对齐（见下方定位处的注释）。
   const storyboardMode = useStoryboardMode();
+  // 参数面板未选中时只是 opacity:0，参考图/参考视频 chip 照样挂着媒体元素在加载（P16）。
+  // 只在选中时渲染媒体；故事板里面板常显，不门控。
+  const showRefMedia = isSelected || storyboardMode;
   // 剪辑(trim)/裁剪(crop)/片段重拍/智能续写进行中:交互条占节点正下方,
   // prompt 面板同位让路,退出后恢复。
   const trimming = useCanvasStore((s) => s.trimmingNodeId === id);
@@ -127,6 +134,7 @@ export function GenVideoNode({ id }: { id: string }) {
       { key: 'send', label: '发送到画布', onPick: () => sendToCanvasRef.current() },
     ],
   });
+  const mediaActive = useNodeMediaActive(id);
 
   if (!node) return null;
 
@@ -243,7 +251,7 @@ export function GenVideoNode({ id }: { id: string }) {
   // 锚在 gen-video 节点自身上，这样结果落到 `node.content` 和 history，而不是
   // 下游预览。刷新页面会恢复进行中的 poll。
   useEffect(() => {
-    if (node.status === 'generating' && node.taskId) {
+    if (node.status === 'generating' && node.taskId && !pollStalled) {
       const ctrl = new AbortController();
       let cancelled = false;
       // 方案 B:轮询画布任务状态仅为即时展示;结果已由后端权威写回快照节点。
@@ -272,7 +280,9 @@ export function GenVideoNode({ id }: { id: string }) {
                 history: next,
                 historyIndex: nextIdx,
                 pendingGen: undefined,
-                assetId: finalTask.assetIds?.[0] || undefined,
+                // 0（文件落了本地但素材记录没写成功）也照存，与服务端 sink 一致——
+                // 「素材未登记」角标靠它认出来（见 desktop/unsavedLocal）。
+                assetId: finalTask.assetIds?.[0] ?? undefined,
                 kind: 'video',
                 // 新结果属于这次任务：清掉上次下载失败留下的标记，否则重试会拿旧任务覆盖新结果。
                 unsaved: undefined,
@@ -294,6 +304,7 @@ export function GenVideoNode({ id }: { id: string }) {
         })
         .catch((err: any) => {
           if (cancelled || err?.message === 'aborted') return;
+          if (node.taskId && stallIfUnreachable(node.taskId, err)) return;
           updateNode(id, {
             status: 'failed',
             error: err?.message || '轮询失败',
@@ -310,7 +321,7 @@ export function GenVideoNode({ id }: { id: string }) {
     // 闭包里读了 history，但我们不希望用户只是翻 historyIndex 时这个 effect
     // 就重新触发；这个循环只以 status+taskId 为 key。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.status, node.taskId, id, updateNode, updateNodeSettings]);
+  }, [node.status, node.taskId, pollStalled, id, updateNode, updateNodeSettings]);
 
   // 为新建节点在首次挂载时初始化 `settings.ratio`。从 localStorage 读
   // `tvmao:lastVideoRatio`；如果该值是当前模型 ratio 选项之一就复用它，否则
@@ -608,6 +619,8 @@ export function GenVideoNode({ id }: { id: string }) {
                 并加一层变暗浮层，直到新视频 resolve，这样用户不会丢失上下文。 */}
             {currentUrl ? (
               <VideoPlayer
+                active={mediaActive}
+                {...mediaMenu.mediaProps}
                 src={currentUrl} crossOrigin={mediaCrossOrigin(currentUrl)}
                 className="w-full h-full object-contain bg-black"
                 playsInline
@@ -818,7 +831,7 @@ export function GenVideoNode({ id }: { id: string }) {
                   title={`参考图 ${i + 1}`}
                 >
                   <div className="w-full h-full rounded-[10px] overflow-hidden border border-white/10 bg-popover relative">
-                    <ThumbImg src={ref.url} alt="" className="w-full h-full object-cover" draggable={false} />
+                    {showRefMedia && <ThumbImg src={ref.url} alt="" className="w-full h-full object-cover" draggable={false} />}
                     <span className="cv-ref-badge">图{i + 1}</span>
                   </div>
                   {refCloseBtn(ref.nodeId, `断开参考图 ${i + 1}`)}
@@ -833,7 +846,7 @@ export function GenVideoNode({ id }: { id: string }) {
                   <div className="w-full h-full rounded-[10px] overflow-hidden border border-white/10 bg-black relative">
                   {/* preload=metadata 让我们拿到首帧作为缩略图，而不会强制
                       完整下载。 */}
-                  <video src={url} crossOrigin={mediaCrossOrigin(url)} className="w-full h-full object-cover" muted preload="metadata" />
+                  {showRefMedia && <video src={url} crossOrigin={mediaCrossOrigin(url)} className="w-full h-full object-cover" muted preload="metadata" />}
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/20">
                     <Video size={11} className="text-white/85" />
                   </div>

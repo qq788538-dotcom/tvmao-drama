@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -250,9 +251,21 @@ func (s *LocalStorage) SignedURL(_ context.Context, key string, _ time.Duration)
 	return s.baseURL + "/media/" + escapeKey(key) + "?token=" + url.QueryEscape(s.token), nil
 }
 
-// SignedThumbURL 返回原图 URL：桌面端不生成缩略图。
-func (s *LocalStorage) SignedThumbURL(ctx context.Context, key string, expiry time.Duration, _ int) (string, error) {
-	return s.SignedURL(ctx, key, expiry)
+// SignedThumbURL 返回 /media/<key>?w=<宽>&token=…：sidecar 第一次请求时缩放并落盘缓存（见 ThumbCache），
+// 格式不支持时回退原图字节。URL 与原图不同，浏览器把两者分开缓存；鉴权和 CORS 头与原图走同一条路由，
+// 所以同样带 token、ACAO 和 Vary: Origin。maxWidth<=0 等同原图。
+func (s *LocalStorage) SignedThumbURL(ctx context.Context, key string, expiry time.Duration, maxWidth int) (string, error) {
+	if maxWidth <= 0 {
+		return s.SignedURL(ctx, key, expiry)
+	}
+	if !ValidKey(key) {
+		return "", ErrInvalidKey
+	}
+	if s.baseURL == "" {
+		return "", errors.New("local storage base URL not configured")
+	}
+	maxWidth = min(maxWidth, ThumbMaxWidth)
+	return s.baseURL + "/media/" + escapeKey(key) + "?w=" + strconv.Itoa(maxWidth) + "&token=" + url.QueryEscape(s.token), nil
 }
 
 func escapeKey(key string) string {

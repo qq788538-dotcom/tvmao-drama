@@ -41,7 +41,7 @@ func TestPersistOutputsRetriesRemoteDownloadThreeTimes(t *testing.T) {
 	srv, hits := flakyServer(t, 3)
 	st := &captureStorage{}
 	svc := &Service{storage: st, httpClient: srv.Client()}
-	urls, ids, mimes, err := svc.persistOutputs(context.Background(), 1, 77, nil, []string{srv.URL + "/a.png"}, 0)
+	urls, ids, mimes, _, err := svc.persistOutputs(context.Background(), 1, 77, nil, []string{srv.URL + "/a.png"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestPersistOutputsGivesUpAfterThreeRetries(t *testing.T) {
 	srv, hits := flakyServer(t, 100)
 	svc := &Service{storage: &captureStorage{}, httpClient: srv.Client()}
 	raw := srv.URL + "/a.png?x=1&y=2"
-	urls, ids, _, err := svc.persistOutputs(context.Background(), 1, 78, nil, []string{raw}, 0)
+	urls, ids, _, _, err := svc.persistOutputs(context.Background(), 1, 78, nil, []string{raw}, 0)
 	if err != nil {
 		t.Fatalf("http 产物下载失败不应让任务失败: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestPersistOutputsDoesNotRetryDataURL(t *testing.T) {
 	zeroPersistRetryDelays(t)
 	st := &countingFailStorage{}
 	svc := &Service{storage: st}
-	_, _, _, _ = svc.persistOutputs(context.Background(), 1, 79, nil, []string{"data:image/png;base64,aGk="}, 0)
+	_, _, _, _, _ = svc.persistOutputs(context.Background(), 1, 79, nil, []string{"data:image/png;base64,aGk="}, 0)
 	if st.puts != 1 {
 		t.Fatalf("data: 产物失败是确定性的，不应重试, puts=%d", st.puts)
 	}

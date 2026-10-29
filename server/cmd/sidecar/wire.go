@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
+	"path/filepath"
 
 	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
 	"github.com/qq788538-dotcom/tvmao-drama/server/internal/aicharacters"
@@ -74,14 +76,24 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	}
 
 	// 网页上传与 CLI 上传共用同一个 AssetHandler（CLIAssetHandler 复用它的落盘与登记）。
-	assetHandler := apphttp.NewAssetHandler(storage, assetsRepo, usersRepo, signer)
+	// 上传前校验项目存在且未删除。
+	assetHandler := apphttp.NewAssetHandler(storage, assetsRepo, usersRepo, signer).WithProjectGate(projectsRepo)
+
+	// 本地缩略图：/media/<key>?w=<宽> 首次请求时缩放、按 key+宽度落盘缓存（LocalStorage.SignedThumbURL 发出这种地址）。
+	// 缓存目录建不起来只降级成一律给原图，不阻止启动。
+	media := apphttp.NewMediaHandler(storage, signer, apphttp.NewSQLMediaMimeStore(conn), reveal.InFileManager)
+	if thumbs, err := assets.NewThumbCache(filepath.Join(dataDir, "cache", "thumbs")); err != nil {
+		log.Printf("警告: %v；缩略图将回退原图", err)
+	} else {
+		media.WithThumbs(thumbs)
+	}
 
 	deps := apphttp.Deps{
 		Auth:              auth,
 		DataDir:           dataDir,
 		Version:           version,
 		MediaSigner:       signer,
-		Media:             apphttp.NewMediaHandler(storage, signer, apphttp.NewSQLMediaMimeStore(conn), reveal.InFileManager),
+		Media:             media,
 		Me:                apphttp.NewMeHandler(usersRepo),
 		Asset:             assetHandler,
 		Project:           apphttp.NewProjectHandler(projectsRepo, signer, storage, assetsRepo, usersRepo, genTasks, orphans, conn, duplicator),
@@ -130,9 +142,10 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	deps.CLIModel = apphttp.NewCLIModelHandler(modelsRepo)
 	deps.CLIAsset = apphttp.NewCLIAssetHandler(assetHandler, assetsRepo, signer)
 
-	// 后处理（去字幕/转高清/转白模）直接入生成管线。
+	// 后处理（去字幕/转高清/转白模）直接入生成管线；懒回填探测的临时文件放进生成临时目录（经启动清理覆盖）。
 	deps.CanvasPostprocess = apphttp.NewCanvasPostprocessHandler(settingsRepo, genW.CanvasGen, projectsRepo, assetsRepo, genW.Gen, modelsRepo, signer).
-		WithObjectStore(storage)
+		WithObjectStore(storage).
+		WithTempDir(genW.TempDir)
 	deps.GenImagePreset = apphttp.NewGenImagePresetHandler(settingsRepo)
 	deps.MultiAngle = apphttp.NewMultiAngleHandler(settingsRepo)
 	deps.LightControl = apphttp.NewLightControlHandler(settingsRepo)

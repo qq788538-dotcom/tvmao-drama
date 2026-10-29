@@ -118,7 +118,7 @@ func TestCallAndCompleteRecordsUpstreamFingerprint(t *testing.T) {
 	}
 	id, _ := res.LastInsertId()
 
-	_, _ = svc.callAndComplete(context.Background(), id, 2, m, "sk-secret-key", srv.URL+"/", []byte(`{}`), 1, nil, 40, nil, nil, "")
+	_, _ = svc.callAndComplete(context.Background(), id, 2, m, "sk-secret-key", srv.URL+"/", []byte(`{}`), 1, nil, 40, nil, nil, nil, "")
 
 	var fp string
 	if err := conn.QueryRow(`SELECT upstream_fingerprint FROM generation_tasks WHERE id=?`, id).Scan(&fp); err != nil {

@@ -130,6 +130,9 @@ func mapUploadError(err error) error {
 		return cliapi.New(cliapi.CodeInvalidArgument, ue.Message)
 	case http.StatusBadGateway:
 		return cliapi.New(cliapi.CodeUpstreamUnavailable, ue.Message)
+	case http.StatusNotFound:
+		// 项目不存在或已删除（storeUpload 的存在性校验），与 RunNode 同一错误码。
+		return cliapi.New(cliapi.CodeProjectNotFound, ue.Message)
 	case http.StatusConflict:
 		// 存储配额预检的 409：用户清理素材即可自解，归 INVALID_ARGUMENT（4xx、
 		// 不可重试）。落 default 的 INTERNAL 会被 CLI 当服务端故障自动重试——

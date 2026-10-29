@@ -13,7 +13,7 @@ import (
 )
 
 // ProjectCleaner 后台异步清理已软删的画布项目。删项目时只软删(秒回)，这里把
-// 「列资产 → 删 asset 行 → 标孤儿给 GC → 删生成任务 → 回收配额 → 硬删项目」慢慢清。
+// 「列资产 → 删 asset 行与脚本任务 → 标孤儿给 GC → 删生成任务 → 回收配额 → 硬删项目」慢慢清。
 // 画布项目内生成/上传的文件可能很多，同步删会卡请求/超时；软删 + worker 可重入抗重启。
 type ProjectCleaner struct {
 	repo        projects.Repository
@@ -87,6 +87,12 @@ func (c *ProjectCleaner) purge(userID, projectID int64) error {
 	if _, err := tx.Exec(`DELETE FROM assets WHERE project_id=?`, projectID); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("delete assets: %w", err)
+	}
+	// 脚本节点任务只有结果 JSON、没有文件和配额，直接删。在跑的任务回写时按 id 匹配不到行，
+	// 什么也不做；前端轮询拿到 404 判死（见 useScriptGenPolling）。
+	if _, err := tx.Exec(`DELETE FROM canvas_script_tasks WHERE project_id=?`, projectID); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("delete canvas script tasks: %w", err)
 	}
 	for _, a := range assetList {
 		if err := library.TryReclaim(library.ReclaimDeps{Querier: tx, Execer: tx, Orphans: c.orphans}, a.ObjectKey, userID, a.SizeBytes); err != nil {

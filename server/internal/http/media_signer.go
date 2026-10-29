@@ -45,7 +45,7 @@ func (m *MediaSigner) Sign(s string) string {
 	return url
 }
 
-// SignThumb 与 Sign 同理，出缩略图 URL；本地存储不生成缩略图，返回的就是原图 URL。
+// SignThumb 与 Sign 同理，出缩略图 URL：本地存储给 /media/<key>?w=<宽>，由 sidecar 首次请求时缩放并缓存。
 func (m *MediaSigner) SignThumb(s string, maxWidth int) string {
 	if m == nil || m.storage == nil || s == "" {
 		return s

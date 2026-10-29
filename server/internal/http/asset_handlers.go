@@ -41,10 +41,18 @@ type AssetHandler struct {
 	probe func(ctx context.Context, data []byte) (int64, error)
 	// maxUploadBytes 是单个文件的上限，默认 assetMaxUploadBytes；测试可调小。
 	maxUploadBytes int64
+	// projects 上传前校验项目存在且未删除（见 WithProjectGate）；nil = 不校验。
+	projects projectGate
 }
 
 func NewAssetHandler(storage assets.Storage, repo assets.Repository, users storageUserRepo, signer *MediaSigner) *AssetHandler {
 	return &AssetHandler{storage: storage, repo: repo, users: users, signer: signer, maxUploadBytes: assetMaxUploadBytes, probe: mediaprobe.ProbeDurationMsPortable}
+}
+
+// WithProjectGate 让上传（网页与 CLI 共用 storeUpload）拒绝已删除/不存在的项目。
+func (h *AssetHandler) WithProjectGate(g projectGate) *AssetHandler {
+	h.projects = g
+	return h
 }
 
 // uploadResult 是一次上传的结果。Deduped=true 表示命中同用户同项目的相同内容，
@@ -72,6 +80,14 @@ func (e *uploadError) Error() string { return e.Message }
 // 不变量（探测必须在 PutObject 之前、去重必须在探测之前），复制第二份迟早会漂。
 // 网页 handler 的响应体逐字未变。
 func (h *AssetHandler) storeUpload(ctx context.Context, userID, projectID int64, filename, contentType string, body []byte) (uploadResult, error) {
+	// 已删项目不再收素材：ProjectCleaner 硬删之后插进来的 asset 行没人清，文件和配额都会泄漏。
+	// 放在去重之前：已删项目里的旧行也不该被「去重命中」复用出去。
+	if err := checkProjectActive(ctx, h.projects, projectID); err != nil {
+		if errors.Is(err, errProjectGone) {
+			return uploadResult{}, &uploadError{Status: http.StatusNotFound, Message: err.Error()}
+		}
+		return uploadResult{}, &uploadError{Status: http.StatusInternalServerError, Message: err.Error()}
+	}
 	// CLI 等非浏览器客户端的 multipart 默认只给 application/octet-stream，
 	// 按内容嗅探一次，否则图片/视频会以下载类型落库和上传对象存储。
 	if contentType == "" || contentType == "application/octet-stream" {

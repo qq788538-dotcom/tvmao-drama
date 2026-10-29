@@ -1,4 +1,5 @@
 import { useReconcileCanvasTask } from './useReconcileCanvasTask';
+import { stallIfUnreachable, usePollStalled } from './pollStall';
 import { useEffect, useState } from 'react';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 import { useQuery } from '@tanstack/react-query';
@@ -8,6 +9,7 @@ import { persistNodeById } from '../persistence/canvasMutations';
 import { NodeShell } from '../NodeShell';
 import { useMediaNodeMenu } from './useMediaNodeMenu';
 import { VideoPlayer } from './VideoPlayer';
+import { useNodeMediaActive } from './useNodeMediaActive';
 import {
   currentProjectId,
   fetchCanvasPostprocessConfig,
@@ -72,9 +74,11 @@ export function VideoWhiteModelNode({ id }: { id: string }) {
 }
 
 function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
+  // 轮询连续够不着后端时挂起(P23):不判失败,交给对账;NodeShell 上可点「重新检查」。
+  const pollStalled = usePollStalled(node?.taskId);
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
   const inputs = useConnectedInputs(id);
@@ -124,11 +128,12 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
     Boolean(sourceUrl && sourceNodeId && configured && resolution) && !isGenerating;
 
   const mediaMenu = useMediaNodeMenu({ url: node?.content, kind: 'video', nodeId: id });
+  const mediaActive = useNodeMediaActive(id);
 
   // 与 GenVideoNode / SubtitleEraseNode 同一套「方案 B」：结果由后端权威写回快照，
   // 轮询仅用于前端即时展示，刷新页面能恢复进行中的任务。
   useEffect(() => {
-    if (node?.status === 'generating' && node.taskId) {
+    if (node?.status === 'generating' && node.taskId && !pollStalled) {
       const ctrl = new AbortController();
       let cancelled = false;
       pollCanvasTaskUntilDone(node.taskId, { signal: ctrl.signal })
@@ -150,6 +155,7 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
         })
         .catch((err: any) => {
           if (cancelled || err?.message === 'aborted') return;
+          if (node.taskId && stallIfUnreachable(node.taskId, err)) return;
           updateNode(id, { status: 'failed', error: err?.message || '轮询失败', taskId: undefined });
           persistNodeById(id);
         });
@@ -159,7 +165,7 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
       };
     }
     return undefined;
-  }, [node?.status, node?.taskId, id, updateNode, updateNodeSettings, variant.action]);
+  }, [node?.status, node?.taskId, pollStalled, id, updateNode, updateNodeSettings, variant.action]);
 
   if (!node) return null;
 
@@ -201,6 +207,8 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
             {/* 已有产物：展示处理结果，可走 useMediaNodeMenu 保存/发送。 */}
             {node.content ? (
               <VideoPlayer
+                active={mediaActive}
+                {...mediaMenu.mediaProps}
                 src={node.content} crossOrigin={mediaCrossOrigin(node.content)}
                 className="w-full h-full object-contain bg-black"
                 playsInline
@@ -210,9 +218,10 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
                   mediaMenu.onContextMenu(e);
                 }}
               />
-            ) : sourceUrl ? (
+            ) : sourceUrl && mediaActive ? (
               // 还没有产物：展示上游视频缩略，纯预览。时长不从这里读（见上方预估注释）。
               // 无 controls，没有可保护的控制条——mousedown 放行冒泡，画面可拖动节点。
+              // 离开视口（含一屏边距）就不挂，免得屏幕外的节点也去拉源视频（P15）。
               <video
                 src={sourceUrl} crossOrigin={mediaCrossOrigin(sourceUrl)}
                 className="w-full h-full object-contain bg-black"

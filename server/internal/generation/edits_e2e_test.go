@@ -66,7 +66,7 @@ func TestEditsEndToEnd_BytesRoundTripAndTempDirClean(t *testing.T) {
 	if strings.Contains(string(res.Body), "b64_json\":\"i") {
 		t.Fatal("result.Body 不应再含整段 b64")
 	}
-	urls, _, mimes, err := s.persistOutputs(context.Background(), 64, 1, nil, res.OutputURLs, 0)
+	urls, _, mimes, _, err := s.persistOutputs(context.Background(), 64, 1, nil, res.OutputURLs, 0)
 	if err != nil {
 		t.Fatalf("persist: %v", err)
 	}

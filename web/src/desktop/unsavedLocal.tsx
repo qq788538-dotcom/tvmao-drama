@@ -4,10 +4,14 @@
 // 重试走 sidecar 的 POST /tasks/{id}/repersist。成功时 sidecar 已经把快照里
 // 的节点改成本地地址；页面这边把同样的改动落到 store，再补一次局部持久化——与生成结果
 // 回填同一套做法（服务端权威写回，前端补齐自己的状态）。
-import { useState, type ReactNode } from 'react';
+//
+// 另一种情况：文件已落本地（media://），但素材记录没写成功（assetId=0）。sidecar 的
+// isUnsavedOutput 只认 http(s)，不会给它打 unsaved；repersist 也只搬外链槽位，重试
+// 没有意义。这里单独挂「素材未登记」角标说明，不给重试按钮。
+import { useEffect, useState, type ReactNode } from 'react';
 import { App as AntApp } from 'antd';
 import { CloudOff, Loader2 } from 'lucide-react';
-import { api, currentProjectId } from '@/shared/api';
+import { api, currentProjectId, type CanvasTaskStatus } from '@/shared/api';
 import { useCanvasStore } from '@/modules/canvas/editor/store';
 import { persistNodeById } from '@/modules/canvas/editor/persistence/canvasMutations';
 import type { CanvasNode, NodeType } from '@/modules/canvas/editor/types';
@@ -33,6 +37,12 @@ export function isUnsavedNode(node: CanvasNode | undefined): boolean {
   // 打开项目才读得到。所以对生成类节点按「成功了但内容是外链」认定：桌面端生成结果正常
   // 都是本机地址，只有下载失败才会留下外链。
   return GENERATED_TYPES.has(node.type) && node.status === 'succeeded' && isRemoteMediaUrl(node.content);
+}
+
+/** 文件在本机、但素材记录没写成功（sidecar 落盘时 assets 事务失败，assetId 记 0）。 */
+export function isUnregisteredNode(node: CanvasNode | undefined): boolean {
+  if (!node || !GENERATED_TYPES.has(node.type) || node.status !== 'succeeded') return false;
+  return isLocalMediaUrl(node.content) && node.settings?.assetId === 0;
 }
 
 /** 与 sidecar 的 ApplyRepersist 同一规则：history 里字符串条目和 {url} 条目都换。 */
@@ -100,18 +110,91 @@ export async function retrySaveToLocal(nodeId: string): Promise<void> {
   persistNodeById(nodeId);
 }
 
+// 落盘失败原因（sidecar 的 output.persistErrors，与 outputUrls 同序），按节点内容对上槽位。
+// 同一节点同一内容只查一次；失败不缓存，下次再查。
+const persistErrorCache = new Map<string, Promise<string | undefined>>();
+
+type TaskStatusWithErrors = Partial<CanvasTaskStatus> & { taskId?: number };
+
+async function fetchPersistError(node: CanvasNode): Promise<string | undefined> {
+  const recorded = Number(node.settings?.genTaskId);
+  let st: TaskStatusWithErrors | undefined;
+  if (Number.isInteger(recorded) && recorded > 0) {
+    st = (await api.get<TaskStatusWithErrors>(`/canvas-tasks/${recorded}`)).data;
+  } else {
+    // 没有 genTaskId（页面开着时出的结果）：by-node 直接带回最近一次任务的状态。
+    const projectId = currentProjectId();
+    if (!projectId) return undefined;
+    st = (await api.get<TaskStatusWithErrors>('/canvas-tasks/by-node', { params: { projectId, nodeId: node.id } })).data;
+  }
+  const i = (st?.outputUrls ?? []).indexOf(node.content ?? '');
+  return (i >= 0 ? st?.persistErrors?.[i] : undefined) || undefined;
+}
+
+export function loadPersistError(node: CanvasNode): Promise<string | undefined> {
+  const key = `${node.id}|${node.content ?? ''}`;
+  let pending = persistErrorCache.get(key);
+  if (!pending) {
+    pending = fetchPersistError(node);
+    persistErrorCache.set(key, pending);
+    pending.catch(() => persistErrorCache.delete(key));
+  }
+  return pending.catch(() => undefined);
+}
+
+/** 测试用：清掉落盘失败原因的查询缓存。 */
+export function resetPersistErrorCache(): void {
+  persistErrorCache.clear();
+}
+
 export function retryErrorMessage(err: unknown): string {
   const e = err as { response?: { data?: { error?: string } }; message?: string } | undefined;
   return e?.response?.data?.error || e?.message || '保存到本地失败';
 }
 
-/** 节点名字行上的「未保存到本地」角标；节点已在本机时返回 null。 */
+const UNSAVED_TITLE = '生成结果没能下载到本机，现在用的是上游的临时地址，过期后会打不开';
+const UNREGISTERED_TITLE =
+  '生成结果已保存到本机，但素材记录没有写成功（assetId=0）：存储用量和项目清理都不会算上这个文件。重新生成可恢复。';
+
+/** 节点名字行上的「未保存到本地」/「素材未登记」角标；都不是时返回 null。 */
 export function useUnsavedLocalBadge(nodeId: string): ReactNode | null {
-  const unsaved = useCanvasStore((s) => isUnsavedNode(s.nodes.find((n) => n.id === nodeId)));
+  const unsaved = useCanvasStore((s) => isUnsavedNode(s.nodesById.get(nodeId)));
+  const unregistered = useCanvasStore((s) => isUnregisteredNode(s.nodesById.get(nodeId)));
+  const content = useCanvasStore((s) => s.nodesById.get(nodeId)?.content);
   const readOnly = useCanvasStore((s) => s.readOnly);
   const { message } = AntApp.useApp();
   const [retrying, setRetrying] = useState(false);
+  // 落盘失败原因只放 tooltip：超限、链接失效这类原因下重试没有意义，用户得知道。
+  const [reason, setReason] = useState<{ content: string | undefined; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!unsaved) return;
+    const node = useCanvasStore.getState().nodesById.get(nodeId);
+    if (!node) return;
+    let alive = true;
+    void loadPersistError(node).then((text) => {
+      if (alive && text) setReason({ content: node.content, text });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [unsaved, nodeId, content]);
+
+  if (unregistered) {
+    return (
+      <span
+        data-unsaved-local={nodeId}
+        data-unsaved-kind="unregistered"
+        className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-600/90 text-white text-[11px] leading-none font-medium"
+        title={UNREGISTERED_TITLE}
+      >
+        <CloudOff size={11} />
+        素材未登记
+      </span>
+    );
+  }
   if (!unsaved) return null;
+  const reasonText = reason && reason.content === content ? reason.text : null;
 
   const retry = async () => {
     if (retrying) return;
@@ -130,7 +213,7 @@ export function useUnsavedLocalBadge(nodeId: string): ReactNode | null {
     <span
       data-unsaved-local={nodeId}
       className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-600/90 text-white text-[11px] leading-none font-medium"
-      title="生成结果没能下载到本机，现在用的是上游的临时地址，过期后会打不开"
+      title={reasonText ? `${UNSAVED_TITLE}\n原因：${reasonText}` : UNSAVED_TITLE}
     >
       <CloudOff size={11} />
       未保存到本地
