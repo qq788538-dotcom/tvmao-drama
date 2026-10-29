@@ -133,7 +133,8 @@ func (t *tempDownload) Close() error {
 // ReadCloser（Close 即删文件）、字节数和 mime。
 //   - Content-Length 已超限的直接拒绝，不下载；
 //   - 实际字节经 LimitReader(max+1) 卡上限，防 Content-Length 缺失或说谎；
-//   - Content-Type 为空或 octet-stream 时按前 512 字节嗅探（与 file:// 分支同法），
+//   - Content-Type 不是 image/video/audio 大类（为空、application/octet-stream、对象存储
+//     常见的 binary/octet-stream 等）时按前 512 字节嗅探（与 file:// 分支同法），
 //     嗅探出图片再按图片上限复核一次。
 func (s *Service) downloadToTemp(ctx context.Context, rawURL string) (io.ReadCloser, int64, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -153,7 +154,7 @@ func (s *Service) downloadToTemp(ctx context.Context, rawURL string) (io.ReadClo
 		return nil, 0, "", &fetchStatusError{Status: resp.StatusCode}
 	}
 	mime := resp.Header.Get("Content-Type")
-	sniff := mime == "" || mediaTypeOnly(mime) == "application/octet-stream"
+	sniff := needsSniff(mediaTypeOnly(mime))
 	limit := s.outputLimitFor(mediaTypeOnly(mime))
 	if resp.ContentLength > limit {
 		return nil, 0, "", tooLarge(resp.ContentLength, limit)
@@ -188,6 +189,14 @@ func (s *Service) downloadToTemp(ctx context.Context, rawURL string) (io.ReadClo
 		return fail(err)
 	}
 	return &tempDownload{File: f}, n, mime, nil
+}
+
+// needsSniff：上游声明的不是媒体大类就不可信，按内容嗅探。只认 application/octet-stream
+// 不够——S3 兼容存储给无类型对象回 binary/octet-stream，部分 CDN 回 application/x-download，
+// 不嗅探的话视频的 mime / outputKind / DurationMs 照样缺（P28）。
+func needsSniff(mediaType string) bool {
+	mt := strings.ToLower(mediaType)
+	return !strings.HasPrefix(mt, "image/") && !strings.HasPrefix(mt, "video/") && !strings.HasPrefix(mt, "audio/")
 }
 
 // tooLarge 生成带大小的超限错误。n 是已知字节数（流式截断时为 limit+1，只说明「超过」）。

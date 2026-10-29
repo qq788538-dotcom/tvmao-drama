@@ -145,8 +145,9 @@ func TestDownloadToTempLimitByKind(t *testing.T) {
 func TestDownloadToTempSniffsMissingContentType(t *testing.T) {
 	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 600)...)
 	for name, set := range map[string]func(http.Header){
-		"空":            func(h http.Header) { h["Content-Type"] = nil }, // 阻止 net/http 服务端自动嗅探补头
-		"octet-stream": func(h http.Header) { h.Set("Content-Type", "application/octet-stream") },
+		"空":                   func(h http.Header) { h["Content-Type"] = nil }, // 阻止 net/http 服务端自动嗅探补头
+		"octet-stream":        func(h http.Header) { h.Set("Content-Type", "application/octet-stream") },
+		"binary/octet-stream": func(h http.Header) { h.Set("Content-Type", "binary/octet-stream") }, // S3 兼容存储的无类型对象
 	} {
 		t.Run(name, func(t *testing.T) {
 			srv, _ := countingServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -174,6 +175,29 @@ func TestDownloadToTempSniffsMissingContentType(t *testing.T) {
 			}
 			assertDirEmpty(t, tmp)
 		})
+	}
+}
+
+// 声明为媒体大类时信任上游，不嗅探；非媒体类型（如 application/x-download）嗅探出视频。
+func TestDownloadToTempSniffOnlyNonMediaTypes(t *testing.T) {
+	webm := append([]byte("\x1A\x45\xDF\xA3"), make([]byte, 600)...)
+	for _, tc := range []struct{ ct, want string }{
+		{"application/x-download", "video/webm"},
+		{"video/mp4", "video/mp4"},
+	} {
+		srv, _ := countingServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", tc.ct)
+			_, _ = w.Write(webm)
+		})
+		svc := &Service{httpClient: srv.Client(), tmpDir: t.TempDir()}
+		rc, _, mime, err := svc.downloadToTemp(context.Background(), srv.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rc.Close()
+		if mime != tc.want {
+			t.Fatalf("Content-Type %s: mime=%q want %q", tc.ct, mime, tc.want)
+		}
 	}
 }
 
@@ -233,6 +257,51 @@ func TestDownloadSemaphoreLimitsConcurrentDownloads(t *testing.T) {
 	if p := atomic.LoadInt32(&peak); p < 1 || p > 2 {
 		t.Fatalf("并发下载峰值应 <= 2, got %d", p)
 	}
+}
+
+// 下载名额持有到写完对象存储：前一个槽位 PutObject 没返回，后一个槽位不开始下载
+// （同时存在的临时文件数因此也受闸约束）。
+func TestDownloadSemaphoreHeldThroughPutObject(t *testing.T) {
+	srv, hits := countingServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("\x89PNG\r\n\x1a\nDATA"))
+	})
+	st := &blockingPutStorage{entered: make(chan struct{}, 2), unblock: make(chan struct{})}
+	svc := &Service{storage: st, httpClient: srv.Client(), tmpDir: t.TempDir()}
+	svc.SetDownloadConcurrency(1)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if _, _, _, err := svc.persistSlot(context.Background(), 1, 94, 0, i, srv.URL+"/a.png", 0); err != nil {
+				t.Errorf("slot %d: %v", i, err)
+			}
+		}(i)
+	}
+	<-st.entered // 第一个槽位已下载完、卡在 PutObject
+	time.Sleep(50 * time.Millisecond)
+	if got := atomic.LoadInt32(hits); got != 1 {
+		t.Fatalf("PutObject 未返回前不应开始第二次下载, hits=%d", got)
+	}
+	close(st.unblock)
+	wg.Wait()
+	if got := atomic.LoadInt32(hits); got != 2 {
+		t.Fatalf("hits=%d want 2", got)
+	}
+}
+
+// blockingPutStorage：PutObject 进入时通知、阻塞到 unblock 关闭。
+type blockingPutStorage struct {
+	lockedCaptureStorage
+	entered chan struct{}
+	unblock chan struct{}
+}
+
+func (b *blockingPutStorage) PutObject(ctx context.Context, in assets.PutObjectInput) (assets.StoredObject, error) {
+	b.entered <- struct{}{}
+	<-b.unblock
+	return b.lockedCaptureStorage.PutObject(ctx, in)
 }
 
 // 名额等待感知 ctx：闸满时 ctx 取消立即返回。
