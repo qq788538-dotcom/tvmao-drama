@@ -63,7 +63,7 @@ import { renderRejected } from '../utils/rejectedFiles';
 import { inputLimitViolation } from '../utils/inputLimits';
 
 export function GenImageNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
   const { modal } = AntApp.useApp();
