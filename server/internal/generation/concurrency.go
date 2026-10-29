@@ -1,6 +1,13 @@
 package generation
 
-import "sync"
+import (
+	"context"
+	"errors"
+	"sync"
+)
+
+// errSlotWaitAborted：等模型名额期间被叫停（失租或进程关闭）。调用方不动钱、静默退出。
+var errSlotWaitAborted = errors.New("等待并发名额时被中止")
 
 // modelLimiter 是可运行期动态调容量的并发信号量(mutex+cond)。
 // channel 容量不可变,而这里上限要随模型配置热调,故自己实现。
@@ -34,13 +41,34 @@ func (l *modelLimiter) setLimit(n int) {
 	}
 }
 
-func (l *modelLimiter) acquire() {
+// acquireAbortable 等到名额就占一个（active++）；abort 结束时放弃等待并返回 errSlotWaitAborted
+// （abort 为 nil 时永不放弃）。cond.Wait 不能 select，所以名额不够时挂一个 AfterFunc：abort 一结束
+// 就持锁 Broadcast，把等待者叫醒复查。持锁再 Broadcast 保证不会漏在「复查之后、Wait 之前」那一刻。
+func (l *modelLimiter) acquireAbortable(abort context.Context) error {
 	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.active < l.limit {
+		l.active++
+		return nil
+	}
+	if abort != nil {
+		stop := context.AfterFunc(abort, func() {
+			l.mu.Lock()
+			l.cond.Broadcast()
+			l.mu.Unlock()
+		})
+		defer stop()
+	}
 	for l.active >= l.limit {
+		// 只在仍然没名额时放弃：被 release 的 Signal 叫醒时名额已空出，照常占用，
+		// 不会把这次唤醒吞掉而让别的等待者干等。
+		if abort != nil && abort.Err() != nil {
+			return errSlotWaitAborted
+		}
 		l.cond.Wait()
 	}
 	l.active++
-	l.mu.Unlock()
+	return nil
 }
 
 func (l *modelLimiter) release() {
@@ -73,6 +101,14 @@ func NewConcurrencyRegistry() *ConcurrencyRegistry {
 // Acquire 取一个该模型的并发名额(必要时按 limit 刷新容量),返回归还函数。
 // 名额要持有到整个生成生命周期结束(提交→出结果)才 release——由调用方 defer。
 func (r *ConcurrencyRegistry) Acquire(modelID string, limit int) func() {
+	release, _ := r.AcquireAbortable(modelID, limit, nil) // abort 为 nil 不会失败
+	return release
+}
+
+// AcquireAbortable 同 Acquire，但 abort 结束时放弃等待，返回 errSlotWaitAborted（此时没有占名额）。
+// 归还函数同样由 sync.Once 包装：提前归还（上游返回即还，见 callAndComplete）与兜底 defer
+// 各调一次也只释放一次。
+func (r *ConcurrencyRegistry) AcquireAbortable(modelID string, limit int, abort context.Context) (func(), error) {
 	r.mu.Lock()
 	l := r.byModel[modelID]
 	if l == nil {
@@ -81,9 +117,11 @@ func (r *ConcurrencyRegistry) Acquire(modelID string, limit int) func() {
 	}
 	r.mu.Unlock()
 	l.setLimit(limit) // 跟随最新配置热调该模型上限
-	l.acquire()
+	if err := l.acquireAbortable(abort); err != nil {
+		return nil, err
+	}
 	var once sync.Once
-	return func() { once.Do(l.release) }
+	return func() { once.Do(l.release) }, nil
 }
 
 // Occupy 不阻塞地占一个该模型的名额(只 active++,可以超出上限),返回归还函数。

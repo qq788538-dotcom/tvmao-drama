@@ -116,7 +116,7 @@ func (s *Service) runQueuedTask(task Task, lease int64) {
 	}
 
 	if _, err := s.callAndComplete(ctx, task.ID, lease, plan.model, plan.apiKey, plan.baseDomain, plan.payload,
-		task.UserID, task.ProjectID, task.FrozenCents, plan.normalizedInputs, plan.preparedImages, plan.note); err != nil {
+		task.UserID, task.ProjectID, task.FrozenCents, plan.normalizedInputs, snap.Inputs, plan.preparedImages, plan.note); err != nil {
 		log.Printf("[gen-queue] task=%d 执行失败: %v", task.ID, err)
 	}
 }
