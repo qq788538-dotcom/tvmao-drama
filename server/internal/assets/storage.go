@@ -39,7 +39,7 @@ type Storage interface {
 	DeleteObject(ctx context.Context, key string) error
 	SignedURL(ctx context.Context, key string, expiry time.Duration) (string, error)
 	// SignedThumbURL 出缩略图签名 URL；maxWidth<=0 等同原图。
-	// TOS 用 x-tos-process 缩放；MinIO 不支持图片处理，退回原图签名。
+	// TOS 用 x-tos-process 缩放；MinIO 不支持图片处理，退回原图签名；本地存储由 sidecar 缩放并落盘缓存（ThumbCache）。
 	SignedThumbURL(ctx context.Context, key string, expiry time.Duration, maxWidth int) (string, error)
 	ExtractKey(urlOrKey string) (string, bool)
 	// GetObject 按 key 读取对象内容流（导出打包用）。调用方负责 Close。

@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -291,6 +293,90 @@ func TestE2ESubmitToDeletedProjectIs404(t *testing.T) {
 		fmt.Sprintf(`{"projectId":%d,"nodeId":"n1","modelId":"m","inputs":{}}`, proj.ID))
 	if resp.StatusCode != http.StatusNotFound || !strings.Contains(string(b), "已被删除") {
 		t.Fatalf("已删项目生成应 404: %d %s", resp.StatusCode, b)
+	}
+}
+
+// 缩略图走完整装配：/media/thumbs 换出的地址与原图不同、带同一个媒体 token；
+// 取回来的是缩小后的图，CORS 头（ACAO、Vary: Origin）与原图一致，否则会破坏 mediaCrossOrigin 的防缓存投毒约定。
+func TestE2EMediaThumbURLAndCORS(t *testing.T) {
+	e := newE2E(t)
+	resp, b := e.callJSON(t, http.MethodPost, "/api/v1/projects", `{"name":"p"}`)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create project: %d %s", resp.StatusCode, b)
+	}
+	var proj struct {
+		ID int64 `json:"id"`
+	}
+	json.Unmarshal(b, &proj)
+
+	img := image.NewRGBA(image.Rect(0, 0, 1200, 600))
+	for i := range img.Pix {
+		img.Pix[i] = 180
+	}
+	var jpg bytes.Buffer
+	jpeg.Encode(&jpg, img, nil)
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	part, _ := mw.CreatePart(textproto.MIMEHeader{
+		"Content-Disposition": {`form-data; name="file"; filename="big.jpg"`},
+		"Content-Type":        {"image/jpeg"},
+	})
+	part.Write(jpg.Bytes())
+	mw.Close()
+	resp, b = e.call(t, http.MethodPost, fmt.Sprintf("/api/v1/assets?projectId=%d", proj.ID), &buf, mw.FormDataContentType())
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("upload: %d %s", resp.StatusCode, b)
+	}
+	var up struct {
+		URL string `json:"url"`
+	}
+	json.Unmarshal(b, &up)
+
+	resp, b = e.callJSON(t, http.MethodPost, "/api/v1/media/thumbs", fmt.Sprintf(`{"urls":[%q],"maxWidth":400}`, up.URL))
+	var th struct {
+		Thumbs map[string]string `json:"thumbs"`
+	}
+	json.Unmarshal(b, &th)
+	thumbURL := th.Thumbs[up.URL]
+	if resp.StatusCode != http.StatusOK || thumbURL == "" || thumbURL == up.URL ||
+		!strings.Contains(thumbURL, "w=400") || !strings.Contains(thumbURL, "token="+e2eMediaToken) {
+		t.Fatalf("缩略图地址不对: code=%d orig=%q thumb=%q", resp.StatusCode, up.URL, thumbURL)
+	}
+
+	for _, origin := range []string{"tauri://localhost", ""} {
+		req, _ := http.NewRequest(http.MethodGet, thumbURL, nil)
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		mresp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(mresp.Body)
+		mresp.Body.Close()
+		if mresp.StatusCode != http.StatusOK || mresp.Header.Get("Content-Type") != "image/jpeg" {
+			t.Fatalf("origin=%q code=%d type=%q", origin, mresp.StatusCode, mresp.Header.Get("Content-Type"))
+		}
+		if mresp.Header.Get("Access-Control-Allow-Origin") != origin {
+			t.Fatalf("origin=%q ACAO=%q", origin, mresp.Header.Get("Access-Control-Allow-Origin"))
+		}
+		if !strings.Contains(strings.Join(mresp.Header.Values("Vary"), ","), "Origin") {
+			t.Fatalf("origin=%q 缺 Vary: Origin: %v", origin, mresp.Header.Values("Vary"))
+		}
+		cfg, _, err := image.DecodeConfig(bytes.NewReader(body))
+		if err != nil || cfg.Width != 400 || cfg.Height != 200 {
+			t.Fatalf("缩略图尺寸不对: %+v %v", cfg, err)
+		}
+	}
+	// 原图 URL 不受影响，仍是原尺寸（宫格切分等读像素的功能用它）。
+	oresp, err := http.Get(up.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ob, _ := io.ReadAll(oresp.Body)
+	oresp.Body.Close()
+	if !bytes.Equal(ob, jpg.Bytes()) {
+		t.Fatal("原图 URL 应返回原图字节")
 	}
 }
 

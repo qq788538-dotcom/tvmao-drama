@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
+	"path/filepath"
 
 	"github.com/qq788538-dotcom/tvmao-drama/server/internal/agent"
 	"github.com/qq788538-dotcom/tvmao-drama/server/internal/aicharacters"
@@ -77,12 +79,21 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	// 上传前校验项目存在且未删除。
 	assetHandler := apphttp.NewAssetHandler(storage, assetsRepo, usersRepo, signer).WithProjectGate(projectsRepo)
 
+	// 本地缩略图：/media/<key>?w=<宽> 首次请求时缩放、按 key+宽度落盘缓存（LocalStorage.SignedThumbURL 发出这种地址）。
+	// 缓存目录建不起来只降级成一律给原图，不阻止启动。
+	media := apphttp.NewMediaHandler(storage, signer, apphttp.NewSQLMediaMimeStore(conn), reveal.InFileManager)
+	if thumbs, err := assets.NewThumbCache(filepath.Join(dataDir, "cache", "thumbs")); err != nil {
+		log.Printf("警告: %v；缩略图将回退原图", err)
+	} else {
+		media.WithThumbs(thumbs)
+	}
+
 	deps := apphttp.Deps{
 		Auth:              auth,
 		DataDir:           dataDir,
 		Version:           version,
 		MediaSigner:       signer,
-		Media:             apphttp.NewMediaHandler(storage, signer, apphttp.NewSQLMediaMimeStore(conn), reveal.InFileManager),
+		Media:             media,
 		Me:                apphttp.NewMeHandler(usersRepo),
 		Asset:             assetHandler,
 		Project:           apphttp.NewProjectHandler(projectsRepo, signer, storage, assetsRepo, usersRepo, genTasks, orphans, conn, duplicator),
