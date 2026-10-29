@@ -91,7 +91,7 @@ async function replaceVideo(container: HTMLElement) {
 // P8：更换视频后旧视频的帧不能挂在新视频下面，IndexedDB 缓存也要一起清。
 it('更换视频成功后清空帧与缓存，探测完元数据释放临时 video', async () => {
   const { container } = renderNode();
-  // 挂载后再换 createElement：节点菜单的时长探测也会建 <video>，不归这里管。
+  // 挂载后再换 createElement：只收集本用例要验的临时 <video>，不混进渲染期建的元素。
   stubVideoCreation();
   await replaceVideo(container);
 

@@ -204,6 +204,7 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
             {node.content ? (
               <VideoPlayer
                 active={mediaActive}
+                {...mediaMenu.mediaProps}
                 src={node.content} crossOrigin={mediaCrossOrigin(node.content)}
                 className="w-full h-full object-contain bg-black"
                 playsInline

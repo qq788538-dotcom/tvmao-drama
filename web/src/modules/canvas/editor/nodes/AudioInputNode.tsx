@@ -12,7 +12,7 @@ export function AudioInputNode({ id }: { id: string }) {
   const node = useCanvasStore((s) => s.nodesById.get(id));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const storyboardMode = useStoryboardMode();
-  const { onContextMenu, overlay: menuOverlay, badge: seedanceBadge } = useMediaNodeMenu({
+  const { onContextMenu, overlay: menuOverlay, badge: seedanceBadge, mediaProps } = useMediaNodeMenu({
     url: node?.content,
     kind: 'audio',
     nodeId: id,
@@ -48,6 +48,7 @@ export function AudioInputNode({ id }: { id: string }) {
               key={node.content}
               url={node.content}
               nodeId={id}
+              {...mediaProps}
               className="flex-1 rounded-lg bg-black/40 p-2"
               topRight={
                 <label

@@ -44,7 +44,7 @@ export function VideoInputNode({ id }: { id: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [frameMenu, setFrameMenu] = useState<{ x: number; y: number; frame: Frame; idx: number } | null>(null);
-  const { onContextMenu, overlay: menuOverlay, badge: seedanceBadge } = useMediaNodeMenu({
+  const { onContextMenu, overlay: menuOverlay, badge: seedanceBadge, mediaProps } = useMediaNodeMenu({
     url: node?.content,
     kind: 'video',
     nodeId: id,
@@ -84,7 +84,8 @@ export function VideoInputNode({ id }: { id: string }) {
     if (!asset) return;
     // 换了视频，旧视频的帧就不再属于这个节点：内存和 IndexedDB 缓存一起清掉，
     // 否则新视频下面挂着旧帧，重开画布还会从缓存里恢复回来（P8）。
-    updateNodeSettings(id, { frames: [], selectedKeyframes: [] });
+    // videoMeta 一并清掉：新片探测完成前，旧片的时长/尺寸不能拿来做合规预检。
+    updateNodeSettings(id, { frames: [], selectedKeyframes: [], videoMeta: undefined });
     saveFrames(id, [], []).catch(() => {});
     // 尝试获取视频元数据。它比上传晚落定，所以自己再持久化一次——
     // 时长要拿来做 seedance 合规校验，丢了就得重新探测。
@@ -310,7 +311,7 @@ export function VideoInputNode({ id }: { id: string }) {
                 >
                   {/* 控制条区域拦 mousedown 交给播放器；画面区域放行冒泡给 NodeShell
                       拖动——此前完全不拦，按进度条拖动时节点会跟着跑。 */}
-                  <VideoPlayer ref={videoRef} active={mediaActive} src={node.content} crossOrigin={mediaCrossOrigin(node.content)} className="w-full h-full object-contain" draggable={false} />
+                  <VideoPlayer ref={videoRef} active={mediaActive} {...mediaProps} src={node.content} crossOrigin={mediaCrossOrigin(node.content)} className="w-full h-full object-contain" draggable={false} />
                 </div>
               );
             })()}

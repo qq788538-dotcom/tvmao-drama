@@ -611,6 +611,7 @@ export function GenVideoNode({ id }: { id: string }) {
             {currentUrl ? (
               <VideoPlayer
                 active={mediaActive}
+                {...mediaMenu.mediaProps}
                 src={currentUrl} crossOrigin={mediaCrossOrigin(currentUrl)}
                 className="w-full h-full object-contain bg-black"
                 playsInline

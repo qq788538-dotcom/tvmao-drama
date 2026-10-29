@@ -389,7 +389,7 @@ export function GenAudioNode({ id }: { id: string }) {
                 mediaMenu.onContextMenu(e);
               }}
             >
-              <WaveformPlayer key={currentUrl} url={currentUrl} nodeId={id} className="w-full h-full" />
+              <WaveformPlayer key={currentUrl} url={currentUrl} nodeId={id} {...mediaMenu.mediaProps} className="w-full h-full" />
             </div>
           ) : (
             <Music size={32} className="text-muted-foreground/60" />
