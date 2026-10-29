@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/qq788538-dotcom/tvmao-drama/server/internal/models"
+	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 	"github.com/qq788538-dotcom/tvmao-drama/server/internal/skillruntime"
 )
 
@@ -221,6 +222,10 @@ func userErrorf(format string, args ...any) error {
 // ErrTaskNotFound 任务不存在或不属于该用户。
 var ErrTaskNotFound = errors.New("任务不存在")
 
+// ErrProjectGone 提交时项目不存在或已软删。它也是 UserError（文案可直接展示），
+// handler 用 errors.Is 单独映射成 404。
+var ErrProjectGone error = &UserError{Msg: projects.GoneMessage}
+
 // Submit 校验并落任务，返回任务 id。
 func (s *Service) Submit(ctx context.Context, userID, projectID int64, nodeID, styleName, script string, durationSec int, model string, userTags []string) (int64, error) {
 	script = strings.TrimSpace(script)
@@ -267,6 +272,18 @@ func (s *Service) Submit(ctx context.Context, userID, projectID int64, nodeID, s
 	if _, err := s.skills.Snapshot(ctx, style.SkillName); err != nil {
 		log.Printf("canvasscript: 风格 %q 的 skill 不可用: %v", style.SkillName, err)
 		return 0, userError("风格对应的 skill 不可用")
+	}
+	// 已删项目不再接任务：项目软删后到清理器硬删之间插进来的行，清理器会一并删掉；
+	// 硬删之后再插的就没人收了，所以入口必须挡。projectID=0 是不挂项目的调用，跳过。
+	// 「先校验、后删除」的窄竞态挡不住，那种行最多空跑一次，结果没人取，不影响别的数据。
+	if projectID != 0 {
+		ok, err := projects.ActiveExists(ctx, s.db, projectID)
+		if err != nil {
+			return 0, err
+		}
+		if !ok {
+			return 0, ErrProjectGone
+		}
 	}
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO canvas_script_tasks (user_id, project_id, node_id, skill_name, duration_sec, script, model)

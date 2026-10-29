@@ -97,7 +97,8 @@ func wireGeneration(conn *sql.DB, dataDir string, ext genExternal) (*genWiring, 
 	cg.SetSnapshotSearcher(projectsRepo)
 
 	routes := apphttp.GenerationRoutes{
-		CanvasGen:  apphttp.NewCanvasGenHandler(cg, ext.Signer),
+		// 提交前校验项目存在且未删除。
+		CanvasGen:  apphttp.NewCanvasGenHandler(cg, ext.Signer).WithProjectGate(projectsRepo),
 		Generation: apphttp.NewGenerationHandler(gen, ext.Signer),
 		Models:     apphttp.NewRuntimeModelHandler(modelsRepo),
 	}

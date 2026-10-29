@@ -112,6 +112,10 @@ func testConfig() Config {
 func newTestService(t *testing.T, cfg Config, sk *fakeSkills, m fakeModels) (*Service, *sql.DB) {
 	t.Helper()
 	conn := dbtest.Open(t)
+	// submitOne 等用例挂在项目 7 上：Submit 会校验项目存在且未删除。
+	if _, err := conn.Exec(`INSERT INTO projects (id, user_id, name) VALUES (7, 1, 'p')`); err != nil {
+		t.Fatal(err)
+	}
 	return NewService(conn, newFakeSettings(cfg), m, fakeKeys{key: "sk-test"}, sk), conn
 }
 
@@ -186,6 +190,31 @@ func TestSubmitRejectsMissingModelAndSkill(t *testing.T) {
 	svc2, _ := newTestService(t, testConfig(), &fakeSkills{snapErr: errors.New("no such skill")}, fakeModels{})
 	if _, err := svc2.Submit(context.Background(), 1, 7, "n", testStyle, "x", 10, testModel, nil); err == nil || !strings.Contains(err.Error(), "风格对应的 skill 不可用") {
 		t.Fatalf("skill 不存在应拒绝: %v", err)
+	}
+}
+
+// 项目不存在、已软删都拒绝且不落库；projectID=0（不挂项目）跳过校验。
+func TestSubmitRejectsMissingOrDeletedProject(t *testing.T) {
+	svc, conn := newTestService(t, testConfig(), &fakeSkills{}, fakeModels{})
+	ctx := context.Background()
+	if _, err := svc.Submit(ctx, 1, 999, "n", testStyle, "x", 10, testModel, nil); !errors.Is(err, ErrProjectGone) {
+		t.Fatalf("不存在的项目应拒绝: %v", err)
+	}
+	if _, err := conn.Exec(`UPDATE projects SET deleted_at=CURRENT_TIMESTAMP WHERE id=7`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.Submit(ctx, 1, 7, "n", testStyle, "x", 10, testModel, nil)
+	var ue *UserError
+	if !errors.Is(err, ErrProjectGone) || !errors.As(err, &ue) || !strings.Contains(ue.Msg, "已被删除") {
+		t.Fatalf("已删项目应拒绝且文案可展示: %v", err)
+	}
+	var n int
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM canvas_script_tasks`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("拒绝的提交不应落库，got %d 行", n)
+	}
+	if _, err := svc.Submit(ctx, 1, 0, "n", testStyle, "x", 10, testModel, nil); err != nil {
+		t.Fatalf("projectID=0 应跳过校验: %v", err)
 	}
 }
 

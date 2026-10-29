@@ -263,6 +263,37 @@ func TestE2EMediaTraversalIsRejected(t *testing.T) {
 	}
 }
 
+// 装配层确实给上传和 canvasgen 提交接上了项目存在性校验：已删项目一律 404。
+func TestE2ESubmitToDeletedProjectIs404(t *testing.T) {
+	e := newE2E(t)
+	resp, b := e.callJSON(t, http.MethodPost, "/api/v1/projects", `{"name":"p"}`)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create project: %d %s", resp.StatusCode, b)
+	}
+	var proj struct {
+		ID int64 `json:"id"`
+	}
+	json.Unmarshal(b, &proj)
+	if resp, b := e.callJSON(t, http.MethodDelete, fmt.Sprintf("/api/v1/projects/%d", proj.ID), ""); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete project: %d %s", resp.StatusCode, b)
+	}
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	part, _ := mw.CreateFormFile("file", "a.png")
+	part.Write(e2ePNG)
+	mw.Close()
+	resp, b = e.call(t, http.MethodPost, fmt.Sprintf("/api/v1/assets?projectId=%d", proj.ID), &buf, mw.FormDataContentType())
+	if resp.StatusCode != http.StatusNotFound || !strings.Contains(string(b), "已被删除") {
+		t.Fatalf("已删项目上传应 404: %d %s", resp.StatusCode, b)
+	}
+	resp, b = e.callJSON(t, http.MethodPost, "/api/v1/canvas-tasks",
+		fmt.Sprintf(`{"projectId":%d,"nodeId":"n1","modelId":"m","inputs":{}}`, proj.ID))
+	if resp.StatusCode != http.StatusNotFound || !strings.Contains(string(b), "已被删除") {
+		t.Fatalf("已删项目生成应 404: %d %s", resp.StatusCode, b)
+	}
+}
+
 func TestMustWirePanicsOnMissingHandler(t *testing.T) {
 	defer func() {
 		if recover() == nil {

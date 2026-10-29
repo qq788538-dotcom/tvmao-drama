@@ -74,7 +74,8 @@ func wire(conn *sql.DB, storage *assets.LocalStorage, auth localauth.Config, dat
 	}
 
 	// 网页上传与 CLI 上传共用同一个 AssetHandler（CLIAssetHandler 复用它的落盘与登记）。
-	assetHandler := apphttp.NewAssetHandler(storage, assetsRepo, usersRepo, signer)
+	// 上传前校验项目存在且未删除。
+	assetHandler := apphttp.NewAssetHandler(storage, assetsRepo, usersRepo, signer).WithProjectGate(projectsRepo)
 
 	deps := apphttp.Deps{
 		Auth:              auth,
