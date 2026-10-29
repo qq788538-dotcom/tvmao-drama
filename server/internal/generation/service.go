@@ -126,6 +126,12 @@ type Service struct {
 	leaseStaleSec     int
 	// tmpDir 参考图/multipart/产物的临时落盘目录（SetTempDir 注入）。
 	tmpDir string
+	// 产物下载的单文件上限（SetDownloadLimits 注入，0 = 默认值）与全局下载并发闸
+	// （SetDownloadConcurrency 注入，nil 时懒建默认容量）。见 download.go。
+	maxImageOutputBytes int64
+	maxMediaOutputBytes int64
+	dlMu                sync.Mutex
+	dlSem               chan struct{}
 	// lifecycle 仅测试注入（见 tracker）；生产为 nil，用 lifecycle.Default。
 	taskTracker *lifecycle.Tracker
 	// finishSuccessHook 仅测试注入：替换 finishSuccessDurable 内部的单次收口。
@@ -678,7 +684,7 @@ func (s *Service) finalize(ctx context.Context, taskID, lease int64, model *mode
 	upstreamURLs := filterHTTPURLs(result.OutputURLs)
 
 	durMs := durationMsFromInputs(reqInputs)
-	persistedURLs, assetIDs, mimes, perr := s.persistOutputs(ctx, userID, taskID, projectID, result.OutputURLs, durMs)
+	persistedURLs, assetIDs, mimes, persistErrs, perr := s.persistOutputs(ctx, userID, taskID, projectID, result.OutputURLs, durMs)
 	if perr != nil {
 		// 只有 file:// / data: 槽位会走到这里（persistOutputs 注释）。上游已出图、钱已冻结,
 		// 但产物没法交付——保守退款,与「上游调用错误」同一收口。
@@ -697,6 +703,11 @@ func (s *Service) finalize(ctx context.Context, taskID, lease int64, model *mode
 	// 「保存到素材库」「Seedance 合规校验」——这些操作需要 asset 身份，光有 URL 不够。
 	if len(assetIDs) > 0 {
 		output["assetIds"] = assetIDs
+	}
+	// persistErrors 与 outputUrls 同序：仍是上游外链的槽位为什么没保存到本地（超限、
+	// 链接 4xx、重试耗尽）。只在有失败时写入；手动补搬成功后清掉对应位置。
+	if len(persistErrs) > 0 {
+		output["persistErrors"] = persistErrs
 	}
 	// outputKind：主产物(index 0)mime 的大类，供前端历史面板判视频/图片用。
 	// 存在的必要性见 outputKindFromMime 注释——隐藏模型 + 无扩展名对象 key
@@ -1350,9 +1361,11 @@ func durationMsFromInputs(inputs map[string]any) int64 {
 // 「留上游 URL、任务照常成功」不同,本地文件没法给用户看,只能判失败退款。
 var errLocalPersist = errors.New("local output persist failed")
 
-func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, projectID *int64, urls []string, durationMs int64) ([]string, []int64, []string, error) {
+// persistOutputs 返回落盘后的 urls / assetIds / mimes，以及与 urls 同序的落盘失败原因
+// （保留上游地址的槽位填原因，其余为空串；全部成功时为 nil）。
+func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, projectID *int64, urls []string, durationMs int64) ([]string, []int64, []string, []string, error) {
 	if s.storage == nil || len(urls) == 0 {
-		return urls, nil, nil, nil
+		return urls, nil, nil, nil, nil
 	}
 	pid := int64(0)
 	if projectID != nil {
@@ -1361,6 +1374,7 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 	out := make([]string, 0, len(urls))
 	assetIDs := make([]int64, 0, len(urls))
 	mimes := make([]string, 0, len(urls))
+	var persistErrs []string
 	for i, rawURL := range urls {
 		if rawURL == "" {
 			continue
@@ -1373,6 +1387,7 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 				out = append(out, existing.URL)
 				assetIDs = append(assetIDs, existing.ID)
 				mimes = append(mimes, existing.MimeType)
+				persistErrs = append(persistErrs, "")
 				continue
 			}
 		}
@@ -1383,22 +1398,37 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 			// 几 MB base64 会撑大快照，且节点没有重试入口。
 			if strings.HasPrefix(rawURL, "file://") || strings.HasPrefix(rawURL, "data:") {
 				log.Printf("generation: persist local output failed task=%d idx=%d: %v", taskID, i, err)
-				return nil, nil, nil, fmt.Errorf("%w: %v", errLocalPersist, err)
+				return nil, nil, nil, nil, fmt.Errorf("%w: %v", errLocalPersist, err)
 			}
 			// 抓不到(未知 scheme / 超时 / 上游 4xx)或传不上:保留原始 URL、assetId 记 0,
 			// 任务照常成功——用户看到的仍是真实生成的图。日志必须留,否则泄漏无迹可查。
 			// 已自动重试 3 次;之后由用户在节点上点「重试」走 RepersistTask。
 			log.Printf("generation: persist output failed task=%d idx=%d url=%s: %v (kept upstream url)", taskID, i, rawURL, err)
+			// 失败原因随 output 落库（persistErrors），供节点展示（超限/链接失效时重试没有意义）。
 			out = append(out, rawURL)
 			assetIDs = append(assetIDs, 0)
 			mimes = append(mimes, "")
+			persistErrs = append(persistErrs, err.Error())
 			continue
 		}
 		out = append(out, stored)
 		assetIDs = append(assetIDs, assetID)
 		mimes = append(mimes, mime)
+		persistErrs = append(persistErrs, "")
 	}
-	return out, assetIDs, mimes, nil
+	if !anyNonEmpty(persistErrs) {
+		persistErrs = nil
+	}
+	return out, assetIDs, mimes, persistErrs, nil
+}
+
+func anyNonEmpty(xs []string) bool {
+	for _, x := range xs {
+		if x != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // persistSlot 把一个产物槽位从上游搬进对象存储:下载 → 确定性 key 上传 → assets 行 +
@@ -1406,6 +1436,15 @@ func (s *Service) persistOutputs(ctx context.Context, userID, taskID int64, proj
 // 两条路写出的 key / URL / asset 行逐字同形——补搬不是第二套逻辑。
 // 返回 canonical URL(media://<key>)、asset id、mime。
 func (s *Service) persistSlot(ctx context.Context, userID, taskID, projectID int64, i int, rawURL string, durationMs int64) (string, int64, string, error) {
+	// http(s) 产物占全局下载名额,下载 + 写入对象存储期间持有:同时落地的临时文件与
+	// 磁盘写入都有界。首搬、孤儿续跑、手动补搬都经这里。重试间隔里不持有。
+	if isRemoteURL(rawURL) {
+		release, err := s.acquireDownload(ctx)
+		if err != nil {
+			return "", 0, "", err
+		}
+		defer release()
+	}
 	src, size, mime, err := s.openSlotSource(ctx, rawURL)
 	if err != nil {
 		return "", 0, "", err
@@ -1471,15 +1510,20 @@ func (s *Service) persistSlot(ctx context.Context, userID, taskID, projectID int
 }
 
 // openSlotSource 按引用形态给出产物内容流。file:// 是 gpt-image b64 落盘的临时文件，
-// 直接打开、Stat 取长度、读 512 字节探测 mime 后 Seek 回头；http(s)/data: 走
-// fetchMedia（整份进内存）。
+// 直接打开、Stat 取长度、读 512 字节探测 mime 后 Seek 回头；http(s) 经 downloadToTemp
+// 流式落临时文件（Close 即删）；data: 本就整份在内存里，直接解码。
 func (s *Service) openSlotSource(ctx context.Context, rawURL string) (io.ReadCloser, int64, string, error) {
-	if !strings.HasPrefix(rawURL, "file://") {
-		body, mime, _, err := s.fetchMedia(ctx, rawURL)
+	switch {
+	case strings.HasPrefix(rawURL, "data:"):
+		body, mime, _, err := decodeDataURL(rawURL)
 		if err != nil {
 			return nil, 0, "", err
 		}
 		return io.NopCloser(bytes.NewReader(body)), int64(len(body)), mime, nil
+	case isRemoteURL(rawURL):
+		return s.downloadToTemp(ctx, rawURL)
+	case !strings.HasPrefix(rawURL, "file://"):
+		return nil, 0, "", fmt.Errorf("unsupported url scheme")
 	}
 	path, err := s.resolveSpillOutputPath(strings.TrimPrefix(rawURL, "file://"))
 	if err != nil {
@@ -1505,36 +1549,6 @@ func (s *Service) openSlotSource(ctx context.Context, rawURL string) (io.ReadClo
 		mime = strings.TrimSpace(mime[:idx])
 	}
 	return f, st.Size(), mime, nil
-}
-
-func (s *Service) fetchMedia(ctx context.Context, rawURL string) ([]byte, string, string, error) {
-	if strings.HasPrefix(rawURL, "data:") {
-		return decodeDataURL(rawURL)
-	}
-	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-		if err != nil {
-			return nil, "", "", err
-		}
-		resp, err := s.httpClient.Do(req)
-		if err != nil {
-			return nil, "", "", err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode >= 400 {
-			return nil, "", "", fmt.Errorf("fetch %d", resp.StatusCode)
-		}
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, "", "", err
-		}
-		mime := resp.Header.Get("Content-Type")
-		if mime == "" {
-			mime = "application/octet-stream"
-		}
-		return body, mime, extFromMime(mime), nil
-	}
-	return nil, "", "", fmt.Errorf("unsupported url scheme")
 }
 
 func decodeDataURL(dataURL string) ([]byte, string, string, error) {
