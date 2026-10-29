@@ -4,6 +4,7 @@ import type { CanvasNode } from './types';
 import {
   configureCanvasPersistence,
   flushCanvasMutations,
+  persistNodeById,
   resetCanvasPersistenceForTest,
   seedCanvasBaselines,
   setCanvasOwnerToken,
@@ -196,6 +197,39 @@ describe('undo 经持久化层只发变化字段', () => {
     expect(upsertNode).not.toHaveBeenCalled();
     expect(patchNode).toHaveBeenCalledTimes(1);
     expect(patchNode).toHaveBeenCalledWith(42, 'owner-token', 'B', { x: 500, y: 0 });
+  });
+
+  // 基线只在 mutation 成功后推进：diff 若在入队时就算，会对着落后的基线算出「没变化」。
+  it('松手落库还在途时立刻撤销：撤销后的位置照样发出去', async () => {
+    let release!: () => void;
+    patchNode.mockImplementationOnce(
+      () => new Promise((resolve) => { release = () => resolve({ version: 1 }); }),
+    );
+    dragNode('B', 100, 50);
+    persistNodeById('B');
+    // 松手那次 PATCH 已发出、还没返回。
+    await vi.waitFor(() => expect(patchNode).toHaveBeenCalledTimes(1));
+
+    useCanvasStore.getState().undo();
+    release();
+    await flushCanvasMutations();
+
+    expect(patchNode).toHaveBeenCalledTimes(2);
+    expect(patchNode).toHaveBeenNthCalledWith(1, 42, 'owner-token', 'B', { x: 600, y: 50 });
+    expect(patchNode).toHaveBeenNthCalledWith(2, 42, 'owner-token', 'B', { x: 500, y: 0 });
+  });
+
+  it('撤销后马上重做：两步都落库，服务端停在重做后的位置', async () => {
+    dragNode('B', 100, 50);
+    seedCanvasBaselines(useCanvasStore.getState().nodes);
+
+    useCanvasStore.getState().undo();
+    useCanvasStore.getState().redo();
+    await flushCanvasMutations();
+
+    expect(patchNode).toHaveBeenCalledTimes(2);
+    expect(patchNode).toHaveBeenNthCalledWith(1, 42, 'owner-token', 'B', { x: 500, y: 0 });
+    expect(patchNode).toHaveBeenNthCalledWith(2, 42, 'owner-token', 'B', { x: 600, y: 50 });
   });
 
   it('没有基线的节点（未播种）退回整节点 upsert，与 persistNodeById 一致', async () => {

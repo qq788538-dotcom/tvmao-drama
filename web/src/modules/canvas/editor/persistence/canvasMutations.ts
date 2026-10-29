@@ -144,8 +144,9 @@ export function applyCanvasOp(op: CanvasOp): void {
       sendNodeUpsert(op.node);
       break;
     case 'patchNode':
-      // undo/redo 里前后都存在的节点：与 persistNodeById 同一套「对基线 diff」。
-      persistNodeState(op.node);
+      // undo/redo 里前后都存在的节点：与 persistNodeById 同一套「对基线 diff」，
+      // 但 diff 推迟到轮到它执行时才算，见 sendNodeDiffQueued。
+      sendNodeDiffQueued(op.node);
       break;
     case 'deleteNodes':
       // 节点没了，基线也就没了（同 id 的节点将来若再出现，从 upsert 重新建基线）。
@@ -193,6 +194,36 @@ function persistNodeState(node: CanvasNode): void {
   const diff = diffNodeAgainstBaseline(baseline, nodeForServer(node));
   if (diff.kind === 'none') return;
   sendNodePatch(node.id, diff.patch);
+}
+
+// undo/redo 的 patchNode：入队时不算 diff，轮到执行时再对基线算。
+// 基线只在 mutation 成功后才推进，入队时就算的话会落后于队列里还没跑完的那些：
+// 拖完 B 立刻撤销，松手的几何 PATCH 还在途、基线仍是拖动前的位置，撤销后的
+// 位置与它「相同」，diff 为空什么都不发——在途 PATCH 随后把拖动后的位置写上
+// 服务端，与 store 分叉；撤销后马上重做同理。整节点 upsert 时代没有这个问题，
+// 因为发的是全量。串行队列保证执行到这里时前面的 mutation 都已落定。
+function sendNodeDiffQueued(node: CanvasNode): void {
+  const context = captureMutationContext();
+  const projectID = context.projectID;
+  const token = context.ownerToken;
+  if (projectID == null || !token) return;
+  const upsert = config.upsertNode ?? upsertCanvasNode;
+  const patchNode = config.patchNode ?? patchCanvasNode;
+  void runNodeMutation(context, async () => {
+    const sent = nodeForServer(node);
+    // 上下文已失效（切项目/重挂）时基线属于新会话，不能拿来 diff：退回整节点 upsert。
+    const baseline = isMutationContextCurrent(context) ? nodeBaselines.get(node.id) : undefined;
+    if (!baseline) {
+      const result = await upsert(projectID, token, sent as unknown as CanvasMutationNode);
+      if (isMutationContextCurrent(context)) nodeBaselines.set(sent.id, sent);
+      return result;
+    }
+    const diff = diffNodeAgainstBaseline(baseline, sent);
+    if (diff.kind === 'none') return;
+    const result = await patchNode(projectID, token, node.id, diff.patch);
+    if (isMutationContextCurrent(context)) mergePatchIntoBaseline(node.id, diff.patch);
+    return result;
+  });
 }
 
 // 整节点 upsert：发出去的那一份就是服务端随后的状态，成功即成为新基线。
