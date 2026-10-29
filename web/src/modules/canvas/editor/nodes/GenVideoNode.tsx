@@ -83,6 +83,9 @@ export function GenVideoNode({ id }: { id: string }) {
   const isSelected = useCanvasStore((s) => s.selectedIds.has(id));
   // 详情面板里参数面板要跟预览盒左右对齐（见下方定位处的注释）。
   const storyboardMode = useStoryboardMode();
+  // 参数面板未选中时只是 opacity:0，参考图/参考视频 chip 照样挂着媒体元素在加载（P16）。
+  // 只在选中时渲染媒体；故事板里面板常显，不门控。
+  const showRefMedia = isSelected || storyboardMode;
   // 剪辑(trim)/裁剪(crop)/片段重拍/智能续写进行中:交互条占节点正下方,
   // prompt 面板同位让路,退出后恢复。
   const trimming = useCanvasStore((s) => s.trimmingNodeId === id);
@@ -822,7 +825,7 @@ export function GenVideoNode({ id }: { id: string }) {
                   title={`参考图 ${i + 1}`}
                 >
                   <div className="w-full h-full rounded-[10px] overflow-hidden border border-white/10 bg-popover relative">
-                    <ThumbImg src={ref.url} alt="" className="w-full h-full object-cover" draggable={false} />
+                    {showRefMedia && <ThumbImg src={ref.url} alt="" className="w-full h-full object-cover" draggable={false} />}
                     <span className="cv-ref-badge">图{i + 1}</span>
                   </div>
                   {refCloseBtn(ref.nodeId, `断开参考图 ${i + 1}`)}
@@ -837,7 +840,7 @@ export function GenVideoNode({ id }: { id: string }) {
                   <div className="w-full h-full rounded-[10px] overflow-hidden border border-white/10 bg-black relative">
                   {/* preload=metadata 让我们拿到首帧作为缩略图，而不会强制
                       完整下载。 */}
-                  <video src={url} crossOrigin={mediaCrossOrigin(url)} className="w-full h-full object-cover" muted preload="metadata" />
+                  {showRefMedia && <video src={url} crossOrigin={mediaCrossOrigin(url)} className="w-full h-full object-cover" muted preload="metadata" />}
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/20">
                     <Video size={11} className="text-white/85" />
                   </div>

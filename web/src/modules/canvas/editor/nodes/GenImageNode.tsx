@@ -89,6 +89,9 @@ export function GenImageNode({ id }: { id: string }) {
   // 画布上相反——节点只有两三百像素宽，必须用缩略图（一张画布可能挂上百个
   // 节点，全换原图流量翻好几倍），也必须留着双击预览，不然看不清。
   const storyboardMode = useStoryboardMode();
+  // 参数面板未选中时只是 opacity:0，参考图 chip 照样在加载（P16）。只在选中时渲染
+  // 媒体；故事板里面板常显，不门控。
+  const showRefMedia = isSelected || storyboardMode;
   // 故事板里参考区支持连线编辑：
   // 缩略图 hover 出 × 断开、左侧列表卡片拖进参数面板即连上。两个动作都直接
   // 走 store（removeConnection/addConnection 自带 commit 可撤销、去重、落库）。
@@ -936,7 +939,7 @@ export function GenImageNode({ id }: { id: string }) {
                 title={`参考图 ${i + 1}`}
               >
                 <div className="w-full h-full rounded-[10px] overflow-hidden border border-white/10 bg-popover">
-                  <ThumbImg src={ref.url} alt="" className="w-full h-full object-cover" draggable={false} />
+                  {showRefMedia && <ThumbImg src={ref.url} alt="" className="w-full h-full object-cover" draggable={false} />}
                 </div>
                 {/* hover 出 × 断开这条上游连线。只在故事板给：画布上删连线有
                     自己的交互（点线），这里再放一个会两套入口打架。ref 带
