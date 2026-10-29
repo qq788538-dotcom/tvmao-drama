@@ -242,6 +242,9 @@ function sanitizeNodeCopy(node: CanvasNode): CanvasNode {
   if (settings) {
     delete settings.pendingGen;
     stripVideoInputLocalSettings(node.type, settings);
+    // 脚本节点的生成任务挂在 settings.gen 里（不是顶层 taskId）：副本带着它会去
+    // 轮询原节点的任务，成功后把同一份分镜导入副本、覆盖已有内容（P11）。
+    if (node.type === 'script') stripScriptGenTask(settings);
   }
 
   const clone: CanvasNode = { ...rest, settings };
@@ -250,6 +253,13 @@ function sanitizeNodeCopy(node: CanvasNode): CanvasNode {
     clone.progress = undefined;
   }
   return clone;
+}
+
+function stripScriptGenTask(settings: Record<string, unknown>): void {
+  const gen = settings.gen;
+  if (gen && typeof gen === 'object' && !Array.isArray(gen)) {
+    settings.gen = { ...(gen as Record<string, unknown>), taskId: 0, error: '' };
+  }
 }
 
 function cloneNodeForDuplicate(node: CanvasNode, id: string): CanvasNode {

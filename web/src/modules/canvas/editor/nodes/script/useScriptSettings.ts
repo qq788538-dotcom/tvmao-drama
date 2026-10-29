@@ -19,6 +19,7 @@ import {
 export function useScriptSettings(nodeId: string): {
   settings: ScriptSettings;
   patch: (p: Partial<ScriptSettings>) => void;
+  setScriptPrompt: (text: string) => void;
   updateRow: (rowId: string, p: Partial<ScriptRow>) => void;
   addRow: () => void;
   removeRow: (rowId: string) => void;
@@ -49,6 +50,15 @@ export function useScriptSettings(nodeId: string): {
   const patch = useCallback((p: Partial<ScriptSettings>) => {
     write({ ...currentSettings(), ...p });
   }, [currentSettings, write]);
+
+  // 剧本输入框逐字写入：输入框的草稿只活在面板里，点画布空白处取消选中时面板
+  // 直接卸载、不触发 blur，等 blur 再写就丢稿（P13）。所以每次输入都落内存，
+  // 落库只发 scriptPrompt 这一个字段——整包 settings 逐字防抖送没必要，也会把
+  // 同一窗口里别处刚改的字段一起带上。
+  const setScriptPrompt = useCallback((text: string) => {
+    updateNodeSettings(nodeId, { scriptPrompt: text });
+    scheduleNodePatch(nodeId, { settings: { scriptPrompt: text } });
+  }, [nodeId, updateNodeSettings]);
 
   // skill 对齐版没有提示词状态机（prompt 即唯一真源，没有"从素材拼接"这一步），
   // 行编辑就是纯 merge + 镜号重排。
@@ -84,5 +94,5 @@ export function useScriptSettings(nodeId: string): {
     write({ ...currentSettings(), rows: renumberRows(rows) });
   }, [currentSettings, write]);
 
-  return { settings, patch, updateRow, addRow, removeRow, moveRow, replaceRows };
+  return { settings, patch, setScriptPrompt, updateRow, addRow, removeRow, moveRow, replaceRows };
 }

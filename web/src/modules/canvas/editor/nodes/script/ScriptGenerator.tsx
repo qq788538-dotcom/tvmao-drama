@@ -7,6 +7,7 @@ import {
   submitCanvasScriptTask,
 } from '@/shared/api';
 import { useCanvasStore } from '../../store';
+import { flushNodePatch } from '../../persistence/canvasMutations';
 import { Select } from 'antd';
 import { useScriptSettings } from './useScriptSettings';
 import { importCandidate } from './importCandidate';
@@ -19,6 +20,10 @@ import { MIN_SHOT_SECONDS, DEFAULT_DURATION_SEC, MAX_SCRIPT_LEN, readScriptSetti
 // 没有参考图 chips——用户明确砍掉（生成只吃文字剧本）。
 
 const POLL_INTERVAL_MS = 3000;
+// 连续这么多次 404 才判定任务行已不存在（约 6s）：单次 404 可能是提交刚返回、
+// 读到了还没提交完的事务，或者 sidecar 重启的瞬间；401/网络错误/5xx 不计数。
+const MAX_NOT_FOUND = 3;
+const TASK_GONE_ERROR = '生成任务已不存在，请重新提交';
 
 // 轮询挂在 ScriptNode 层（不是面板里）：taskId 持久化在 settings.gen 里，任务在
 // 服务端跑，面板关掉/页面刷新都不该中断观察——只要节点还在画布上就继续轮询。
@@ -33,15 +38,35 @@ export function useScriptGenPolling(nodeId: string) {
   useEffect(() => {
     if (!taskId) return;
     let stopped = false;
+    let notFound = 0;
     const tick = async () => {
       let st;
       try {
         st = await getCanvasScriptTask(taskId);
-      } catch {
-        return; // 网络抖动下一轮再试；任务不存在也别急着清状态，可能是瞬时 401
+      } catch (err: any) {
+        if (stopped) return;
+        // 只有 404（确定查无）计入判死，同 useReconcileCanvasTask：401/网络抖动/5xx
+        // 说明后端暂时够不着，任务可能好好活着，下一轮再试。判死后清 taskId 并写
+        // 错误，用户才能重新提交，不至于永久转圈（P12）。
+        if (err?.response?.status === 404) {
+          notFound += 1;
+          if (notFound >= MAX_NOT_FOUND) {
+            const { patch: p, settings: cur } = latest.current;
+            p({ gen: { ...cur.gen, taskId: 0, error: TASK_GONE_ERROR } });
+          }
+        }
+        return;
       }
       if (stopped || !st) return;
+      notFound = 0;
       const { patch: p, settings: cur } = latest.current;
+      // 任务属于别的节点：多半是复制/粘贴把 taskId 带进了副本（存量数据，新副本
+      // 在 sanitizeNodeCopy 里已清掉）。不认领，清掉 taskId，否则会把别人的分镜
+      // 导入这里、覆盖已有内容（P11）。
+      if (st.nodeId && st.nodeId !== nodeId) {
+        p({ gen: { ...cur.gen, taskId: 0, error: '' } });
+        return;
+      }
       if (st.status === 'succeeded') {
         try {
           const imported = importCandidate(st.result ?? '', cur);
@@ -59,7 +84,7 @@ export function useScriptGenPolling(nodeId: string) {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [taskId]);
+  }, [taskId, nodeId]);
 }
 
 // AntD Select/Cascader 弹层默认 portal 到 body——画布是 transform 缩放容器，
@@ -73,12 +98,13 @@ const DURATION_OPTIONS = Array.from(
 );
 
 export function ScriptGenerator({ nodeId }: { nodeId: string }) {
-  const { settings, patch } = useScriptSettings(nodeId);
+  const { settings, patch, setScriptPrompt } = useScriptSettings(nodeId);
   const gen = settings.gen;
   const running = gen.taskId > 0;
   const [submitting, setSubmitting] = useState(false);
-  // 剧本文本走本地 draft + settings 双轨（同 GenImageNode 的 promptDraft 模式）：
-  // 每敲一个字都整包 patch settings 会让防抖落库频繁重排，draft 提交/失焦时才写。
+  // 剧本文本：本地 draft 驱动输入框，每次输入同时经 setScriptPrompt 写进 store、
+  // 只对 scriptPrompt 一个字段排防抖落库。不能等 blur/submit 再写——点画布空白处
+  // 取消选中时焦点不离开 textarea，面板直接卸载，草稿就丢了（P13）。
   const [draft, setDraft] = useState(settings.scriptPrompt);
 
   const stylesQuery = useQuery({
@@ -172,9 +198,12 @@ export function ScriptGenerator({ nodeId }: { nodeId: string }) {
         disabled={running}
         maxLength={MAX_SCRIPT_LEN}
         placeholder="描述剧情片段、故事，为你生成分镜脚本"
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setScriptPrompt(e.target.value);
+        }}
         onBlur={() => {
-          if (draft !== settings.scriptPrompt) patch({ scriptPrompt: draft });
+          void flushNodePatch(nodeId);
         }}
         className="script-borders mx-3 mt-3 mb-1 min-h-[96px] max-h-[240px] resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 border-none outline-none custom-scrollbar disabled:opacity-60"
       />

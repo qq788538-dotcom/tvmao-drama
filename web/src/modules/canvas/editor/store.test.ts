@@ -150,6 +150,23 @@ describe('canvas store 结构性 op 广播', () => {
     expect(payload.nodes[0].settings!.prompt).toBe('p');
   });
 
+  // P11：脚本节点的任务挂在 settings.gen.taskId，副本带着它会轮询原节点的任务并导入同一份分镜。
+  it('复制脚本节点清掉 gen.taskId/error，保留风格/模型等选择', () => {
+    const a = useCanvasStore.getState().addNode('script', { x: 0, y: 0 });
+    useCanvasStore.getState().updateNodeSettings(a, {
+      gen: { taskId: 99, style: 's', model: 'm', durationSec: 8, error: '旧错误' },
+    });
+
+    const payload = useCanvasStore.getState().buildCopyPayload([a])!;
+    expect(payload.nodes[0].settings!.gen).toEqual({ taskId: 0, style: 's', model: 'm', durationSec: 8, error: '' });
+
+    useCanvasStore.getState().duplicateNodes([a]);
+    const dup = useCanvasStore.getState().nodes.find((n) => n.id !== a)!;
+    expect((dup.settings!.gen as { taskId: number }).taskId).toBe(0);
+    const orig = useCanvasStore.getState().nodes.find((n) => n.id === a)!;
+    expect((orig.settings!.gen as { taskId: number }).taskId).toBe(99);
+  });
+
   // 副本要能立刻重跑同样的生成,就得连着同样的输入。
   it('duplicateNodes 复制入边,上游仍指向原来的输入源', () => {
     const up = useCanvasStore.getState().addNode('input-image', { x: 0, y: 0 });
