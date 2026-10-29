@@ -38,7 +38,7 @@ func TestPersistOutputs_RejectsFileURLOutsideTempDir(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			st := &captureStorage{}
 			s := &Service{storage: st, tmpDir: tmp}
-			_, _, _, err := s.persistOutputs(context.Background(), 64, 1, nil, []string{u}, 0)
+			_, _, _, _, err := s.persistOutputs(context.Background(), 64, 1, nil, []string{u}, 0)
 			if !errors.Is(err, errLocalPersist) {
 				t.Fatalf("越界 file:// 必须拒绝, got %v", err)
 			}
@@ -59,7 +59,7 @@ func TestPersistOutputs_AcceptsSpillFileInTempDir(t *testing.T) {
 	f.Close()
 	st := &captureStorage{}
 	s := &Service{storage: st, tmpDir: tmp}
-	if _, _, _, err := s.persistOutputs(context.Background(), 64, 2, nil, []string{"file://" + f.Name()}, 0); err != nil {
+	if _, _, _, _, err := s.persistOutputs(context.Background(), 64, 2, nil, []string{"file://" + f.Name()}, 0); err != nil {
 		t.Fatalf("登记目录内的 spill 文件应能保存: %v", err)
 	}
 }
@@ -67,7 +67,7 @@ func TestPersistOutputs_AcceptsSpillFileInTempDir(t *testing.T) {
 // data: 产物落盘失败时不能把 base64 原样交给画布/output，按本地产物失败处理（退款）。
 func TestPersistOutputs_DataURIFailureIsErrorNotInline(t *testing.T) {
 	s := &Service{storage: &captureStorage{fail: true}}
-	urls, _, _, err := s.persistOutputs(context.Background(), 64, 1, nil,
+	urls, _, _, _, err := s.persistOutputs(context.Background(), 64, 1, nil,
 		[]string{"data:audio/mpeg;base64,SUQzBAAAAAAA"}, 0)
 	if !errors.Is(err, errLocalPersist) {
 		t.Fatalf("data: 落盘失败应报 errLocalPersist, got %v", err)
