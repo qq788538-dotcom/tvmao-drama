@@ -152,3 +152,25 @@ func TestSweepDeletedProjectTasks(t *testing.T) {
 	svc.SweepDeletedProjectTasks()
 	assertOps(t, svc, "RefundTx", "RefundTx", "RefundTx", "RefundTx")
 }
+
+// 队列领到已删项目的任务：不准备、不调上游，直接带退款收口（不必等周期收口那一轮）。
+func TestRunQueuedTaskSkipsDeletedProject(t *testing.T) {
+	conn, svc, uid := newRecoverDBHarness(t)
+	pid := insertProject(t, conn, uid, true)
+	res, err := conn.Exec(`INSERT INTO generation_tasks
+		(user_id, project_id, model_id, status, input, frozen_cents, sink, owner_instance, heartbeat_at, lease_version)
+		VALUES (?, ?, 'm', 'running', '{"modelId":"m","inputs":{}}', 40, '{"kind":"none"}', 'me', CURRENT_TIMESTAMP, 1)`, uid, pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := res.LastInsertId()
+	task := Task{ID: id, UserID: uid, ProjectID: &pid, ModelID: "m", Input: []byte(`{"modelId":"m","inputs":{}}`)}
+
+	svc.runQueuedTask(task, 1)
+
+	status, msg := taskStatusErr(t, conn, id)
+	if status != "failed" || msg != projectDeletedReason {
+		t.Fatalf("status=%s msg=%s", status, msg)
+	}
+	assertOps(t, svc, "RefundTx")
+}

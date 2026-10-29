@@ -110,6 +110,15 @@ func (s *Service) runQueuedTask(task Task, lease int64) {
 		return
 	}
 
+	// 项目已删除（P9）：ClaimQueued 不看项目，周期收口（SweepDeletedProjectTasks）最长要等一轮，
+	// 其间被领走的任务会照常调上游、白花费用。领到就查，已删则带退款收口，不再执行。
+	if s.projectDeleted(ctx, task.ProjectID) {
+		if _, err := s.finishFailureTx(context.Background(), task.ID, lease, projectDeletedReason, projectDeletedNote); err != nil {
+			log.Printf("[gen-queue] task=%d 项目已删除收口出错: %v", task.ID, err)
+		}
+		return
+	}
+
 	plan, err := s.prepareExecution(ctx, task.UserID, snap.ModelID, snap.Inputs, snap.Note, snap.PresetKey, snap.PresetParams)
 	if err != nil {
 		// 准备阶段失败（模型被停用、key 没配、参考图取不到…）——还没碰上游，

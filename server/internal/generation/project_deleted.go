@@ -79,3 +79,17 @@ func (s *Service) SweepDeletedProjectTasks() {
 		}
 	}
 }
+
+// projectDeleted 报告任务所属项目是否已删除（软删或行已不存在）。没有项目、查询出错都按未删除处理：
+// 这里只为省掉注定白花的上游费用，兜底在落库事务（persistSlot）与周期收口里。
+func (s *Service) projectDeleted(ctx context.Context, projectID *int64) bool {
+	if projectID == nil || *projectID == 0 || s.db == nil {
+		return false
+	}
+	var alive bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL)`, *projectID).Scan(&alive); err != nil {
+		log.Printf("[gen] 查询项目 %d 是否已删除失败: %v", *projectID, err)
+		return false
+	}
+	return !alive
+}
