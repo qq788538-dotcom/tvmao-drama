@@ -67,6 +67,10 @@ func (h *CanvasScriptHandler) Submit(w nethttp.ResponseWriter, r *nethttp.Reques
 	}
 	taskID, err := h.svc.Submit(r.Context(), userIDFromContext(r.Context()), body.ProjectID, body.NodeID, body.Style, body.Script, body.DurationSec, body.Model, nil)
 	if err != nil {
+		if errors.Is(err, canvasscript.ErrProjectGone) {
+			canvasScriptError(w, nethttp.StatusNotFound, canvasscript.ErrProjectGone.Error())
+			return
+		}
 		var ue *canvasscript.UserError
 		if errors.As(err, &ue) {
 			canvasScriptError(w, nethttp.StatusBadRequest, ue.Msg)

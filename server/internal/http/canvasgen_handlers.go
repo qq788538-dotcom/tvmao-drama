@@ -17,10 +17,18 @@ import (
 type CanvasGenHandler struct {
 	svc    *canvasgen.Service
 	signer mediaRefSigner
+	// projects 提交前校验项目存在且未删除（见 WithProjectGate）；nil = 不校验。
+	projects projectGate
 }
 
 func NewCanvasGenHandler(svc *canvasgen.Service, signer mediaRefSigner) *CanvasGenHandler {
 	return &CanvasGenHandler{svc: svc, signer: signer}
+}
+
+// WithProjectGate 让 Submit 拒绝已删除/不存在的项目。
+func (h *CanvasGenHandler) WithProjectGate(g projectGate) *CanvasGenHandler {
+	h.projects = g
+	return h
 }
 
 type canvasGenSubmitBody struct {
@@ -45,6 +53,14 @@ func (h *CanvasGenHandler) Submit(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.ProjectID == 0 || body.NodeID == "" || body.ModelID == "" {
 		writeError(w, http.StatusBadRequest, "projectId/nodeId/modelId required")
+		return
+	}
+	if err := checkProjectActive(r.Context(), h.projects, body.ProjectID); err != nil {
+		if errors.Is(err, errProjectGone) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "读取项目失败，请稍后重试")
 		return
 	}
 	if body.Inputs == nil {
