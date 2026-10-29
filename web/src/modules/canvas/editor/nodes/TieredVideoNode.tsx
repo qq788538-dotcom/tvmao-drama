@@ -1,4 +1,5 @@
 import { useReconcileCanvasTask } from './useReconcileCanvasTask';
+import { stallIfUnreachable, usePollStalled } from './pollStall';
 import { useEffect, useState } from 'react';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 import { useQuery } from '@tanstack/react-query';
@@ -76,6 +77,8 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
   const node = useCanvasStore((s) => s.nodesById.get(id));
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
+  // 轮询连续够不着后端时挂起(P23):不判失败,交给对账;NodeShell 上可点「重新检查」。
+  const pollStalled = usePollStalled(node?.taskId);
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
   const inputs = useConnectedInputs(id);
@@ -130,7 +133,7 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
   // 与 GenVideoNode / SubtitleEraseNode 同一套「方案 B」：结果由后端权威写回快照，
   // 轮询仅用于前端即时展示，刷新页面能恢复进行中的任务。
   useEffect(() => {
-    if (node?.status === 'generating' && node.taskId) {
+    if (node?.status === 'generating' && node.taskId && !pollStalled) {
       const ctrl = new AbortController();
       let cancelled = false;
       pollCanvasTaskUntilDone(node.taskId, { signal: ctrl.signal })
@@ -152,6 +155,7 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
         })
         .catch((err: any) => {
           if (cancelled || err?.message === 'aborted') return;
+          if (node.taskId && stallIfUnreachable(node.taskId, err)) return;
           updateNode(id, { status: 'failed', error: err?.message || '轮询失败', taskId: undefined });
           persistNodeById(id);
         });
@@ -161,7 +165,7 @@ function TieredVideoNode({ id, variant }: { id: string; variant: TieredVariant }
       };
     }
     return undefined;
-  }, [node?.status, node?.taskId, id, updateNode, updateNodeSettings, variant.action]);
+  }, [node?.status, node?.taskId, pollStalled, id, updateNode, updateNodeSettings, variant.action]);
 
   if (!node) return null;
 

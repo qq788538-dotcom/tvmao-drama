@@ -1,4 +1,5 @@
 import { useReconcileCanvasTask } from './useReconcileCanvasTask';
+import { stallIfUnreachable, usePollStalled } from './pollStall';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUp,
@@ -53,6 +54,8 @@ export function GenAudioNode({ id }: { id: string }) {
   const node = useCanvasStore((s) => s.nodesById.get(id));
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
+  // 轮询连续够不着后端时挂起(P23):不判失败,交给对账;NodeShell 上可点「重新检查」。
+  const pollStalled = usePollStalled(node?.taskId);
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
   const linked = useConnectedInputs(id);
@@ -152,7 +155,7 @@ export function GenAudioNode({ id }: { id: string }) {
   // 只要这个 gen-audio 节点持有一个进行中的异步任务，就恢复/驱动 polling。
   // 与 GenImageNode 同机制：结果由后端权威写回快照，这里轮询仅为即时展示。
   useEffect(() => {
-    if (node.status === 'generating' && node.taskId) {
+    if (node.status === 'generating' && node.taskId && !pollStalled) {
       const ctrl = new AbortController();
       let cancelled = false;
       pollCanvasTaskUntilDone(node.taskId, { signal: ctrl.signal })
@@ -196,6 +199,7 @@ export function GenAudioNode({ id }: { id: string }) {
         })
         .catch((err: any) => {
           if (cancelled || err?.message === 'aborted') return;
+          if (node.taskId && stallIfUnreachable(node.taskId, err)) return;
           updateNode(id, {
             status: 'failed',
             error: err?.message || '轮询失败',
@@ -210,7 +214,7 @@ export function GenAudioNode({ id }: { id: string }) {
     }
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.status, node.taskId, id, updateNode, updateNodeSettings]);
+  }, [node.status, node.taskId, pollStalled, id, updateNode, updateNodeSettings]);
 
   const connectedAudios = linked.audios;
   // 音频节点只把音频（音色参考）喂给上游——@ 引用也只开放音频，避免 @图片1

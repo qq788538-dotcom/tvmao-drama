@@ -1,4 +1,5 @@
 import { useReconcileCanvasTask } from './useReconcileCanvasTask';
+import { stallIfUnreachable, usePollStalled } from './pollStall';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -69,6 +70,8 @@ export function GenVideoNode({ id }: { id: string }) {
   const node = useCanvasStore((s) => s.nodesById.get(id));
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
+  // 轮询连续够不着后端时挂起(P23):不判失败,交给对账;NodeShell 上可点「重新检查」。
+  const pollStalled = usePollStalled(node?.taskId);
   const { modal } = AntApp.useApp();
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
@@ -248,7 +251,7 @@ export function GenVideoNode({ id }: { id: string }) {
   // 锚在 gen-video 节点自身上，这样结果落到 `node.content` 和 history，而不是
   // 下游预览。刷新页面会恢复进行中的 poll。
   useEffect(() => {
-    if (node.status === 'generating' && node.taskId) {
+    if (node.status === 'generating' && node.taskId && !pollStalled) {
       const ctrl = new AbortController();
       let cancelled = false;
       // 方案 B:轮询画布任务状态仅为即时展示;结果已由后端权威写回快照节点。
@@ -301,6 +304,7 @@ export function GenVideoNode({ id }: { id: string }) {
         })
         .catch((err: any) => {
           if (cancelled || err?.message === 'aborted') return;
+          if (node.taskId && stallIfUnreachable(node.taskId, err)) return;
           updateNode(id, {
             status: 'failed',
             error: err?.message || '轮询失败',
@@ -317,7 +321,7 @@ export function GenVideoNode({ id }: { id: string }) {
     // 闭包里读了 history，但我们不希望用户只是翻 historyIndex 时这个 effect
     // 就重新触发；这个循环只以 status+taskId 为 key。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.status, node.taskId, id, updateNode, updateNodeSettings]);
+  }, [node.status, node.taskId, pollStalled, id, updateNode, updateNodeSettings]);
 
   // 为新建节点在首次挂载时初始化 `settings.ratio`。从 localStorage 读
   // `tvmao:lastVideoRatio`；如果该值是当前模型 ratio 选项之一就复用它，否则
