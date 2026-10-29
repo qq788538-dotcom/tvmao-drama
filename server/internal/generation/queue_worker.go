@@ -79,6 +79,28 @@ func pickupCandidates(repo queuePickupRepo, models []string, limits map[string]i
 	return out
 }
 
+// persistAwarePickupRepo 把本进程落盘中的任务从在跑数里扣掉（P20）：它们的生成名额已还，
+// 行却仍是 running/processing，照数的话下载一慢队列就领不动——名额提前归还对队列任务形同虚设。
+// 先查 DB 再取快照：两步之间开始落盘的任务两边都算到，结束落盘的只有 DB 一边算到，
+// 都只会少领、不会多领。万一多扣（行已被收口而落盘尚未返回），进程内名额闸照样限住上游在途数。
+type persistAwarePickupRepo struct {
+	queuePickupRepo
+	persisting func() map[string]int
+}
+
+func (r persistAwarePickupRepo) RunningCountByModel(freshSec int) (map[string]int, error) {
+	running, err := r.queuePickupRepo.RunningCountByModel(freshSec)
+	if err != nil || r.persisting == nil {
+		return running, err
+	}
+	for model, n := range r.persisting() {
+		if running[model] -= n; running[model] <= 0 {
+			delete(running, model)
+		}
+	}
+	return running, nil
+}
+
 // QueuedModelsProvider 由 repo 实现：给出当前有排队任务的模型清单。
 // 只对这些模型算空位，避免为全量模型做无谓查询。
 type QueuedModelsProvider interface {
