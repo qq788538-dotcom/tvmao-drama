@@ -9,8 +9,13 @@ import {
   pollCanvasTaskUntilDone,
 } from '@/shared/api';
 import { useCanvasStore } from '../store';
+import type { CanvasNode } from '../types';
+import { GenAudioNode } from './GenAudioNode';
 import { GenImageNode } from './GenImageNode';
 import { GenVideoNode } from './GenVideoNode';
+import { SubtitleEraseNode } from './SubtitleEraseNode';
+import { TextNode } from './TextNode';
+import { VideoUpscaleNode, VideoWhiteModelNode } from './TieredVideoNode';
 import {
   clearPollStalled,
   markPollStalled,
@@ -66,9 +71,15 @@ describe('pollStall 标记', () => {
   });
 });
 
-const cases: Array<[string, 'gen-video' | 'gen-image', ComponentType<{ id: string }>]> = [
+// 六个轮询调用方(轮询 catch 都过 stallIfUnreachable)逐一覆盖,免得漏接一个就回到「判失败」。
+const cases: Array<[string, CanvasNode['type'], ComponentType<{ id: string }>]> = [
   ['GenVideoNode', 'gen-video', GenVideoNode],
   ['GenImageNode', 'gen-image', GenImageNode],
+  ['GenAudioNode', 'gen-audio', GenAudioNode],
+  ['TextNode', 'text-node', TextNode],
+  ['SubtitleEraseNode', 'subtitle-erase', SubtitleEraseNode],
+  ['VideoUpscaleNode', 'video-upscale', VideoUpscaleNode],
+  ['VideoWhiteModelNode', 'video-whitemodel', VideoWhiteModelNode],
 ];
 
 describe.each(cases)('%s 轮询挂起', (_name, type, Node) => {
@@ -106,6 +117,8 @@ describe.each(cases)('%s 轮询挂起', (_name, type, Node) => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks 不清 mock*Once 队列:上一个用例没消费完的结果会串到下一个节点。
+    vi.mocked(pollCanvasTaskUntilDone).mockReset();
     vi.mocked(listRuntimeModels).mockResolvedValue([]);
     usePollStallStore.setState({ stalled: new Set() });
     seed();
