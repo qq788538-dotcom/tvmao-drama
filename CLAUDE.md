@@ -30,6 +30,7 @@ node scripts/ratchet/browser-mode.mjs            # 临时数据目录起 sidecar
 node scripts/ratchet/browser-smoke.mjs --task T-0001   # 另开终端：打开页面、截图、记 console，证据进 .ratchet/evidence/T-0001/
 ```
 
+- `miaoju` 连这个临时 sidecar：`MIAOJU_ENDPOINT_DIR=<就绪 JSON 里的 endpointDir> miaoju …`。**不设这个变量时 miaoju 连的是你正在用的喵剧**。
 - 永远用临时数据目录，不要传日常使用的数据目录给 `--data-dir`。
 - 只连 sidecar 的端口和 token；数据目录、对话框等壳命令在这个模式下不可用。
 - 冒烟取证不点任何生成按钮（不计费）。

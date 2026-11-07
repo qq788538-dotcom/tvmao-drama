@@ -31,6 +31,9 @@ func main() {
 		Stderr:  os.Stderr,
 		Version: version,
 		WorkDir: wd,
+		// MIAOJU_ENDPOINT_DIR：指向另一个 cli-endpoint.json 所在目录，让 CLI 连验证用的临时 sidecar
+		// （scripts/ratchet/browser-mode.mjs），而不是用户正在用的喵剧。为空时照旧读应用数据目录。
+		EndpointDir: os.Getenv("MIAOJU_ENDPOINT_DIR"),
 	})
 	// Ctrl+C 取消 context 而不是直接杀进程：进行中的请求随之中止，run --wait 会提示任务仍在服务端运行，
 	// 退出码按契约是 7（用户取消）。第一次 Ctrl+C 之后恢复默认处理，再按一次可以强制退出。

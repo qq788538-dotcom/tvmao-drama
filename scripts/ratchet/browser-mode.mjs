@@ -9,7 +9,8 @@
 //
 // 用法（仓库根目录）：
 //   node scripts/ratchet/browser-mode.mjs [--data-dir 目录] [--sidecar-bin 路径] [--web-port 5173] [--no-vite]
-// 就绪后在 stdout 打一行 JSON：{"ready":true,"url":...,"sidecarPort":...,"webPort":...,"dataDir":...}，
+// 就绪后在 stdout 打一行 JSON：{"ready":true,"url":...,"endpointDir":...,"sidecarPort":...,"webPort":...,"dataDir":...}，
+// endpointDir 给 miaoju 用：`MIAOJU_ENDPOINT_DIR=<endpointDir> miaoju project list`。
 // 同时写到 --state 指定的文件（默认 .ratchet/state/browser-mode.json，已在 .gitignore 里）。
 // Ctrl-C 或 SIGTERM 退出：关 sidecar（关闭 stdin 即优雅退出）、关 Vite、删掉自建的临时数据目录。
 //
@@ -129,8 +130,19 @@ async function main() {
       log(`Vite 就绪：http://localhost:${opts.webPort}`);
     }
 
+    // 给 miaoju CLI 写一份地址文件（格式同 cli/internal/endpoint），用 MIAOJU_ENDPOINT_DIR 指过来，
+    // CLI 就连这个临时 sidecar，而不是用户正在用的喵剧。
+    const endpointDir = join(work, 'endpoint');
+    mkdirSync(endpointDir, { recursive: true, mode: 0o700 });
+    writeFileSync(
+      join(endpointDir, 'cli-endpoint.json'),
+      JSON.stringify({ version: 1, port: sidecarPort, token: tokens.cliToken, appVersion: 'ratchet-browser-mode' }) + '\n',
+      { mode: 0o600 },
+    );
+
     const state = {
       ready: true,
+      endpointDir,
       url: buildBrowserUrl({ webPort: opts.webPort, sidecarPort, token: tokens.token }),
       sidecarPort,
       webPort: opts.webPort,
