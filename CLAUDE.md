@@ -21,6 +21,10 @@
 
 没跑的检查不要写"通过"；CI 没出结果写「CI 待核」。
 
+## 验证（verify-tvmao）
+
+验证改动或功能时按 `.claude/skills/verify-tvmao/SKILL.md` 做：临时验证实例 + CLI/浏览器驱动 + 至少三类证据。F1（建图与连线）可以一键跑：`scripts/ratchet/verify-f1.sh <任务号>`。
+
 ## 浏览器验证模式（取证用）
 
 macOS 的 Tauri WebView 驱动不了，验证 UI 时走浏览器验证模式（只在开发构建生效）：
