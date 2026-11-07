@@ -62,7 +62,7 @@ node scripts/ratchet/browser-smoke.mjs --task T-0001   # 另开终端：打开�
 | 规则 | 强制手段 |
 |---|---|
 | 不跑 `miaoju node run` | 闸 hook（`scripts/ratchet/hooks/pawl.py`）+ 权限 deny |
-| 不合并 PR、不 push main、不 force push | 闸 hook + 权限 deny + main 分支保护（待开启） |
+| 不合并 PR、不 push main、不 force push | 闸 hook + 权限 deny + main 分支保护（管理员也受限；5 项 CI 必过且分支须与 main 同步） |
 | 不读写 `.env` 与密钥 | 闸 hook + 权限 deny |
 | 红线文件只有 James 能改 | 闸 hook + 权限 deny |
 | 主轴不写代码 | 闸 hook（`RATCHET_ROLE=coordinator`） |
