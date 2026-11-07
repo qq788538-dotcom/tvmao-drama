@@ -20,18 +20,20 @@
 
 Preconditions:
 
+- 下面的 `${MIAOJU_BIN:-miaoju}`：按 SKILL.md 第 2 节构建到 `/tmp/miaoju` 并设了 `MIAOJU_BIN` 时用它，否则用 PATH 里的 `miaoju`。
+
 - 已按 SKILL.md 起好验证实例，`MIAOJU_ENDPOINT_DIR` 指向它，doctor 通过。
 - 当前目录是一个空的临时目录（`project use` 会把项目绑定到当前目录）。
 
 一键跑：`scripts/ratchet/verify-f1.sh <任务号>`。下面是它做的每一步，手动跑时照抄：
 
-- **建项目。** `miaoju project create --name "F1 验证 <任务号>"`，然后 `miaoju project use <id>`。退出码 0，返回项目 id。
-- **选模型。** `miaoju model list`。取 `kind=image` 且 `available=true` 的一个 `modelId`。只读，不运行。
-- **上传参考图。** `miaoju asset upload ./ref.png --create-node`。返回的 `node.type` 是 `image-input`。
-- **建生成节点并连线。** `miaoju node create --type image-generator --model <modelId> --param prompt="…" --left <输入节点>`。返回新节点和 1 条边。
-- **摆位。** `miaoju node move --set <输入>=0,0 --set <生成>=420,0`。退出码 0。
-- **读回画布。** `miaoju canvas get`。2 个节点、1 条边，`fromNodeId` 是输入节点，`toNodeId` 是生成节点。
-- **审计实际输入。** `miaoju node get <生成节点>`。`derivedInputs.images` 恰好 1 张，去掉查询参数后的路径等于上传素材的路径。
+- **建项目。** `${MIAOJU_BIN:-miaoju} project create --name "F1 验证 <任务号>"`，然后 `${MIAOJU_BIN:-miaoju} project use <id>`。退出码 0，返回项目 id。
+- **选模型。** `${MIAOJU_BIN:-miaoju} model list`。取 `kind=image` 且 `available=true` 的一个 `modelId`。只读，不运行。
+- **上传参考图。** `${MIAOJU_BIN:-miaoju} asset upload ./ref.png --create-node`。返回的 `node.type` 是 `image-input`。
+- **建生成节点并连线。** `${MIAOJU_BIN:-miaoju} node create --type image-generator --model <modelId> --param prompt="…" --left <输入节点>`。返回新节点和 1 条边。
+- **摆位。** `${MIAOJU_BIN:-miaoju} node move --set <输入>=0,0 --set <生成>=420,0`。退出码 0。
+- **读回画布。** `${MIAOJU_BIN:-miaoju} canvas get`。2 个节点、1 条边，`fromNodeId` 是输入节点，`toNodeId` 是生成节点。
+- **审计实际输入。** `${MIAOJU_BIN:-miaoju} node get <生成节点>`。`derivedInputs.images` 恰好 1 张，去掉查询参数后的路径等于上传素材的路径。
 - **浏览器取证。** `node scripts/ratchet/browser-smoke.mjs --task <任务号> --sub f1 --path /canvas/<项目id>`。`smoke.json` 里 `ok: true`；打开 `smoke.png` 能看到参考图、连线、生成节点。
 
 ## Gotchas
