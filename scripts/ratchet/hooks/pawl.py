@@ -389,13 +389,35 @@ def check_rm(argv: list[str], cwd: str, root: str) -> None:
             raise Block("protected", "闸拦下：删除 %s 会连带删掉受保护路径 %s（红线），只有 James 能改。" % (t, hit))
 
 
+GIT_OPTS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env"}
+
+
+def git_positionals(argv: list[str]) -> list[str]:
+    """git 的位置参数（子命令在前），正确跳过 -C <路径>、-c <k=v> 这类带值的全局选项。"""
+    out: list[str] = []
+    i = 1
+    in_global = True
+    while i < len(argv):
+        a = argv[i]
+        if in_global and a in GIT_OPTS_WITH_VALUE:
+            i += 2
+            continue
+        if a.startswith("-"):
+            i += 1
+            continue
+        in_global = False
+        out.append(a)
+        i += 1
+    return out
+
+
 def check_subtree_moves(argv: list[str], cwd: str, root: str) -> None:
     """mv / git rm / git mv 移走受保护路径的上级目录，等于移走受保护路径。"""
     cmd = os.path.basename(argv[0])
     if cmd == "mv":
         srcs = [a for a in argv[1:] if not a.startswith("-")][:-1]
     elif cmd == "git":
-        sub = [a for a in argv[1:] if not a.startswith("-")]
+        sub = git_positionals(argv)
         if not sub or sub[0] not in ("rm", "mv"):
             return
         srcs = sub[1:-1] if sub[0] == "mv" else sub[1:]
@@ -447,7 +469,7 @@ def check_coordinator_bash(argv: list[str], cwd: str, root: str) -> None:
             return
         raise Block("coordinator", msg % ("不允许用 %s 直接执行代码" % cmd))
     if cmd == "git":
-        sub = [a for a in plain if not a.startswith("-")]
+        sub = git_positionals(argv)
         if sub and sub[0] in COORD_DENY_GIT:
             raise Block("coordinator", msg % ("git " + sub[0]))
         return
@@ -484,7 +506,7 @@ def check_protected_in_bash(argv: list[str], cwd: str, root: str) -> None:
     if cmd in READ_ONLY_CMDS and not any(t in (">", ">>", ">|") for t in argv):
         return
     if cmd == "git":
-        sub = [a for a in argv[1:] if not a.startswith("-")]
+        sub = git_positionals(argv)
         if sub and sub[0] in READ_ONLY_GIT:
             return
     if cmd == "python3" and len(argv) > 1 and argv[1].startswith("scripts/ratchet/") and "hooks" not in argv[1]:
