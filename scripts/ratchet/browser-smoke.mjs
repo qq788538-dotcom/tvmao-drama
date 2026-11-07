@@ -3,7 +3,8 @@
 // 截图并记录 console 与页面错误，证据写进 .ratchet/evidence/<任务号>/。
 //
 // 用法（先在另一个终端跑 browser-mode.mjs）：
-//   node scripts/ratchet/browser-smoke.mjs --task T-0001 [--path /] [--state .ratchet/state/browser-mode.json]
+//   node scripts/ratchet/browser-smoke.mjs --task T-0001 [--path /] [--sub f1] [--state .ratchet/state/browser-mode.json]
+//   --sub：证据写进 .ratchet/evidence/<任务号>/<sub>/，避免和同一任务的其他冒烟互相覆盖。
 // 需要 Playwright：仓库不把它列为依赖，先 `npm i -g playwright && npx playwright install chromium`。
 // 退出码：0 = 页面连上 sidecar 且无页面错误；1 = 失败（原因见 stderr 和 evidence 里的 smoke.json）。
 // 不计费：只打开页面、截图，不点击任何生成按钮。
@@ -41,7 +42,9 @@ async function main() {
   const state = JSON.parse(readFileSync(resolve(ROOT, arg('--state', '.ratchet/state/browser-mode.json')), 'utf8'));
   const url = new URL(state.url);
   url.pathname = arg('--path', '/');
-  const out = resolve(ROOT, '.ratchet', 'evidence', task);
+  const sub = arg('--sub', '');
+  if (sub && !/^[A-Za-z0-9_-]+$/.test(sub)) throw new Error('--sub 只能是字母、数字、- 和 _');
+  const out = resolve(ROOT, '.ratchet', 'evidence', task, sub);
   mkdirSync(out, { recursive: true });
 
   const { chromium } = loadPlaywright();

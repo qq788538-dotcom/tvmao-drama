@@ -95,6 +95,9 @@ async function main() {
   const dataDir = opts.dataDir ? resolve(opts.dataDir) : join(work, 'data');
   const tokens = makeTokens();
   const children = [];
+  // 先删上一次留下的 state 文件：就绪前别人读到的不会是一个已经死掉的旧实例
+  const statePath = resolve(ROOT, opts.stateFile);
+  rmSync(statePath, { force: true });
 
   let cleaned = false;
   const cleanup = () => {
@@ -112,6 +115,7 @@ async function main() {
     // 给 sidecar 留时间关库后再删临时目录
     setTimeout(() => {
       rmSync(work, { recursive: true, force: true });
+      rmSync(statePath, { force: true });
       process.exit(0);
     }, 3000);
   };
@@ -150,7 +154,6 @@ async function main() {
       ownDataDir,
       pid: process.pid,
     };
-    const statePath = resolve(ROOT, opts.stateFile);
     mkdirSync(dirname(statePath), { recursive: true });
     // 地址里带网页 token：只写进不入库的 state 文件，权限 0600
     writeFileSync(statePath, JSON.stringify({ ...state, cliToken: tokens.cliToken }, null, 2) + '\n', { mode: 0o600 });

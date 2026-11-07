@@ -24,4 +24,4 @@
 
 ## 上次验证
 
-2026-11-07，Linux 容器（Go 1.26、Node 22、Chromium），`verify-f1.sh T-0004` 全部断言通过。
+2026-11-07，Linux 容器（Go 1.26、Node 22、Chromium），`verify-f1.sh T-0006` 全部断言通过。关口 1：一个不知情的新会话只读本 skill 跑通 F1（T-0005），它提出的含糊处已改进 skill。
