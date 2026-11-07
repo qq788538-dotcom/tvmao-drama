@@ -34,5 +34,17 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "pstack@cursor-plugins": true
+  },
+  "extraKnownMarketplaces": {
+    "cursor-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "cursor/plugins",
+        "ref": "6b0300214a09fd6029cfb7077043125758cd1fd2"
+      }
+    }
   }
 }

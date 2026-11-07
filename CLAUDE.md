@@ -47,17 +47,35 @@ node scripts/ratchet/browser-smoke.mjs --task T-0001   # 另开终端：打开�
 | `seed/skills.jsonl` 等 seed 数据 | 应用内官方 Skill（sidecar 执行） | 不改，另立任务并由 James 批 |
 | `.claude/skills/` | 棘轮的开发 skill | 可以通过自改进 PR 提议，James 合并 |
 
-## 棘轮 Ratchet
+## 棘轮 Ratchet：建在 pstack 上
+
+Ratchet 不重写 pstack 已经有的能力。工作方法直接用土豆姐（poteto）开源的 [pstack](https://github.com/cursor/plugins/tree/main/pstack)（MIT），Ratchet 只补 pstack 没有、而 James 的红线需要的那一层。
+
+pstack 在 `.claude/settings.json` 里按项目启用，并锁定到 cursor/plugins 的一个 commit（0.15.36）。第一次在本仓库打开 Claude Code 时，按提示信任这个 marketplace 即可。Claude Code 里 pstack 的命令要加前缀，比如 `/pstack:poteto-mode`；Cursor 名字怎么对应，见插件里的 `docs/harness/claude-code.md`。
+
+| 要做的事 | 用什么 | 来源 |
+|---|---|---|
+| 任何要严谨的工程活（修 bug、做功能、重构、调研） | `/pstack:poteto-mode`，它会自己选 playbook | pstack |
+| 主轴调度多个 worker、多个 PR | poteto-mode 的 orchestrate / autonomous-run playbook | pstack |
+| 验证 skill 的生成与维护 | `/pstack:create-verification-skill`、`/pstack:maintain-verification-skill`（本仓库的产物是 `verify-tvmao`） | pstack |
+| 把反复出现的错误变成机制、维护下面的规则表 | `/pstack:correct` | pstack |
+| 复盘一次运行、提出改进 | `/pstack:reflect` | pstack |
+| 刷一个指标 / 跑 eval | poteto-mode 的 hillclimb / eval playbook | pstack |
+| 拦计费、合并、push main、密钥、红线文件 | 闸 hook `scripts/ratchet/hooks/pawl.py` + 权限 deny | Ratchet |
+| 关卡 G1–G6 与批准 | `.ratchet/policy/gates.md`、`.ratchet/policy/approvals/<任务号>.md` | Ratchet |
+| 派活的 kickoff 格式与预检 | `.claude/skills/ratchet-brief/SKILL.md`、`ratchet.py precheck-brief` | Ratchet（覆盖 orchestrate 要求的目标、证据、可写路径、禁止动作，再加关卡和成本上限） |
+| worker 回传与证据核对 | `.claude/skills/ratchet-report/SKILL.md`、`ratchet.py check-report` | Ratchet |
+| macOS WebView 驱动不了时的取证 | 浏览器验证模式（上一节） | Ratchet |
+
+两者冲突时 Ratchet 的红线优先。例如 pstack 的流程里有“合并”“land the stack”，在这里一律交给闸：agent 不合并，合并由主轴按 James 的授权做。pstack 里 Cursor 专有的功能（Automations、Bugbot、cloud agent），在 Claude Code 里按它的 adapter 说明跳过。
 
 - 主轴（coordinator）用 `RATCHET_ROLE=coordinator claude` 启动，只管项目、不写代码，只能写 `.ratchet/`。
-- 派活前写任务书并预检：`.claude/skills/ratchet-brief/SKILL.md`。
-- worker 完成后写回传书：`.claude/skills/ratchet-report/SKILL.md`。
-- 关卡 G1–G6 见 `.ratchet/policy/gates.md`；批准只认 `.ratchet/policy/approvals/<任务号>.md`。
+- 每个 PR 要有一个不是作者、而且模型家族不同的 verifier（orchestrate 的要求）。
 - `miaoju node run` 一提交就计费且不可取消，任何会话都不许跑（G5）。
 
 ## 规则 ↔ 由什么强制执行
 
-`/correct` 和自改进 PR 维护这张表。只靠文字的规则要标出来，能变成 hook、lint 或测试的优先变。
+`/pstack:correct` 和自改进 PR 维护这张表。只靠文字的规则要标出来，能变成 hook、lint 或测试的优先变。
 
 | 规则 | 强制手段 |
 |---|---|
