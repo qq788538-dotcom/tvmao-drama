@@ -54,3 +54,18 @@ export function parseArgs(argv) {
   }
   return opts;
 }
+
+/**
+ * 把文本里的 token 换成 ***：既替换给定的 token 原文，也替换任何 `ratchet_token=…` / `token=…` 查询参数。
+ * 证据文件、stdout、错误信息出门前都要过一遍（Playwright 的导航错误会带完整 URL）。
+ */
+export function redact(text, ...tokens) {
+  let s = String(text);
+  for (const t of tokens) if (t) s = s.split(t).join('***');
+  return s.replace(/((?:ratchet_)?token=)[^&\s"']+/g, '$1***');
+}
+
+/** 给终端/日志看的就绪摘要：url 去掉 token，完整地址只在 0600 的 state 文件里。 */
+export function publicState(state) {
+  return { ...state, url: redact(state.url) };
+}

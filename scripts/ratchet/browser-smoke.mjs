@@ -12,6 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { redact } from '../lib/ratchet-browser.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -41,6 +42,8 @@ async function main() {
   if (!task || !/^T-\d{4,}$/.test(task)) throw new Error('缺少 --task T-0001');
   const state = JSON.parse(readFileSync(resolve(ROOT, arg('--state', '.ratchet/state/browser-mode.json')), 'utf8'));
   const url = new URL(state.url);
+  const token = url.searchParams.get('ratchet_token');
+  const clean = (t) => redact(t, token, state.cliToken);
   url.pathname = arg('--path', '/');
   const sub = arg('--sub', '');
   if (sub && !/^[A-Za-z0-9_-]+$/.test(sub)) throw new Error('--sub 只能是字母、数字、- 和 _');
@@ -53,10 +56,10 @@ async function main() {
   const consoleLines = [];
   const pageErrors = [];
   const apiCalls = [];
-  page.on('console', (m) => consoleLines.push(`[${m.type()}] ${m.text()}`));
-  page.on('pageerror', (e) => pageErrors.push(String(e)));
+  page.on('console', (m) => consoleLines.push(clean(`[${m.type()}] ${m.text()}`)));
+  page.on('pageerror', (e) => pageErrors.push(clean(String(e))));
   page.on('response', (r) => {
-    if (r.url().includes(`127.0.0.1:${state.sidecarPort}/api/`)) apiCalls.push({ url: r.url().replace(/token=[^&]+/, 'token=***'), status: r.status() });
+    if (r.url().includes(`127.0.0.1:${state.sidecarPort}/api/`)) apiCalls.push({ url: clean(r.url()), status: r.status() });
   });
 
   let ok = true;
@@ -73,7 +76,7 @@ async function main() {
     }
   } catch (e) {
     ok = false;
-    reason = String(e);
+    reason = clean(String(e)); // Playwright 的导航错误带完整 URL（含 token）
   }
   if (pageErrors.length) {
     ok = false;

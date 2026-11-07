@@ -9,10 +9,12 @@
 //
 // 用法（仓库根目录）：
 //   node scripts/ratchet/browser-mode.mjs [--data-dir 目录] [--sidecar-bin 路径] [--web-port 5173] [--no-vite]
-// 就绪后在 stdout 打一行 JSON：{"ready":true,"url":...,"endpointDir":...,"sidecarPort":...,"webPort":...,"dataDir":...}，
+// 就绪后在 stdout 打一行 JSON：{"ready":true,"url":...,"endpointDir":...,"sidecarPort":...,"webPort":...,"dataDir":...}
+// （stdout 里的 url 去掉了 token；带 token 的完整地址只在 state 文件里），
 // endpointDir 给 miaoju 用：`MIAOJU_ENDPOINT_DIR=<endpointDir> miaoju project list`。
 // 同时写到 --state 指定的文件（默认 .ratchet/state/browser-mode.json，已在 .gitignore 里）。
-// Ctrl-C 或 SIGTERM 退出：关 sidecar（关闭 stdin 即优雅退出）、关 Vite、删掉自建的临时数据目录。
+// Ctrl-C 或 SIGTERM 退出：关 sidecar（关闭 stdin 即优雅退出）、关 Vite、删掉自建的临时数据目录，退出码 0。
+// 启动失败或 sidecar 意外退出：同样清理，但退出码非零。
 //
 // 不计费：只启动服务，不调用任何生成接口。
 import { spawn, spawnSync } from 'node:child_process';
@@ -21,7 +23,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { buildBrowserUrl, devOrigins, makeTokens, parseArgs, parseReadyLine } from '../lib/ratchet-browser.mjs';
+import { buildBrowserUrl, devOrigins, makeTokens, parseArgs, parseReadyLine, publicState } from '../lib/ratchet-browser.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const READY_TIMEOUT_MS = 60_000;
@@ -100,7 +102,8 @@ async function main() {
   rmSync(statePath, { force: true });
 
   let cleaned = false;
-  const cleanup = () => {
+  // code：Ctrl-C / SIGTERM 是正常收尾，退出码 0；启动失败或 sidecar 意外退出必须非零，自动化才不会把失败当成功。
+  const cleanup = (code = 0) => {
     if (cleaned) return;
     cleaned = true;
     for (const c of children) {
@@ -116,11 +119,16 @@ async function main() {
     setTimeout(() => {
       rmSync(work, { recursive: true, force: true });
       rmSync(statePath, { force: true });
-      process.exit(0);
+      process.exit(code);
     }, 3000);
   };
-  process.on('SIGINT', cleanup);
-  process.on('SIGTERM', cleanup);
+  let stopping = false;
+  const stop = () => {
+    stopping = true;
+    cleanup(0);
+  };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
 
   try {
     const bin = opts.sidecarBin ? resolve(opts.sidecarBin) : buildSidecar(work);
@@ -157,16 +165,17 @@ async function main() {
     mkdirSync(dirname(statePath), { recursive: true });
     // 地址里带网页 token：只写进不入库的 state 文件，权限 0600
     writeFileSync(statePath, JSON.stringify({ ...state, cliToken: tokens.cliToken }, null, 2) + '\n', { mode: 0o600 });
-    process.stdout.write(JSON.stringify(state) + '\n');
+    // stdout 会进终端和自动化日志：url 去掉 token，完整地址只在上面 0600 的 state 文件里
+    process.stdout.write(JSON.stringify(publicState(state)) + '\n');
     log('按 Ctrl-C 结束并清理');
     sidecar.on('exit', (code) => {
       log(`sidecar 退出（${code}）`);
-      cleanup();
+      // 不是我们叫它停的：就绪后异常退出，算失败
+      cleanup(stopping ? 0 : code || 1);
     });
   } catch (e) {
     log(String(e instanceof Error ? e.message : e));
-    cleanup();
-    process.exitCode = 1;
+    cleanup(1);
   }
 }
 
