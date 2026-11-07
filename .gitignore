@@ -13,7 +13,10 @@ server/bin/
 
 # 本地数据与打包产物
 /out/
-.claude/
+# 棘轮：.claude/ 下只放行闸配置和 skill，其余仍忽略
+.claude/*
+!.claude/settings.json
+!.claude/skills/
 .superpowers/
 .worktrees/
 
@@ -26,3 +29,8 @@ src-tauri/resources/cli-skill/
 seed/seedance_characters.jsonl
 server/internal/aicharacters/seeddata/*.jsonl
 server/internal/aicharacters/images/*.webp
+# 棘轮 Ratchet 运行状态与证据（不入库）
+.ratchet/state/
+.ratchet/evidence/
+.claude/worktrees/
+.claude/settings.local.json
