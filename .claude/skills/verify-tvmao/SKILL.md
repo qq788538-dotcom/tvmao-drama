@@ -59,13 +59,7 @@ node scripts/ratchet/browser-smoke.mjs --task <任务号> --sub doctor     # 前
 2. **sidecar REST**：`/api/v1/...`，CLI 没覆盖的接口。地址和 token 在 `.ratchet/state/browser-mode.json`。
 3. **浏览器**：Playwright 打开 `url`，用于 UI-only 的行为和截图。参考 `scripts/ratchet/browser-smoke.mjs` 的写法。
 
-每个功能的具体步骤在 feature map 里：
-
-| 编号 | 功能 | 文件 | 成本 | 驱动方式 |
-|---|---|---|---|---|
-| F1 | 建图与连线 | [references/features/F1-canvas-graph.md](references/features/F1-canvas-graph.md) | 零成本 | CLI + 浏览器 |
-
-（F2 脚本拆分镜、F3 模型配置、F4 素材库、F5 Agent 面板待补。）
+每个功能的具体步骤在功能图里：先读 [features/README.md](features/README.md)，再按对应的功能文件操作。功能图沿用 pstack `create-verification-skill` 的格式，补新功能或核对漂移用 `/pstack:maintain-verification-skill`。
 
 ## 4. Evidence：至少三类
 
