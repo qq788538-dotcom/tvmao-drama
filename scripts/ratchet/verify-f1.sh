@@ -7,7 +7,7 @@
 # 不做什么：不跑 `node run`，不调用任何上游模型，不计费。
 #
 # 用法：scripts/ratchet/verify-f1.sh T-0001
-# 环境：MIAOJU_BIN 指定 miaoju 可执行文件（默认先找 PATH，再从 cli/ 构建到临时目录）。
+# 环境：MIAOJU_BIN 指定 miaoju 可执行文件（默认先找 PATH，再从 cli/ 构建到证据目录）。
 # 证据：.ratchet/evidence/<任务号>/f1/ 下的 commands.log（命令与退出码）、*.json、smoke.png、console.log。
 # 退出码：0 = F1 全部断言通过；1 = 失败（看 commands.log 最后几行）。
 set -euo pipefail
@@ -32,6 +32,11 @@ fi
 
 json() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2], {'d': d}))" "$@"; }
 
+STATE_PID="$(json "$STATE" "d['pid']")"
+if ! kill -0 "$STATE_PID" 2>/dev/null; then
+  echo "$STATE 指向的 browser-mode（pid $STATE_PID）已经不在了：重新跑 node scripts/ratchet/browser-mode.mjs，等它打印 ready 再来" >&2
+  exit 1
+fi
 ENDPOINT_DIR="$(json "$STATE" "d['endpointDir']")"
 export MIAOJU_ENDPOINT_DIR="$ENDPOINT_DIR"
 
@@ -112,11 +117,8 @@ check "生成节点实际会拿到 1 张图，且就是上传的参考图（deri
 
 # 8. 浏览器里打开这张画布，截图、记 console
 smoke_code=0
-node "$ROOT/scripts/ratchet/browser-smoke.mjs" --task "$TASK" --path "/canvas/$PID" > "$OUT/smoke-result.json" || smoke_code=$?
-printf 'node scripts/ratchet/browser-smoke.mjs --task %s --path /canvas/%s exit=%d\n' "$TASK" "$PID" "$smoke_code" >> "$LOG"
-for f in smoke.png smoke.json console.log; do
-  mv "$ROOT/.ratchet/evidence/$TASK/$f" "$OUT/$f"
-done
+node "$ROOT/scripts/ratchet/browser-smoke.mjs" --task "$TASK" --sub f1 --path "/canvas/$PID" > "$OUT/smoke-result.json" || smoke_code=$?
+printf 'node scripts/ratchet/browser-smoke.mjs --task %s --sub f1 --path /canvas/%s exit=%d\n' "$TASK" "$PID" "$smoke_code" >> "$LOG"
 check "浏览器里页面连上 sidecar 且无页面错误" "d['ok'] is True" smoke.json
 
 echo "F1 通过：项目 $PID，节点 $IMG → $GEN，模型 $MODEL。证据：$OUT" | tee -a "$LOG"
