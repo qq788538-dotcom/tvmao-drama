@@ -7,7 +7,7 @@
 - 一个 PR 只做一件事；提交信息用 `<类型>(<范围>): <说明>`，类型见 CONTRIBUTING。
 - 跟着周围的代码写，注释以中文为主。
 - 修 bug 先写一个能复现问题的失败测试。
-- 只开 draft PR，合并权只在 James。
+- PR 按 pstack `opening-a-pr` 直接开 ready（不再开 draft）。agent 一律不合并（闸会拦）；合并由主轴（Claude）按 James 的授权做：5 项 CI 全绿、分支与 main 同步、异族 verifier 在当前 head 通过。
 
 ## 本地检查（与 CI 一致，按改动路径跑）
 
@@ -71,6 +71,8 @@ pstack 在 `.claude/settings.json` 里按项目启用，并锁定到 cursor/plug
 
 - 主轴（coordinator）用 `RATCHET_ROLE=coordinator claude` 启动，只管项目、不写代码，只能写 `.ratchet/`。
 - 每个 PR 要有一个不是作者、而且模型家族不同的 verifier（orchestrate 的要求）。
+- 多 PR 的计划直接用 pstack multi-phase-plan 的骨架，并跑 `check-plan.mjs` 到 0 problems。计划里的每个 PR 派给 owner 时，再写一份 Ratchet 任务书作为 kickoff，`precheck-brief` 检查关卡和成本。一份任务书只对一个仓库的一个 PR。
+- pstack 的 live lane 要用 cursor-team-kit 里的 `control-ui` / `control-cli`。在本仓库用 `verify-tvmao`（浏览器验证模式 + `miaoju`）代替。
 - `miaoju node run` 一提交就计费且不可取消，任何会话都不许跑（G5）。
 
 ## 规则 ↔ 由什么强制执行
