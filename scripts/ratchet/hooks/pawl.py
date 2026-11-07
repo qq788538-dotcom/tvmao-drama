@@ -171,16 +171,6 @@ def tokenize(cmd: str) -> list[str] | None:
         return None
 
 
-def segments(tokens: list[str]) -> list[list[str]]:
-    segs: list[list[str]] = [[]]
-    for t in tokens:
-        if t in SEGMENT_OPS:
-            segs.append([])
-        else:
-            segs[-1].append(t)
-    return [s for s in segs if s]
-
-
 def strip_prefix(argv: list[str]) -> list[str]:
     """去掉 FOO=bar、sudo/env 之类的前缀，得到真正的命令。"""
     i = 0
@@ -205,7 +195,122 @@ def words(argv: list[str]) -> list[str]:
     return [t for t in argv if t not in REDIRECT_OPS]
 
 
-def check_bash(command: str, cwd: str, root: str, depth: int = 0) -> None:
+ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.S)
+VARIABLE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
+# 状态是 (cwd, 本条命令内可静态确定的变量, 上个命令是否成功)。不执行 shell。
+ShellState = tuple[str, dict[str, str], bool]
+
+
+def expand_word(word: str, values: dict[str, str], cwd: str) -> str:
+    def replace(m: re.Match) -> str:
+        name = m.group(1) or m.group(2)
+        return cwd if name == "PWD" else values.get(name, m.group(0))
+    return VARIABLE.sub(replace, word)
+
+
+def expand_argv(argv: list[str], values: dict[str, str], cwd: str) -> list[str]:
+    out: list[str] = []
+    for word in argv:
+        expanded = expand_word(word, values, cwd)
+        # -c 的下一项仍是一整段代码，留给递归解析，不能在外层按空格拆散。
+        shell_code = bool(out and os.path.basename(out[0]) in SHELLS
+                          and re.match(r"^-[A-Za-z]*c[A-Za-z]*$", out[-1]))
+        if "$" in word and not shell_code:
+            # 保守地包含未加引号展开的字段拆分；引号内的展开可能因此被多拦。
+            out.extend(expanded.split() or [""])
+        else:
+            out.append(expanded)
+    return out
+
+
+def unique_states(states: list[ShellState]) -> list[ShellState]:
+    seen = set()
+    out = []
+    for state in states:
+        key = (state[0], tuple(sorted(state[1].items())), state[2])
+        if key not in seen:
+            seen.add(key)
+            out.append(state)
+        if len(out) > 64:
+            raise Block("shell-state", "闸拦下：命令的条件分支过多，无法可靠判断，请拆成多条命令。")
+    return out
+
+
+def check_simple(seg: list[str], state: ShellState, root: str, depth: int) -> list[ShellState]:
+    cwd, original_values, _ = state
+    values = dict(original_values)
+    i = 0
+    while i < len(seg):
+        assignment = ASSIGNMENT.match(seg[i])
+        if not assignment:
+            break
+        values[assignment[1]] = expand_word(assignment[2], values, cwd)
+        i += 1
+    if i == len(seg):
+        return [(cwd, values, True)]
+    if seg[i] == "export":
+        for word in seg[i + 1:]:
+            assignment = ASSIGNMENT.match(word)
+            if assignment:
+                values[assignment[1]] = expand_word(assignment[2], values, cwd)
+    if seg[i] == "unset":
+        for name in seg[i + 1:]:
+            values.pop(name, None)
+
+    # 展开后也要去包装前缀，覆盖 E=env; G=gh; $E $G pr merge 这样的调用。
+    argv = strip_prefix(expand_argv(strip_prefix(seg[i:]), values, cwd))
+    if not argv:
+        return [(cwd, original_values, True)]
+    if not argv[0] or "$" in argv[0] or "`" in argv[0]:
+        raise Block("shell-variable", "闸拦下：无法静态确定变量展开后的命令，请使用明确的命令名。")
+    cmd = os.path.basename(argv[0])
+    if cmd in ("git", "gh", "miaoju") and any("$" in a or "`" in a for a in argv[1:]):
+        raise Block("shell-variable", "闸拦下：受控命令含无法静态确定的变量参数，请先写明具体值。")
+
+    nested = None
+    if cmd in SHELLS:
+        for n, arg in enumerate(argv[1:], 1):
+            if re.match(r"^-[A-Za-z]*c[A-Za-z]*$", arg) and n + 1 < len(argv):
+                check_bash(argv[n + 1], cwd, root, depth + 1, values)
+                break
+    if cmd == "eval":
+        nested = check_bash(" ".join(argv[1:]), cwd, root, depth + 1, values)
+
+    check_secrets(argv, cwd)
+    check_miaoju(argv)
+    check_gh(argv)
+    if cmd == "git":
+        check_git(argv, cwd)
+    if cmd == "find":
+        check_find(argv)
+    if cmd == "rm":
+        check_rm(argv, cwd, root)
+    check_subtree_moves(argv, cwd, root)
+    check_protected_in_bash(argv, cwd, root)
+    if coordinator_session():
+        check_coordinator_bash(argv, cwd, root)
+    if nested is not None:
+        return nested  # eval 在当前 shell 中修改变量和目录；bash -c 则不传播。
+    if cmd in ("export", "unset"):
+        return [(cwd, values, True)]
+    if cmd == "cd":
+        paths = [a for a in argv[1:] if a not in ("--", "-L", "-P")]
+        target = paths[0] if paths else os.path.expanduser("~")
+        if target == "-":
+            target = values.get("OLDPWD", "$")
+        if len(paths) > 1 or "$" in target or "`" in target:
+            raise Block("shell-cwd", "闸拦下：无法静态确定 cd 后的目录，请使用明确路径。")
+        changed = dict(original_values, OLDPWD=cwd)
+        # 前面的命令可能创建/删除目录，不能用检查时的文件系统猜 cd 是否会成功。
+        return [(resolve(target, cwd), changed, True), (cwd, original_values, False)]
+    if cmd in ("true", ":", "false"):
+        return [(cwd, original_values, cmd != "false")]
+    # 普通命令可能成功也可能失败；前缀赋值/env 不污染后续 shell 的变量。
+    return [(cwd, original_values, True), (cwd, original_values, False)]
+
+
+def check_bash(command: str, cwd: str, root: str, depth: int = 0,
+               values: dict[str, str] | None = None) -> list[ShellState]:
     if depth > 3:
         raise Block("nesting", "命令嵌套过深，闸无法判断，按拦下处理。")
 
@@ -215,33 +320,33 @@ def check_bash(command: str, cwd: str, root: str, depth: int = 0) -> None:
     if tokens is None:
         raise Block("unparseable", "命令引号不配对，闸无法解析，按拦下处理。请改写成能解析的形式。")
 
-    for seg in segments(tokens):
-        argv = strip_prefix(seg)
-        if not argv:
+    parts = []
+    start = 0
+    for n, token in enumerate(tokens):
+        if token in SEGMENT_OPS:
+            parts.append((tokens[start:n], token))
+            start = n + 1
+    parts.append((tokens[start:], ";"))
+    states: list[ShellState] = [(cwd, dict(values or {}), True)]
+    previous = ";"
+    for seg, following in parts:
+        if not seg:
             continue
-        cmd = os.path.basename(argv[0])
-
-        # bash -c "..." / eval "..." 递归检查
-        if cmd in SHELLS and "-c" in argv:
-            idx = argv.index("-c")
-            if idx + 1 < len(argv):
-                check_bash(argv[idx + 1], cwd, root, depth + 1)
-        if cmd == "eval":
-            check_bash(" ".join(argv[1:]), cwd, root, depth + 1)
-
-        check_secrets(argv, cwd)
-        check_miaoju(argv)
-        check_gh(argv)
-        if cmd == "git":
-            check_git(argv, cwd)
-        if cmd == "rm":
-            check_rm(argv, cwd, root)
-        check_subtree_moves(argv, cwd, root)
-        check_protected_in_bash(argv, cwd, root)
-        if coordinator_session():
-            check_coordinator_bash(argv, cwd, root)
-        if cmd == "cd" and len(argv) > 1 and "$" not in argv[1]:
-            cwd = resolve(argv[1], cwd)
+        before = states
+        after = []
+        for state in before:
+            if (previous == "&&" and not state[2]) or (previous == "||" and state[2]):
+                # 保留旧闸对所有语句的保守检查；未执行的分支不能改变后续状态。
+                check_simple(seg, state, root, depth)
+                after.append(state)
+            else:
+                after.extend(check_simple(seg, state, root, depth))
+        # 管道与后台命令不可靠地传播 shell 状态；保留原状态以免赋值掩盖危险调用。
+        if previous in ("|", "|&", "&") or following in ("|", "|&", "&"):
+            after.extend(before)
+        states = unique_states(after)
+        previous = following
+    return states
 
 
 def raw_checks(command: str) -> None:
@@ -330,13 +435,42 @@ def check_git(argv: list[str], cwd: str) -> None:
             git_cwd = resolve(argv[i + 1], cwd)
             i += 2
             continue
-        if argv[i] == "-c":
+        if argv[i] in GIT_OPTS_WITH_VALUE:
             i += 2
             continue
         i += 1
-    if i >= len(argv) or argv[i] != "push":
+    if i >= len(argv):
         return
+    subcommand = argv[i]
     args = argv[i + 1:]
+    option_args = args[:args.index("--")] if "--" in args else args
+    if subcommand == "clean":
+        clean_flags = set()
+        n = 0
+        while n < len(option_args):
+            arg = option_args[n]
+            if arg == "--exclude":
+                n += 2
+                continue
+            if arg.startswith("--"):
+                clean_flags.add(arg)
+            elif arg.startswith("-"):
+                for k, flag in enumerate(arg[1:], 1):
+                    if flag == "e":
+                        # -e 的值（包括形似 -n 的排除模式）不是预览选项。
+                        if k == len(arg) - 1:
+                            n += 1
+                        break
+                    clean_flags.add(flag)
+            n += 1
+        preview = bool(clean_flags & {"n", "--dry-run"})
+        force_clean = bool(clean_flags & {"f", "--force"})
+        if not preview and force_clean and clean_flags & {"d", "x", "X"}:
+            raise Block("git-clean", "闸拦下：git clean 强制删除目录或忽略文件。请先用 git clean -n 预览，由 James 决定删除。")
+    if subcommand == "reset" and "--hard" in option_args:
+        raise Block("git-reset", "闸拦下：git reset --hard 会丢弃工作区修改，请在回传书说明，由 James 处理。")
+    if subcommand != "push":
+        return
     flags = [a for a in args if a.startswith("-")]
     pos = [a for a in args if not a.startswith("-")]
 
@@ -362,6 +496,18 @@ def check_git(argv: list[str], cwd: str) -> None:
         dst = _refspec_dst(spec)
         if dst in PROTECTED_BRANCHES or (dst == "HEAD" and _current_branch(git_cwd) in PROTECTED_BRANCHES):
             raise Block("push", "闸拦下：不允许 push 到 %s（只能走 PR，由 James 合并）。" % dst)
+
+
+def check_find(argv: list[str]) -> None:
+    if "-delete" in argv:
+        raise Block("find-delete", "闸拦下：find -delete 会直接删除匹配结果，请先用 find -print 查看。")
+    for n, arg in enumerate(argv[:-1]):
+        if arg in ("-exec", "-execdir", "-ok", "-okdir"):
+            action = strip_prefix(argv[n + 1:])
+            if action and ("$" in action[0] or "`" in action[0]):
+                raise Block("shell-variable", "闸拦下：无法静态确定 find 要执行的命令，请使用明确的命令名。")
+            if action and os.path.basename(action[0]) == "rm":
+                raise Block("find-exec-rm", "闸拦下：find 执行 rm 会批量删除匹配结果，请先只输出路径，由 James 决定删除。")
 
 
 def check_rm(argv: list[str], cwd: str, root: str) -> None:
