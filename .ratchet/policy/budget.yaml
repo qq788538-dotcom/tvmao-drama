@@ -1,0 +1,18 @@
+# 预算与熔断【受保护：只有 James 能改】
+# 里程碑 1 只占位，数值由 James 填。熔断脚本在里程碑 2（M8 仪表接入 ccusage 后）才读这个文件。
+# 方案约定：任一额度池到预算 80% 预警、100% 停派；同一任务失败 2 次停掉并上报。
+
+pools:
+  claude_subscription:
+    monthly_token_budget: null   # James 填
+  openai_subscription:
+    monthly_token_budget: null   # James 填
+
+breaker:
+  warn_at: 0.8
+  stop_at: 1.0
+  max_failures_per_task: 2
+  max_pending_review_prs: 5      # 待审 PR 超过 5 个即停派
+
+concurrency:
+  max_workers: 1                 # 里程碑 1–2 为 1
