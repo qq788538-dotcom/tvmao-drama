@@ -27,7 +27,7 @@ node scripts/ratchet/browser-mode.mjs > /tmp/ratchet-browser.out &   # 后台跑
 for i in $(seq 180); do [ -f .ratchet/state/browser-mode.json ] && break; sleep 1; done
 ```
 
-超时没出现就看 `/tmp/ratchet-browser.out` 的报错。就绪后 stdout 打一行 JSON，state 文件内容相同，另多一个 `cliToken`（CLI 用，不要贴进证据）：
+超时没出现就看 `/tmp/ratchet-browser.out` 的报错；启动失败时 browser-mode 会以非零退出码退出。就绪后 stdout 打一行 JSON 摘要（`url` 里的 token 已换成 `***`）；带 token 的完整地址和 `cliToken` 只在 state 文件里（权限 0600，不要贴进证据）：
 
 | 字段 | 用途 |
 |---|---|
@@ -94,4 +94,5 @@ node scripts/ratchet/browser-smoke.mjs --task <任务号> --sub doctor     # 前
 ## 已知边界
 
 - 浏览器验证模式只替代了“取端口和 token”；数据目录切换、系统对话框、打开外链等壳功能测不了，这部分要在 macOS 桌面端人工看。
+- 网页 token 会存在该页面的 sessionStorage（刷新后还能连上 sidecar）。它是这次临时实例的一次性凭据，不是上游 API key，实例一停就失效；但同源脚本能读到它，所以只在开发构建、只连临时实例。
 - 内置 Python 运行时在验证实例里找不到，脚本节点任务会失败（sidecar 启动时有警告），F1 不受影响。

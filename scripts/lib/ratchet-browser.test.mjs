@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildBrowserUrl, devOrigins, makeTokens, parseArgs, parseReadyLine } from './ratchet-browser.mjs';
+import { buildBrowserUrl, devOrigins, makeTokens, parseArgs, parseReadyLine, publicState, redact } from './ratchet-browser.mjs';
 
 test('解析 sidecar 的 READY 行', () => {
   assert.equal(parseReadyLine('READY 51234'), 51234);
@@ -36,4 +36,21 @@ test('参数解析', () => {
   assert.equal(o.vite, false);
   assert.throws(() => parseArgs(['--web-port', 'abc']), /合法端口/);
   assert.throws(() => parseArgs(['--bogus']), /未知/);
+});
+
+test('脱敏：token 原文和 token 查询参数都换掉', () => {
+  const tok = 'a'.repeat(64);
+  const err = `page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:1/?ratchet_port=9&ratchet_token=${tok}`;
+  const out = redact(err, tok);
+  assert.ok(!out.includes(tok));
+  assert.match(out, /ratchet_token=\*\*\*/);
+  assert.equal(redact('GET /api/v1/x?token=zzz&b=1'), 'GET /api/v1/x?token=***&b=1');
+  assert.ok(!redact(`bearer ${tok} 失败`, tok).includes(tok));
+});
+
+test('就绪摘要的 url 不带 token', () => {
+  const tok = 'b'.repeat(64);
+  const s = publicState({ url: buildBrowserUrl({ webPort: 5173, sidecarPort: 4321, token: tok }), pid: 1 });
+  assert.ok(!JSON.stringify(s).includes(tok));
+  assert.equal(new URL(s.url).searchParams.get('ratchet_port'), '4321');
 });
