@@ -21,6 +21,19 @@
 
 没跑的检查不要写"通过"；CI 没出结果写「CI 待核」。
 
+## 浏览器验证模式（取证用）
+
+macOS 的 Tauri WebView 驱动不了，验证 UI 时走浏览器验证模式（只在开发构建生效）：
+
+```sh
+node scripts/ratchet/browser-mode.mjs            # 临时数据目录起 sidecar + Vite，打印带 ratchet_port/ratchet_token 的地址
+node scripts/ratchet/browser-smoke.mjs --task T-0001   # 另开终端：打开页面、截图、记 console，证据进 .ratchet/evidence/T-0001/
+```
+
+- 永远用临时数据目录，不要传日常使用的数据目录给 `--data-dir`。
+- 只连 sidecar 的端口和 token；数据目录、对话框等壳命令在这个模式下不可用。
+- 冒烟取证不点任何生成按钮（不计费）。
+
 ## 三套 skill 不要混
 
 | 位置 | 是什么 | 能不能改 |

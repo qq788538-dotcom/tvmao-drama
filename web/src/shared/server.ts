@@ -16,8 +16,60 @@ function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+/*
+ * 浏览器验证模式（只在开发构建生效，生产包里 import.meta.env.DEV 被静态替换成 false，整段被删掉）。
+ *
+ * macOS 的 Tauri 用 WKWebView，没有 DevTools 协议，自动化验证驱动不了桌面窗口。
+ * 所以由 scripts/ratchet/browser-mode.mjs 单独起一个 sidecar（临时数据目录），再起 Vite，
+ * 用 `http://localhost:5173/?ratchet_port=<端口>&ratchet_token=<token>` 打开。
+ * 这里读到这两个参数后存进 sessionStorage 并从地址栏去掉，之后的路由跳转、刷新都沿用。
+ * 只替代"取端口和 token"和"sidecar 状态"两件事；其余壳命令（数据目录、对话框等）照旧报“请在桌面应用中运行”。
+ */
+const BROWSER_SESSION_KEY = 'ratchet.browserSession';
+const BROWSER_PARAMS = ['ratchet_port', 'ratchet_token'] as const;
+
+function validSession(v: unknown): ServerInfo | null {
+  if (!v || typeof v !== 'object') return null;
+  const { port, token } = v as Partial<ServerInfo>;
+  if (typeof port !== 'number' || !Number.isInteger(port) || port <= 0 || port >= 65536) return null;
+  if (typeof token !== 'string' || token.length < 32) return null;
+  return { port, token };
+}
+
+/** 浏览器验证模式的会话；不在该模式（或是生产构建）返回 null。 */
+export function browserSession(): ServerInfo | null {
+  if (!import.meta.env.DEV || typeof window === 'undefined' || isTauri()) return null;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('ratchet_port') || url.searchParams.has('ratchet_token')) {
+      const info = validSession({
+        port: Number(url.searchParams.get('ratchet_port')),
+        token: url.searchParams.get('ratchet_token') ?? '',
+      });
+      for (const k of BROWSER_PARAMS) url.searchParams.delete(k);
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+      if (info) {
+        window.sessionStorage.setItem(BROWSER_SESSION_KEY, JSON.stringify(info));
+        return info;
+      }
+    }
+    const saved = window.sessionStorage.getItem(BROWSER_SESSION_KEY);
+    return saved ? validSession(JSON.parse(saved)) : null;
+  } catch {
+    return null;
+  }
+}
+
 function invoke<T>(...a: [cmd: string, args?: Record<string, unknown>]): Promise<T> {
-  return isTauri() ? tauriInvoke<T>(...a) : Promise.reject(new NotTauriError());
+  if (isTauri()) return tauriInvoke<T>(...a);
+  const session = browserSession();
+  if (session) {
+    const [cmd] = a;
+    // 浏览器模式下 sidecar 由启动脚本管，前端无法重启它：restart 直接返回当前会话
+    if (cmd === 'server_info' || cmd === 'restart_sidecar') return Promise.resolve(session as T);
+    if (cmd === 'sidecar_status') return Promise.resolve({ status: 'ready' } as T);
+  }
+  return Promise.reject(new NotTauriError());
 }
 
 function listen<T>(name: string, cb: (e: { payload: T }) => void): Promise<UnlistenFn> {
@@ -159,4 +211,9 @@ export function authHeaders(info: ServerInfo): { Authorization: string } {
 export function resetServerInfoForTest(): void {
   cached = null;
   invalidatorRegistered = false;
+  try {
+    window.sessionStorage.removeItem(BROWSER_SESSION_KEY);
+  } catch {
+    // 非浏览器环境
+  }
 }
