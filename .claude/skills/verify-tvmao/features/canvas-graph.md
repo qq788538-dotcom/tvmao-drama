@@ -43,4 +43,4 @@ Preconditions:
 - 冒烟打开 `/` 时会自动建一个默认项目，所以 F1 的项目 id 不一定是 1。断言要按自己建的项目来，不要按 id 猜。
 - 输入节点摆在 (0,0) 时，有一部分会被左上角顶栏挡住，看截图时别误判成没渲染。
 - 画布挂着 EventSource 长连接（`/api/v1/projects/<id>/events`），网络不会空闲。自己写 Playwright 时不要用 `waitUntil: 'networkidle'`：macOS 上会一直等到超时。用 `domcontentloaded`，再等 `[data-node-id]` 的数量对上。
-- 上次验证：2026-11-07，Linux 容器（Go 1.26、Node 22、Chromium），`verify-f1.sh T-0007` 全部断言通过。2026-11-08 macOS 26.7.1 上 CLI 段全过，浏览器段卡在 networkidle，已改成等节点数，macOS 复验待补。关口 1：一个不知情的新会话只读本 skill 跑通了 F1（T-0005）。
+- 上次验证：2026-11-07，Linux 容器（Go 1.26、Node 22、Chromium），`verify-f1.sh T-0007` 全部断言通过。2026-11-08，macOS 26.7.1（arm64，系统 bash 3.2.57、Node 22、Playwright Chromium），`verify-f1.sh T-0104` 全部断言通过，连跑两轮（#36 修 networkidle、#37 修 bash 3.2 后，pi 复验）。关口 1：一个不知情的新会话只读本 skill 跑通了 F1（T-0005）。
