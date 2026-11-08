@@ -30,7 +30,7 @@ if [ "$TARGET" = "$HOST" ]; then
   got="$("$OUT" version)"
   case "$got" in
     *"$VERSION"*) ;;
-    *) echo "CLI 版本自检失败：输出 $got，期望包含 $VERSION" >&2; exit 1 ;;
+    *) echo "CLI 版本自检失败：输出 ${got}，期望包含 $VERSION" >&2; exit 1 ;;
   esac
 fi
 echo "CLI → ${OUT}（${VERSION}）"

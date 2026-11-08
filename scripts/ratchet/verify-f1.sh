@@ -26,7 +26,7 @@ LOG="$OUT/commands.log"
 : > "$LOG"
 
 if [[ ! -f "$STATE" ]]; then
-  echo "找不到 $STATE：先跑 node scripts/ratchet/browser-mode.mjs" >&2
+  echo "找不到 ${STATE}：先跑 node scripts/ratchet/browser-mode.mjs" >&2
   exit 1
 fi
 
@@ -34,7 +34,7 @@ json() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval
 
 STATE_PID="$(json "$STATE" "d['pid']")"
 if ! kill -0 "$STATE_PID" 2>/dev/null; then
-  echo "$STATE 指向的 browser-mode（pid $STATE_PID）已经不在了：重新跑 node scripts/ratchet/browser-mode.mjs，等它打印 ready 再来" >&2
+  echo "$STATE 指向的 browser-mode（pid ${STATE_PID}）已经不在了：重新跑 node scripts/ratchet/browser-mode.mjs，等它打印 ready 再来" >&2
   exit 1
 fi
 ENDPOINT_DIR="$(json "$STATE" "d['endpointDir']")"
@@ -60,7 +60,7 @@ run() {
   "$@" > "$OUT/$name" 2> "$OUT/$name.stderr" || code=$?
   printf '%s exit=%d\n' "$(printf '%q ' "$@" | sed "s#$M#miaoju#")" "$code" >> "$LOG"
   if [[ $code -ne 0 ]]; then
-    echo "失败：$* （退出码 $code，见 $OUT/$name.stderr）" | tee -a "$LOG" >&2
+    echo "失败：$* （退出码 ${code}，见 $OUT/$name.stderr）" | tee -a "$LOG" >&2
     exit 1
   fi
 }
@@ -70,7 +70,7 @@ check() {
   if [[ "$(json "$OUT/$file" "$expr")" == "True" ]]; then
     echo "断言通过：$desc" >> "$LOG"
   else
-    echo "断言失败：$desc（$file）" | tee -a "$LOG" >&2
+    echo "断言失败：${desc}（${file}）" | tee -a "$LOG" >&2
     exit 1
   fi
 }
@@ -121,4 +121,7 @@ node "$ROOT/scripts/ratchet/browser-smoke.mjs" --task "$TASK" --sub f1 --path "/
 printf 'node scripts/ratchet/browser-smoke.mjs --task %s --sub f1 --path /canvas/%s --wait-selector [data-node-id] --expect-count 2 exit=%d\n' "$TASK" "$PID" "$smoke_code" >> "$LOG"
 check "浏览器里页面连上 sidecar、画出 2 个节点、无页面错误" "d['ok'] is True and d['waitFor']['count'] == 2" smoke.json
 
-echo "F1 通过：项目 $PID，节点 $IMG → $GEN，模型 $MODEL。证据：$OUT" | tee -a "$LOG"
+# 不走管道：管道里展开出错时，退出码可能被右边的 tee 盖住（macOS bash 3.2 上见过 EXIT=0 却没写这行）
+DONE_MSG="F1 通过：项目 ${PID}，节点 ${IMG} → ${GEN}，模型 ${MODEL}。证据：${OUT}"
+printf '%s\n' "$DONE_MSG" >> "$LOG"
+printf '%s\n' "$DONE_MSG"

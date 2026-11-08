@@ -33,7 +33,7 @@ if [ ! -f "$CACHE/$NAME" ]; then
 fi
 GOT="$(shasum -a 256 "$CACHE/$NAME" | awk '{print $1}')"
 if [ "$GOT" != "$SHA" ]; then
-  echo "sha256 不匹配：期望 $SHA，实际 $GOT（已删除缓存，请重试）" >&2
+  echo "sha256 不匹配：期望 ${SHA}，实际 ${GOT}（已删除缓存，请重试）" >&2
   rm -f "$CACHE/$NAME"
   exit 1
 fi
