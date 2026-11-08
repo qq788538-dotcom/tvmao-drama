@@ -1,7 +1,7 @@
 // browser-smoke.mjs 回归：页面网络一直不空闲时也要能判完。
-// 真实情况是画布的 EventSource 长连接（/events）在 macOS 上让 networkidle 永远等不到；
-// Linux 的 Chromium 不把 EventSource 算进 networkidle，复现不了，所以假页面再加一个每 200ms 的轮询，
-// 让“网络永不空闲”在任何平台都成立。用一个本地假服务同时当前端和 sidecar，不构建、不起 Vite。没装 Playwright 时跳过。
+// 真实情况：画布挂着 EventSource 长连接（/events），macOS 上 networkidle 等到超时（#41）；
+// 本容器 Linux Chromium 上只开 SSE 的假页面却能等到 networkidle（单环境观察，原因未定位），
+// 所以假页面再加一个每 200ms 的轮询，让“网络永不空闲”在任何平台都成立。用一个本地假服务同时当前端和 sidecar，不构建、不起 Vite。没装 Playwright 时跳过。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
