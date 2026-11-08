@@ -353,14 +353,35 @@ def raw_checks(command: str) -> None:
     """不依赖解析的兜底匹配，覆盖 $(...)、反引号等。"""
     if re.search(r"\bmiaoju\b[^;&|\n]*\bnode\b(\s+-\S+)*\s+run\b", command):
         raise Block("billing", BILLING_MSG)
+    # 真实计费子命令是 `miaoju run <节点ID>`（tvmao-drama cli/internal/app/run.go，#5 调研）；
+    # 只放行只读的 `run get` / `run wait`。
+    if re.search(r"\bmiaoju\b(\s+-\S+)*\s+run\b(?!\s+(get|wait)\b)", command):
+        raise Block("billing", BILLING_MSG)
+    # 直接打 sidecar 的付费 HTTP 入口（#5 调研第一节）：带写入意图就拦。
+    if re.search(BILLING_HTTP, command) and re.search(HTTP_WRITE, command):
+        raise Block("billing", BILLING_MSG)
+    if re.search(r"/api/v1/agent/ws\b", command):
+        raise Block("billing", BILLING_MSG)
     if re.search(r"\bgh\s+pr\s+merge\b", command):
         raise Block("merge", MERGE_MSG)
     if re.search(r"/pulls/\d+/merge\b|mergePullRequest", command):
         raise Block("merge", MERGE_MSG)
 
 
+BILLING_HTTP = (
+    r"/api/v1/(canvas-tasks(/(desub|upscale|whitemodel))?|canvas-script-tasks|seedance/verify)(?![\w/-])"
+    r"|/api/v1/cli/projects/[^/\s]+/nodes/[^/\s]+/runs\b"
+)
+# 写入意图：curl 参数、method 字段，以及常见脚本 HTTP 客户端（requests/httpx/aiohttp/axios 的
+# .post/.put/.patch/.request，urllib 的 urlopen/Request）。
+HTTP_WRITE = (
+    r"(-X\s*|--request[=\s]+)(POST|PUT|PATCH)\b|\s(-d|--data\S*|--json|-F|--form)\b"
+    r"|\bmethod\s*[:=]\s*['\"]?(POST|PUT|PATCH)"
+    r"|\.(post|put|patch|request)\s*\(|\burlopen\s*\(|\bRequest\s*\("
+)
+
 BILLING_MSG = (
-    "闸拦下：`miaoju node run` 一提交就计费且不可取消（关卡 G5）。"
+    "闸拦下：`miaoju run` / `miaoju node run` 以及 sidecar 的生成接口一提交就计费且不可取消（关卡 G5）。"
     "验证请用零成本路径（见 tvmao-billing-guard / verify-tvmao 的 feature map）。"
     "确需付费生成，请在回传书里写明理由和数量，等 James 批。"
 )
@@ -386,6 +407,10 @@ def check_miaoju(argv: list[str]) -> None:
     positional = [t for t in rest if not t.startswith("-")]
     for i, t in enumerate(positional[:-1]):
         if t == "node" and positional[i + 1] == "run":
+            raise Block("billing", BILLING_MSG)
+    # `miaoju run <节点ID>` 才是真实计费子命令；全局选项可能带值（--canvas c1），所以不只看第一个位置参数。
+    for i, t in enumerate(positional):
+        if t == "run" and (i + 1 >= len(positional) or positional[i + 1] not in ("get", "wait")):
             raise Block("billing", BILLING_MSG)
 
 

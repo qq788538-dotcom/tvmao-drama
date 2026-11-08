@@ -12,7 +12,7 @@
 
 - 优先用 `miaoju` CLI（输出 JSON，最稳定），CLI 覆盖不到的用浏览器验证模式加 Playwright。
 - 命令照抄，引号里的名字和参数不要改。
-- 任何会提交生成的操作（`miaoju node run`、界面上的生成按钮）都不做。需要付费才能验证的功能，标成 `verified-unreachable`，写明缺的前提是 G5 批准。
+- 任何会提交生成的操作（`miaoju run <节点ID>`、`miaoju node run`、直接 POST sidecar 生成接口、界面上的生成按钮）都不做。需要付费才能验证的功能，标成 `verified-unreachable`，写明缺的前提是 G5 批准。
 
 ## 证据与跳过的写法
 

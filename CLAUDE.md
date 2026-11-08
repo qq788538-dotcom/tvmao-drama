@@ -73,7 +73,7 @@ pstack 在 `.claude/settings.json` 里按项目启用，并锁定到 cursor/plug
 - 每个 PR 要有一个不是作者、而且模型家族不同的 verifier（orchestrate 的要求）。
 - 多 PR 的计划直接用 pstack multi-phase-plan 的骨架，并跑 `check-plan.mjs` 到 0 problems。计划里的每个 PR 派给 owner 时，再写一份 Ratchet 任务书作为 kickoff，`precheck-brief` 检查关卡和成本。一份任务书只对一个仓库的一个 PR。
 - pstack 的 live lane 要用 cursor-team-kit 里的 `control-ui` / `control-cli`。在本仓库用 `verify-tvmao`（浏览器验证模式 + `miaoju`）代替。
-- `miaoju node run` 一提交就计费且不可取消，任何会话都不许跑（G5）。
+- `miaoju run <节点ID>`、`miaoju node run`，以及直接向 sidecar 生成接口（`/api/v1/canvas-tasks` 等）发写请求，都是一提交就计费且不可取消，任何会话都不许跑（G5）。只读的 `miaoju run get`、`miaoju run wait` 可以用。
 
 ## 规则 ↔ 由什么强制执行
 
@@ -81,7 +81,7 @@ pstack 在 `.claude/settings.json` 里按项目启用，并锁定到 cursor/plug
 
 | 规则 | 强制手段 |
 |---|---|
-| 不跑 `miaoju node run` | 闸 hook（`scripts/ratchet/hooks/pawl.py`）+ 权限 deny |
+| 不跑 `miaoju run <节点ID>` / `miaoju node run`、不直接打 sidecar 生成接口 | 闸 hook（`scripts/ratchet/hooks/pawl.py`）；`miaoju node run` 另有权限 deny（`miaoju run` 不加 deny，免得误拦只读的 `run get`/`run wait`） |
 | 不合并 PR、不 push main、不 force push | 闸 hook + 权限 deny + main 分支保护（管理员也受限；5 项 CI 必过且分支须与 main 同步） |
 | 不读写 `.env` 与密钥 | 闸 hook + 权限 deny |
 | 红线文件只有 James 能改 | 闸 hook + 权限 deny |
