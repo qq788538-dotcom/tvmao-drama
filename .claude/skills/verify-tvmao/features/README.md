@@ -33,7 +33,7 @@
 | 编号 | 功能 | 文件 | 成本 | 状态 |
 |---|---|---|---|---|
 | F1 | 建图与连线 | [canvas-graph.md](./canvas-graph.md) | 零成本 | 已验证：Linux（T-0007）、macOS bash 3.2（T-0104） |
-| F2 | 脚本拆分镜 | 待补 | 待查 | 待补 |
+| F2 | 脚本拆分镜 | [script-storyboard.md](./script-storyboard.md) | 部分计费（仅「生成分镜脚本」提交计费，G5；其余项零成本） | 已验证：macOS bash 3.2（T-0201）；Linux 待复验 |
 | F3 | 模型配置 | 待补 | 零成本 | 待补 |
 | F4 | 素材库 | 待补 | 零成本 | 待补 |
 | F5 | Agent 面板 | 待补 | 可能计费 | 待补 |
