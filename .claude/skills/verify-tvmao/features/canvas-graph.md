@@ -34,7 +34,7 @@ Preconditions:
 - **摆位。** `${MIAOJU_BIN:-miaoju} node move --set <输入>=0,0 --set <生成>=420,0`。退出码 0。
 - **读回画布。** `${MIAOJU_BIN:-miaoju} canvas get`。2 个节点、1 条边，`fromNodeId` 是输入节点，`toNodeId` 是生成节点。
 - **审计实际输入。** `${MIAOJU_BIN:-miaoju} node get <生成节点>`。`derivedInputs.images` 恰好 1 张，去掉查询参数后的路径等于上传素材的路径。
-- **浏览器取证。** `node scripts/ratchet/browser-smoke.mjs --task <任务号> --sub f1 --path /canvas/<项目id>`。`smoke.json` 里 `ok: true`；打开 `smoke.png` 能看到参考图、连线、生成节点。
+- **浏览器取证。** `node scripts/ratchet/browser-smoke.mjs --task <任务号> --sub f1 --path /canvas/<项目id> --wait-selector '[data-node-id]' --expect-count 2`。`smoke.json` 里 `ok: true`、`waitFor.count` 是 2；打开 `smoke.png` 能看到参考图、连线、生成节点。
 
 ## Gotchas
 
@@ -42,4 +42,5 @@ Preconditions:
 - `derivedInputs` 里是带 token 的媒体地址，比较时去掉 `?` 之后的部分再比 `/media/` 后的路径。
 - 冒烟打开 `/` 时会自动建一个默认项目，所以 F1 的项目 id 不一定是 1。断言要按自己建的项目来，不要按 id 猜。
 - 输入节点摆在 (0,0) 时，有一部分会被左上角顶栏挡住，看截图时别误判成没渲染。
-- 上次验证：2026-11-07，Linux 容器（Go 1.26、Node 22、Chromium），`verify-f1.sh T-0007` 全部断言通过。关口 1：一个不知情的新会话只读本 skill 跑通了 F1（T-0005）。
+- 画布挂着 EventSource 长连接（`/api/v1/projects/<id>/events`），网络不会空闲。自己写 Playwright 时不要用 `waitUntil: 'networkidle'`：macOS 上会一直等到超时。用 `domcontentloaded`，再等 `[data-node-id]` 的数量对上。
+- 上次验证：2026-11-07，Linux 容器（Go 1.26、Node 22、Chromium），`verify-f1.sh T-0007` 全部断言通过。2026-11-08 macOS 26.7.1 上 CLI 段全过，浏览器段卡在 networkidle，已改成等节点数，macOS 复验待补。关口 1：一个不知情的新会话只读本 skill 跑通了 F1（T-0005）。
