@@ -117,8 +117,8 @@ check "生成节点实际会拿到 1 张图，且就是上传的参考图（deri
 
 # 8. 浏览器里打开这张画布，截图、记 console
 smoke_code=0
-node "$ROOT/scripts/ratchet/browser-smoke.mjs" --task "$TASK" --sub f1 --path "/canvas/$PID" > "$OUT/smoke-result.json" || smoke_code=$?
-printf 'node scripts/ratchet/browser-smoke.mjs --task %s --sub f1 --path /canvas/%s exit=%d\n' "$TASK" "$PID" "$smoke_code" >> "$LOG"
-check "浏览器里页面连上 sidecar 且无页面错误" "d['ok'] is True" smoke.json
+node "$ROOT/scripts/ratchet/browser-smoke.mjs" --task "$TASK" --sub f1 --path "/canvas/$PID" --wait-selector '[data-node-id]' --expect-count 2 > "$OUT/smoke-result.json" || smoke_code=$?
+printf 'node scripts/ratchet/browser-smoke.mjs --task %s --sub f1 --path /canvas/%s --wait-selector [data-node-id] --expect-count 2 exit=%d\n' "$TASK" "$PID" "$smoke_code" >> "$LOG"
+check "浏览器里页面连上 sidecar、画出 2 个节点、无页面错误" "d['ok'] is True and d['waitFor']['count'] == 2" smoke.json
 
 echo "F1 通过：项目 $PID，节点 $IMG → $GEN，模型 $MODEL。证据：$OUT" | tee -a "$LOG"

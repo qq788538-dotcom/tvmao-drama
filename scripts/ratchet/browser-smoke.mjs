@@ -4,7 +4,12 @@
 //
 // 用法（先在另一个终端跑 browser-mode.mjs）：
 //   node scripts/ratchet/browser-smoke.mjs --task T-0001 [--path /] [--sub f1] [--state .ratchet/state/browser-mode.json]
+//        [--wait-selector '[data-node-id]' [--expect-count 2]] [--timeout 60000]
 //   --sub：证据写进 .ratchet/evidence/<任务号>/<sub>/，避免和同一任务的其他冒烟互相覆盖。
+//   --wait-selector：等这个元素出现（给了 --expect-count 就等到数量恰好相等）再截图；画布节点是 [data-node-id]。
+//   --timeout：整体等待上限，毫秒。
+// 不等 networkidle：画布挂着 EventSource 长连接（/events），macOS 上网络永远不会空闲。
+// 判“加载完”靠三件事：DOM 就绪、至少一个成功的 sidecar API 请求、（可选）关键元素数量对上。
 // 需要 Playwright：仓库不把它列为依赖，先 `npm i -g playwright && npx playwright install chromium`。
 // 退出码：0 = 页面连上 sidecar 且无页面错误；1 = 失败（原因见 stderr 和 evidence 里的 smoke.json）。
 // 不计费：只打开页面、截图，不点击任何生成按钮。
@@ -46,6 +51,13 @@ async function main() {
   const clean = (t) => redact(t, token, state.cliToken);
   url.pathname = arg('--path', '/');
   const sub = arg('--sub', '');
+  const waitSelector = arg('--wait-selector', '');
+  const expectRaw = arg('--expect-count', '');
+  if (expectRaw && !waitSelector) throw new Error('--expect-count 要和 --wait-selector 一起用');
+  if (expectRaw && !/^\d+$/.test(expectRaw)) throw new Error('--expect-count 要是非负整数');
+  const expectCount = expectRaw ? Number(expectRaw) : null;
+  const timeout = Number(arg('--timeout', '60000'));
+  if (!(timeout > 0)) throw new Error('--timeout 要是正数（毫秒）');
   if (sub && !/^[A-Za-z0-9_-]+$/.test(sub)) throw new Error('--sub 只能是字母、数字、- 和 _');
   const out = resolve(ROOT, '.ratchet', 'evidence', task, sub);
   mkdirSync(out, { recursive: true });
@@ -64,15 +76,33 @@ async function main() {
 
   let ok = true;
   let reason = '';
+  let waitFor = null;
+  const deadline = Date.now() + timeout;
+  const left = () => Math.max(1, deadline - Date.now());
+  const apiOk = () => apiCalls.some((c) => c.status < 400);
   try {
-    await page.goto(url.toString(), { waitUntil: 'networkidle', timeout: 60_000 });
+    await page.goto(url.toString(), { waitUntil: 'domcontentloaded', timeout: left() });
+    while (!apiOk() && Date.now() < deadline) await page.waitForTimeout(100);
+    if (waitSelector) {
+      let count = 0;
+      while (Date.now() < deadline) {
+        count = await page.locator(waitSelector).count();
+        if (expectCount === null ? count > 0 : count === expectCount) break;
+        await page.waitForTimeout(200);
+      }
+      waitFor = { selector: waitSelector, expect: expectCount, count };
+    }
+    await page.waitForTimeout(Math.min(1000, left())); // 让最后一帧画完再截图
     const body = await page.locator('body').innerText();
     if (/请在桌面应用中运行/.test(body)) {
       ok = false;
       reason = '前端没有进入浏览器验证模式（仍显示“请在桌面应用中运行”）';
-    } else if (!apiCalls.some((c) => c.status < 400)) {
+    } else if (!apiOk()) {
       ok = false;
       reason = '没有观察到成功的 sidecar API 请求';
+    } else if (waitFor && (expectCount === null ? waitFor.count === 0 : waitFor.count !== expectCount)) {
+      ok = false;
+      reason = `等 ${waitSelector} 超时：预期 ${expectCount === null ? '至少 1' : expectCount} 个，实际 ${waitFor.count} 个`;
     }
   } catch (e) {
     ok = false;
@@ -86,7 +116,7 @@ async function main() {
   await browser.close();
 
   writeFileSync(join(out, 'console.log'), consoleLines.join('\n') + '\n');
-  const summary = { ok, reason, path: url.pathname, apiCalls, pageErrors, screenshot: 'smoke.png' };
+  const summary = { ok, reason, path: url.pathname, waitFor, apiCalls, pageErrors, screenshot: 'smoke.png' };
   writeFileSync(join(out, 'smoke.json'), JSON.stringify(summary, null, 2) + '\n');
   process.stdout.write(JSON.stringify({ ok, reason, evidence: out }) + '\n');
   if (!ok) process.exitCode = 1;
