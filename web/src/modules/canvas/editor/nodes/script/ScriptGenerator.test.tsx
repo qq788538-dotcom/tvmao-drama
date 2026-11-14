@@ -1,16 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCanvasStore } from '../../store';
 import { ScriptGenerator, useScriptGenPolling } from './ScriptGenerator';
 
-vi.mock('../../persistence/canvasMutations', () => ({ scheduleNodePatch: vi.fn() }));
+vi.mock('../../persistence/canvasMutations', () => ({ scheduleNodePatch: vi.fn(), flushNodePatch: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/shared/api', () => ({
   getCanvasScriptStyles: vi.fn(),
   submitCanvasScriptTask: vi.fn(),
   getCanvasScriptTask: vi.fn(),
 }));
 import { getCanvasScriptStyles, getCanvasScriptTask, submitCanvasScriptTask } from '@/shared/api';
+import { flushNodePatch, scheduleNodePatch } from '../../persistence/canvasMutations';
 
 function renderWithQuery(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -206,6 +207,31 @@ describe('ScriptGenerator', () => {
       expect(screen.getByTestId('script-generator-error')).toHaveTextContent('积分余额不足');
     });
   });
+
+  // P13：点画布空白处取消选中时 textarea 不失焦、面板直接卸载，草稿必须已经在 store 里。
+  it('输入即写 store 并只对 scriptPrompt 排防抖落库，不失焦直接卸载草稿也不丢', async () => {
+    const view = renderWithQuery(<ScriptGenerator nodeId="s1" />);
+    await waitFor(() => expect(screen.getByText('古风')).toBeInTheDocument());
+    vi.mocked(scheduleNodePatch).mockClear();
+
+    fireEvent.change(screen.getByTestId('script-generator-input'), { target: { value: '半句剧本' } });
+    expect(nodeSettings().scriptPrompt).toBe('半句剧本');
+    expect(scheduleNodePatch).toHaveBeenCalledTimes(1);
+    expect(scheduleNodePatch).toHaveBeenCalledWith('s1', { settings: { scriptPrompt: '半句剧本' } });
+
+    view.unmount();
+    renderWithQuery(<ScriptGenerator nodeId="s1" />);
+    expect(screen.getByTestId('script-generator-input')).toHaveValue('半句剧本');
+  });
+
+  it('失焦时立即 flush 落库', async () => {
+    renderWithQuery(<ScriptGenerator nodeId="s1" />);
+    await waitFor(() => expect(screen.getByText('古风')).toBeInTheDocument());
+    const input = screen.getByTestId('script-generator-input');
+    fireEvent.change(input, { target: { value: '剧本' } });
+    fireEvent.blur(input);
+    expect(flushNodePatch).toHaveBeenCalledWith('s1');
+  });
 });
 
 describe('useScriptGenPolling', () => {
@@ -259,6 +285,91 @@ describe('useScriptGenPolling', () => {
       const s = nodeSettings() as { gen?: { taskId: number; error: string } };
       expect(s.gen?.taskId).toBe(0);
       expect(s.gen?.error).toBe('上游超时');
+    });
+  });
+
+  function seedRunning(taskId = 9) {
+    useCanvasStore.setState({
+      nodes: [{
+        id: 's1', type: 'script', x: 0, y: 0, width: 300, height: 220,
+        settings: {
+          rows: [{ id: 'r1', name: '已有镜头', duration: 5, prompt: '原有内容' }],
+          gen: { taskId, style: '古风', durationSec: 10, error: '' },
+        },
+      }],
+      connections: [], selectedIds: new Set(), readOnly: false,
+    });
+  }
+
+  // P11：存量副本里带着别的节点的 taskId，状态响应的 nodeId 对不上就不认领。
+  it('任务属于别的节点时清 taskId，不导入、不覆盖已有内容', async () => {
+    seedRunning();
+    vi.mocked(getCanvasScriptTask).mockResolvedValue({
+      status: 'succeeded', nodeId: 'other', durationSec: 10,
+      result: JSON.stringify({ storyboard: [{ name: '别人的', duration: 6, prompt: 'x' }] }),
+    });
+    render(<Probe nodeId="s1" />);
+    await waitFor(() => {
+      expect((nodeSettings().gen as { taskId: number }).taskId).toBe(0);
+    });
+    const s = nodeSettings() as { rows: Array<{ name: string }>; gen: { error: string } };
+    expect(s.rows.map((r) => r.name)).toEqual(['已有镜头']);
+    expect(s.gen.error).toBe('');
+  });
+
+  describe('错误判死', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    const notFound = { response: { status: 404 } };
+    const unauthorized = { response: { status: 401 } };
+
+    // P12：任务行没了（404）不能永久转圈；连续 3 次才判死，写错误、清 taskId 以便重提。
+    it('连续 3 次 404 判死：清 taskId 并写错误', async () => {
+      seedRunning();
+      vi.mocked(getCanvasScriptTask).mockRejectedValue(notFound);
+      render(<Probe nodeId="s1" />);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      expect((nodeSettings().gen as { taskId: number }).taskId).toBe(9);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      const gen = nodeSettings().gen as { taskId: number; error: string };
+      expect(getCanvasScriptTask).toHaveBeenCalledTimes(3);
+      expect(gen.taskId).toBe(0);
+      expect(gen.error).toBe('生成任务已不存在，请重新提交');
+    });
+
+    it('401/网络错误不计数，一直重试', async () => {
+      seedRunning();
+      vi.mocked(getCanvasScriptTask)
+        .mockRejectedValueOnce(unauthorized)
+        .mockRejectedValueOnce(new Error('Network Error'))
+        .mockRejectedValueOnce(unauthorized)
+        .mockRejectedValueOnce(new Error('Network Error'))
+        .mockRejectedValueOnce(unauthorized);
+      render(<Probe nodeId="s1" />);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(12_000); });
+      expect(getCanvasScriptTask).toHaveBeenCalledTimes(5);
+      const gen = nodeSettings().gen as { taskId: number; error: string };
+      expect(gen.taskId).toBe(9);
+      expect(gen.error).toBe('');
+    });
+
+    it('404 之间夹着正常响应时计数清零', async () => {
+      seedRunning();
+      vi.mocked(getCanvasScriptTask)
+        .mockRejectedValueOnce(notFound)
+        .mockRejectedValueOnce(notFound)
+        .mockResolvedValueOnce({ status: 'running', nodeId: 's1', durationSec: 10 })
+        .mockRejectedValueOnce(notFound)
+        .mockRejectedValueOnce(notFound);
+      render(<Probe nodeId="s1" />);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(12_000); });
+      expect(getCanvasScriptTask).toHaveBeenCalledTimes(5);
+      expect((nodeSettings().gen as { taskId: number }).taskId).toBe(9);
     });
   });
 });

@@ -55,7 +55,7 @@ function StepCircles({ stats }: { stats: ReturnType<typeof scriptStepStats> }) {
 }
 
 export function ScriptNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   // 面板开合是纯 UI 状态，不需要持久化到节点 settings——刷新画布后默认收起即可。
   const [open, setOpen] = useState(false);
   // 右键菜单坐标 + 批量生视频弹层开合，两个都是纯本地 UI 状态。菜单只有「批量

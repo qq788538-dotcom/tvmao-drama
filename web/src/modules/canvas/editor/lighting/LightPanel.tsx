@@ -97,7 +97,7 @@ export function LightPanel({ sourceNodeId, onClose }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sourceImageUrl = useCanvasStore((s) => {
-    const n = s.nodes.find((x) => x.id === sourceNodeId);
+    const n = s.nodesById.get(sourceNodeId);
     return typeof n?.content === 'string' ? n.content : undefined;
   });
 

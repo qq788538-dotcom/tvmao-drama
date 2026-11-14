@@ -93,7 +93,7 @@ function NodeActionsMenu({ nodeId, onDeleted }: { nodeId: string; onDeleted: () 
 }
 
 export function StoryboardDetail({ nodeId, onClose }: { nodeId: string; onClose: () => void }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === nodeId));
+  const node = useCanvasStore((s) => s.nodesById.get(nodeId));
   if (!node) return null;
 
   const Component = nodeComponents[node.type];

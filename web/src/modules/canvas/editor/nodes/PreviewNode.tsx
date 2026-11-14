@@ -7,6 +7,7 @@ import { useMediaNodeMenu } from './useMediaNodeMenu';
 import { ImageActionsBar } from './ImageActionsBar';
 import { VideoActionsBar } from './VideoActionsBar';
 import { VideoPlayer } from './VideoPlayer';
+import { useNodeMediaActive } from './useNodeMediaActive';
 import { useGenerationTimer } from '../hooks/useGenerationTimer';
 import { useThumbUrl } from '../thumbs';
 import { useStoryboardMode } from '../../storyboard/StoryboardContext';
@@ -15,16 +16,16 @@ import { WaveformPlayer } from './WaveformPlayer';
 import { AudioActionsBar } from './AudioActionsBar';
 
 export function PreviewNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   const setLightbox = useCanvasStore((s) => s.setLightbox);
   // fallback URL 故意只限定在「asset」类源节点（用户上传的输入）。这里
   // 绝不读取 gen-image / gen-video 源节点，哪怕它们的 .content 里还留着
   // URL——生成结果直接落在 gen 节点自身上，不走连线。在这里读 gen 源会把
   // 过期 URL 漏到新连上来的预览节点上。
   const fallbackUrl = useCanvasStore((s) => {
-    const incoming = s.connections.filter((c) => c.to === id);
+    const incoming = s.incomingByNode.get(id) ?? [];
     for (const c of incoming) {
-      const src = s.nodes.find((n) => n.id === c.from);
+      const src = s.nodesById.get(c.from);
       if (!src) continue;
       if (
         src.type !== 'input-image' &&
@@ -65,6 +66,7 @@ export function PreviewNode({ id }: { id: string }) {
   const storyboardMode = useStoryboardMode();
   // 预览节点此前完全没有右键菜单——生成结果最常落在这里，却什么都点不了。
   const mediaMenu = useMediaNodeMenu({ url, kind: isVideo ? 'video' : 'image', nodeId: id });
+  const mediaActive = useNodeMediaActive(id);
 
   if (!node) return null;
 
@@ -119,7 +121,7 @@ export function PreviewNode({ id }: { id: string }) {
             {/* 容器不再整体拦 mousedown（那会连图片预览都拖不动节点）；只有视频
                 的控制条需要保护，VideoPlayer 的控制条自己拦冒泡。 */}
             {isVideo ? (
-              <VideoPlayer src={url} crossOrigin={mediaCrossOrigin(url)} className="w-full h-full object-contain" />
+              <VideoPlayer active={mediaActive} {...mediaMenu.mediaProps} src={url} crossOrigin={mediaCrossOrigin(url)} className="w-full h-full object-contain" />
             ) : isAudio ? (
               /* 波形播放器自己在交互区拦 mousedown（seek 拖动不能被节点拖拽吃掉），
                  无需 stopIfInVideoControls。底部行时间靠左、播放键居中——右下角留给

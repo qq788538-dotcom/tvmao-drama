@@ -73,8 +73,10 @@ func (s *Service) StartBackground(ctx context.Context) <-chan struct{} {
 	return done
 }
 
-// recoverOnce 顺序：续 poll → 接管四路分流 → 排队超时兜底。
+// recoverOnce 顺序：项目已删的在途任务收口 → 续 poll → 接管四路分流 → 排队超时兜底。
+// 项目删除收口排最前：已删项目的孤儿任务不该再被续 poll、重排。
 func (s *Service) recoverOnce() {
+	s.SweepDeletedProjectTasks()
 	s.ResumeOrphanedTasks()
 	s.RecoverStaleQueueTasks()
 	s.SweepStuckQueued()

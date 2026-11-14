@@ -73,6 +73,8 @@ export function WaveformPlayer({
   nodeId,
   topRight,
   className = '',
+  onLoadedMetadata,
+  onError,
 }: {
   url: string;
   /** 宿主节点 id。传了才参与「截取/变速」编辑会话（选区层画在波形上、变速
@@ -81,6 +83,9 @@ export function WaveformPlayer({
   /** 波形区右上角的浮动操作位（更换音频 / 下载等），由调用方决定内容。 */
   topRight?: React.ReactNode;
   className?: string;
+  /** 透传给内部 <audio>：节点右键菜单复用这里拿到的时长做合规预检，不必另建探测元素。 */
+  onLoadedMetadata?: React.ReactEventHandler<HTMLAudioElement>;
+  onError?: React.ReactEventHandler<HTMLAudioElement>;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const waveRef = useRef<HTMLDivElement>(null);
@@ -253,7 +258,9 @@ export function WaveformPlayer({
           const d = e.currentTarget.duration;
           // decode 出的时长更准，别用 metadata 的覆盖它。
           if (Number.isFinite(d)) setDuration((prev) => prev ?? d);
+          onLoadedMetadata?.(e);
         }}
+        onError={onError}
       />
 
       {topRight && <div className="absolute top-1 right-1 z-10">{topRight}</div>}

@@ -94,6 +94,8 @@ type CanvasPostprocessHandler struct {
 	probe    func(ctx context.Context, path string) (int64, error)
 	// probes 合并同一 object key 的并发探测：多个节点同时点预估/提交只下载探测一次。
 	probes singleflight.Group
+	// tempDir 放懒回填探测时落盘的源视频（见 WithTempDir）；空 = 系统临时目录。
+	tempDir string
 }
 
 func NewCanvasPostprocessHandler(
@@ -122,6 +124,13 @@ func NewCanvasPostprocessHandler(
 // 不设置时退回用签名 URL 走 HTTP 下载。
 func (h *CanvasPostprocessHandler) WithObjectStore(objects postprocessObjects) *CanvasPostprocessHandler {
 	h.objects = objects
+	return h
+}
+
+// WithTempDir 让探测用的临时文件落在 sidecar 的生成临时目录：进程被强杀留下的残骸由
+// 启动时的 generation.PrepareTempDir 按时效清掉，不会在系统临时目录里越积越多。
+func (h *CanvasPostprocessHandler) WithTempDir(dir string) *CanvasPostprocessHandler {
+	h.tempDir = dir
 	return h
 }
 
@@ -620,7 +629,7 @@ func (h *CanvasPostprocessHandler) probeSource(ctx context.Context, objKey, cont
 	if f, ok := rc.(*os.File); ok {
 		path = f.Name()
 	} else {
-		tmp, err := spoolToTemp(ctx, rc)
+		tmp, err := spoolToTemp(ctx, h.tempDir, rc)
 		if err != nil {
 			return 0, fmt.Errorf("读取源视频失败: %w", err)
 		}
@@ -634,9 +643,10 @@ func (h *CanvasPostprocessHandler) probeSource(ctx context.Context, objKey, cont
 	return ms, nil
 }
 
-// spoolToTemp 把流拷到临时文件（有体积上限，随 ctx 取消中止），返回路径；调用方负责删除。
-func spoolToTemp(ctx context.Context, r io.Reader) (string, error) {
-	f, err := os.CreateTemp("", "postprocess-probe-*.bin")
+// spoolToTemp 把流拷到 dir 下的临时文件（dir 为空用系统临时目录；有体积上限，随 ctx 取消中止），
+// 返回路径；调用方负责删除。
+func spoolToTemp(ctx context.Context, dir string, r io.Reader) (string, error) {
+	f, err := os.CreateTemp(dir, "postprocess-probe-*.bin")
 	if err != nil {
 		return "", err
 	}

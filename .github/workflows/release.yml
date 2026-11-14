@@ -5,6 +5,7 @@ name: Release
 #   上传前改成纯 ASCII 文件名：GitHub 会删掉附件名里的中文，“喵剧AI_1.0.0_x64.dmg”会变成“AI_1.0.0_x64.dmg”）
 #   miaoju-windows-x64-<版本>.zip（Linux runner 上用 cargo-xwin 跑 scripts/package-windows.sh）
 # 改动本文件的 PR 和手动触发只构建、把产物留在 Actions 里，不发 Release。
+# （测试包分支：仅为触发构建，勿合并）
 on:
   push:
     tags: ['v*']

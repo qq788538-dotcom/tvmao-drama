@@ -41,26 +41,32 @@ function renderProbeInApp(props: { url?: string; kind: 'image' | 'video' | 'audi
   );
 }
 
+// 视频/音频的时长来自节点自己的播放器（mediaProps 挂在上面），这里用一个裸媒体元素代替。
 function Probe({
   url,
   kind,
   nodeId,
+  playerSrc,
 }: {
   url?: string;
   kind: 'image' | 'video' | 'audio';
   nodeId: string;
+  playerSrc?: string;
 }) {
   const menu = useMediaNodeMenu({ url, kind, nodeId });
+  const src = playerSrc ?? url;
   return (
     <div data-testid="probe" onContextMenu={menu.onContextMenu}>
       probe
+      {kind === 'video' && src && <video data-testid="player" src={src} {...menu.mediaProps} />}
+      {kind === 'audio' && src && <audio data-testid="player" src={src} {...menu.mediaProps} />}
       {menu.badge}
       {menu.overlay}
     </div>
   );
 }
 
-function renderProbe(props: { url?: string; kind: 'image' | 'video' | 'audio'; nodeId: string }) {
+function renderProbe(props: { url?: string; kind: 'image' | 'video' | 'audio'; nodeId: string; playerSrc?: string }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
@@ -73,15 +79,17 @@ function openMenu() {
   fireEvent.contextMenu(screen.getByTestId('probe'), { clientX: 10, clientY: 10 });
 }
 
-// jsdom 不真的加载媒体，所以测试要自己拿到 useMediaDuration 创建的那个
-// video/audio 元素，喂一个 duration 再派发 loadedmetadata。
-function spyMediaCreation(collected: HTMLMediaElement[]) {
-  const realCreate = document.createElement.bind(document);
-  return vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-    const el = realCreate(tag as keyof HTMLElementTagNameMap);
-    if (tag === 'video' || tag === 'audio') collected.push(el as HTMLMediaElement);
-    return el;
+// jsdom 不真的加载媒体：给节点内的播放器喂一个 duration 再派发 loadedmetadata。
+async function playerLoaded(duration: number) {
+  const el = screen.getByTestId('player') as HTMLMediaElement;
+  Object.defineProperty(el, 'duration', { value: duration, configurable: true });
+  await act(async () => {
+    fireEvent(el, new Event('loadedmetadata'));
   });
+}
+
+function seedanceItem() {
+  return screen.getByText('Seedance 合规校验').closest('button')!;
 }
 
 // 「擦除字幕」「视频转高清」两个入口在 VideoActionsBar 工具条
@@ -126,38 +134,72 @@ describe('useMediaNodeMenu 合规校验（图片/视频/音频）', () => {
   });
 
   it('时长在 2~30s 之外的视频不能点击校验，并说明原因', async () => {
-    // jsdom 不真的加载媒体，所以手动喂一个 duration 再派发 loadedmetadata——
-    // 这正是 useMediaDuration 依赖的那条路径。
-    const created: HTMLMediaElement[] = [];
-    const spy = spyMediaCreation(created);
-
     renderProbe({ url: 'http://x.mp4', kind: 'video', nodeId: 'n-1' });
-    expect(created.length).toBe(1);
-    Object.defineProperty(created[0], 'duration', { value: 35, configurable: true });
-    await act(async () => {
-      created[0].dispatchEvent(new Event('loadedmetadata'));
-    });
-    spy.mockRestore();
-
+    await playerLoaded(35);
     openMenu();
-    const item = screen.getByText('Seedance 合规校验').closest('button')!;
+    const item = seedanceItem();
     expect(item).toBeDisabled();
     expect(item.getAttribute('title')).toContain('35.0s');
   });
 
   it('时长合规的视频可以点击', async () => {
-    const created: HTMLMediaElement[] = [];
-    const spy = spyMediaCreation(created);
-
     renderProbe({ url: 'http://x.mp4', kind: 'video', nodeId: 'n-1' });
-    Object.defineProperty(created[0], 'duration', { value: 8, configurable: true });
-    await act(async () => {
-      created[0].dispatchEvent(new Event('loadedmetadata'));
-    });
-    spy.mockRestore();
-
+    await playerLoaded(8);
     openMenu();
-    expect(screen.getByText('Seedance 合规校验').closest('button')!).not.toBeDisabled();
+    expect(seedanceItem()).not.toBeDisabled();
+  });
+
+  // P15：不再为每个节点建游离的探测元素——首屏媒体请求翻倍、屏幕外节点也照拉。
+  it('菜单自己不创建 video/audio 元素', () => {
+    const spy = vi.spyOn(document, 'createElement');
+    renderProbe({ url: 'http://x.mp4', kind: 'video', nodeId: 'n-1', playerSrc: '' });
+    openMenu();
+    expect(spy.mock.calls.some(([tag]) => tag === 'video' || tag === 'audio')).toBe(false);
+    spy.mockRestore();
+  });
+
+  // seedanceRules 对 null 放行：时长没拿到之前若也放行，超长视频能趁这段窗口提交。
+  it('时长还没读到（probing）时置灰并说明，读到合规时长后可点', async () => {
+    renderProbe({ url: 'http://x.mp4', kind: 'video', nodeId: 'n-1' });
+    openMenu();
+    expect(seedanceItem()).toBeDisabled();
+    expect(seedanceItem().getAttribute('title')).toContain('正在读取视频时长');
+    await playerLoaded(8);
+    expect(seedanceItem()).not.toBeDisabled();
+  });
+
+  it('播放器加载失败（读不出时长）时放行，交上游判定', async () => {
+    renderProbe({ url: 'http://x.mp3', kind: 'audio', nodeId: 'n-1' });
+    await act(async () => {
+      fireEvent.error(screen.getByTestId('player'));
+    });
+    openMenu();
+    expect(seedanceItem()).not.toBeDisabled();
+  });
+
+  it('播放器 src 不是本菜单的 url（翻历史版本、blob 源）时不采信', async () => {
+    renderProbe({ url: 'http://x.mp4', kind: 'video', nodeId: 'n-1', playerSrc: 'blob:other' });
+    await playerLoaded(8);
+    openMenu();
+    expect(seedanceItem()).toBeDisabled();
+  });
+
+  it('优先读 settings.videoMeta.duration（节点内容就是这个 url 时）', () => {
+    useCanvasStore.setState({
+      nodes: [{
+        id: 'n-1', type: 'video-input', x: 0, y: 0, width: 300, height: 200,
+        content: 'http://x.mp4', settings: { videoMeta: { duration: 40 } },
+      }],
+    });
+    renderProbe({ url: 'http://x.mp4', kind: 'video', nodeId: 'n-1', playerSrc: '' });
+    openMenu();
+    expect(seedanceItem()).toBeDisabled();
+    expect(seedanceItem().getAttribute('title')).toContain('40.0s');
+    cleanup();
+    // 节点内容已换成别的片：旧 videoMeta 作废，回到 probing。
+    renderProbe({ url: 'http://y.mp4', kind: 'video', nodeId: 'n-1', playerSrc: '' });
+    openMenu();
+    expect(seedanceItem().getAttribute('title')).toContain('正在读取视频时长');
   });
 
   // 已 active 的素材（自己校验过的，或公共角色库那种天生 active 的）再提交

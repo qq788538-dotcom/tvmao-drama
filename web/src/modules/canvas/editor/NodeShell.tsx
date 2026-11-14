@@ -11,8 +11,10 @@ import {
 } from 'lucide-react';
 import { NodeContextMenu } from './nodes/NodeContextMenu';
 import { standardNodeMenuItems } from './nodes/standardNodeMenuItems';
+import { clearPollStalled, usePollStalled } from './nodes/pollStall';
 import { isInVideoControlsArea } from './nodes/videoControlsGuard';
 import { useCanvasStore } from './store';
+import { createFrameTask, type FrameTask } from './utils/frameTask';
 import { useStoryboardMode } from '../storyboard/StoryboardContext';
 import {
   flushNodePatch,
@@ -156,6 +158,9 @@ export function NodeShell({
   const resizeNode = useCanvasStore((s) => s.resizeNode);
   const commit = useCanvasStore((s) => s.commit);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
+  // 生成任务的轮询挂起了(连续够不着后端,P23):只对仍在 generating 的任务显示。
+  const stalledTaskId = node.status === 'generating' ? node.taskId : undefined;
+  const pollStalled = usePollStalled(stalledTaskId);
 
   const displayLabel = displayLabelFor(node);
   const NodeIcon = iconFor(node);
@@ -189,7 +194,12 @@ export function NodeShell({
     (s) => s.connecting != null && s.connecting.fromId !== node.id && s.connecting.hoverTargetId === node.id,
   );
 
-  const dragRef = useRef<{ lastX: number; lastY: number; committed: boolean } | null>(null);
+  // pendingDx/pendingDy：本帧还没提交给 store 的累计位移（世界坐标）。mousemove 只累加，
+  // 由 frameTask 在下一帧统一 moveNodes 一次（P5）。
+  const dragRef = useRef<{
+    lastX: number; lastY: number; committed: boolean;
+    pendingDx: number; pendingDy: number; frame: FrameTask;
+  } | null>(null);
   const resizeRef = useRef<{
     startX: number; startY: number; startW: number; startH: number; committed: boolean;
   } | null>(null);
@@ -265,23 +275,43 @@ export function NodeShell({
       }
     }
 
-    // 开始拖动
-    dragRef.current = { lastX: e.clientX, lastY: e.clientY, committed: false };
+    // 开始拖动。位移按帧合并提交：一帧内的多个 mousemove 只 set 一次 store。
+    // 撤销点语义不变——第一次真正移动时 commit 一次（拖动前的状态），松手才落库。
+    // 不直接往 DOM 写 transform：外壳 style 自带 translateZ(0)，任何一次重渲染都会把
+    // 临时 transform 覆盖掉。
+    const drag = {
+      lastX: e.clientX,
+      lastY: e.clientY,
+      committed: false,
+      pendingDx: 0,
+      pendingDy: 0,
+      frame: createFrameTask(() => {
+        const { pendingDx, pendingDy } = drag;
+        drag.pendingDx = 0;
+        drag.pendingDy = 0;
+        if (pendingDx === 0 && pendingDy === 0) return;
+        const sel = useCanvasStore.getState().selectedIds;
+        const targets = sel.has(node.id) ? Array.from(sel) : [node.id];
+        moveNodes(targets, pendingDx, pendingDy);
+      }),
+    };
+    dragRef.current = drag;
     const handleMove = (ev: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
       if (!d.committed) { commit(); d.committed = true; }
       const zoom = useCanvasStore.getState().view.zoom;
-      const dx = (ev.clientX - d.lastX) / zoom;
-      const dy = (ev.clientY - d.lastY) / zoom;
+      d.pendingDx += (ev.clientX - d.lastX) / zoom;
+      d.pendingDy += (ev.clientY - d.lastY) / zoom;
       d.lastX = ev.clientX;
       d.lastY = ev.clientY;
-      const sel = useCanvasStore.getState().selectedIds;
-      const targets = sel.has(node.id) ? Array.from(sel) : [node.id];
-      moveNodes(targets, dx, dy);
+      d.frame.schedule();
     };
     const handleUp = () => {
-      const committed = dragRef.current?.committed;
+      const d = dragRef.current;
+      const committed = d?.committed;
+      // 先把还没等到下一帧的位移提交掉，下面落库读到的才是松手时的最终坐标。
+      d?.frame.flush();
       dragRef.current = null;
       detachWindowListeners();
       // 拖动过程中只改本地，松手后一次性 PATCH 受影响节点的坐标。没真正
@@ -293,7 +323,7 @@ export function NodeShell({
       const state = useCanvasStore.getState();
       const targets = state.selectedIds.has(node.id) ? Array.from(state.selectedIds) : [node.id];
       const patches = targets
-        .map((id) => state.nodes.find((n) => n.id === id))
+        .map((id) => state.nodesById.get(id))
         .filter((n): n is CanvasNode => Boolean(n))
         .map((n) => geometryPatchFromNode(n));
       persistNodePositions(pid, token, patches);
@@ -307,6 +337,8 @@ export function NodeShell({
     window.addEventListener('mouseup', handleUp);
     window.addEventListener('blur', handleUp);
     windowListenersRef.current = () => {
+      // 卸载（节点被删等）时丢掉未提交的那一帧：节点已不在，不再碰 store。
+      drag.frame.cancel();
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleUp);
       window.removeEventListener('blur', handleUp);
@@ -339,7 +371,7 @@ export function NodeShell({
       const pid = currentProjectId();
       const token = getCanvasOwnerToken();
       if (!pid || !token) return;
-      const current = useCanvasStore.getState().nodes.find((n) => n.id === node.id);
+      const current = useCanvasStore.getState().nodesById.get(node.id);
       // 同拖拽走 persistNodePositions：成功后顺带推进基线。
       if (current) persistNodePositions(pid, token, [geometryPatchFromNode(current)]);
     };
@@ -547,6 +579,30 @@ export function NodeShell({
           >
             ⚠ {node.error}
           </div>
+        </Tooltip>
+      )}
+      {/* 轮询挂起：同一位置的琥珀色条带。任务可能仍在后台跑，所以不是错误；
+          点了清掉挂起标记，节点的轮询 effect 立刻重来一轮。 */}
+      {pollStalled && stalledTaskId && (
+        <Tooltip title="与本地服务的连接中断，任务可能仍在后台进行，结果不会丢" mouseEnterDelay={0} placement="top">
+          <button
+            type="button"
+            data-testid="poll-stalled-retry"
+            onClick={(e) => {
+              e.stopPropagation();
+              clearPollStalled(stalledTaskId);
+            }}
+            className="absolute left-0 right-0 top-0 bg-amber-950/85 border-0 border-b border-solid border-amber-500/50 text-amber-200 text-[10px] leading-4 px-2 py-0.5 z-20 cursor-pointer text-left"
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              borderTopLeftRadius: radiusPx,
+              borderTopRightRadius: radiusPx,
+            }}
+          >
+            ⚠ 连接中断，点击重新检查
+          </button>
         </Tooltip>
       )}
     </div>

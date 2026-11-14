@@ -10,7 +10,7 @@ import { useStoryboardMode } from '../../storyboard/StoryboardContext';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 
 export function InputImageNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
   const resizeNode = useCanvasStore((s) => s.resizeNode);
   const setLightbox = useCanvasStore((s) => s.setLightbox);

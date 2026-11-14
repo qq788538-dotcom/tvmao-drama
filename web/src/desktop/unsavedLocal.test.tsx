@@ -7,8 +7,10 @@ import { useCanvasStore } from '@/modules/canvas/editor/store';
 import { persistNodeById } from '@/modules/canvas/editor/persistence/canvasMutations';
 import type { CanvasNode } from '@/modules/canvas/editor/types';
 import {
+  isUnregisteredNode,
   isUnsavedNode,
   replaceHistoryUrl,
+  resetPersistErrorCache,
   retryErrorMessage,
   retrySaveToLocal,
   useUnsavedLocalBadge,
@@ -162,6 +164,12 @@ function renderBadge() {
 }
 
 describe('useUnsavedLocalBadge', () => {
+  // 角标挂上后会去查落盘失败原因（见下方专门的用例），这里不关心，默认给空结果，免得打真请求。
+  beforeEach(() => {
+    resetPersistErrorCache();
+    vi.spyOn(api, 'get').mockResolvedValue({ data: {} });
+  });
+
   it('未保存时显示「未保存到本地」和「重试」', () => {
     setNodes([genNode()]);
     renderBadge();
@@ -233,5 +241,68 @@ describe('useUnsavedLocalBadge', () => {
 
     finish({ data: { outputUrls: [LOCAL], assetIds: [] } });
     await waitFor(() => expect(screen.queryByText('未保存到本地')).toBeNull());
+  });
+});
+
+// 服务端 output.persistErrors 与 outputUrls 同序：超限、链接失效时重试没有意义，
+// 原因要让用户看得到（tooltip）。
+describe('「未保存到本地」角标的失败原因', () => {
+  beforeEach(() => resetPersistErrorCache());
+
+  it('有 genTaskId：查该任务，按节点内容对上槽位，原因进 tooltip', async () => {
+    setNodes([genNode({ settings: { unsaved: true, genTaskId: 42 } })]);
+    const get = vi.spyOn(api, 'get').mockResolvedValue({
+      data: { status: 'succeeded', outputUrls: ['media://other', REMOTE], persistErrors: ['', '文件超过单文件上限'] },
+    });
+    renderBadge();
+    const badge = screen.getByText('未保存到本地').closest('[data-unsaved-local]')!;
+    await waitFor(() => expect(badge.getAttribute('title')).toContain('原因：文件超过单文件上限'));
+    expect(get).toHaveBeenCalledWith('/canvas-tasks/42');
+  });
+
+  it('没有 genTaskId：按节点找回最近一次任务的状态', async () => {
+    setNodes([genNode()]);
+    const get = vi.spyOn(api, 'get').mockResolvedValue({
+      data: { taskId: 77, status: 'succeeded', outputUrls: [REMOTE], persistErrors: ['上游返回 403'] },
+    });
+    renderBadge();
+    const badge = screen.getByText('未保存到本地').closest('[data-unsaved-local]')!;
+    await waitFor(() => expect(badge.getAttribute('title')).toContain('原因：上游返回 403'));
+    expect(get).toHaveBeenCalledWith('/canvas-tasks/by-node', { params: { projectId: 14, nodeId: 'g1' } });
+  });
+
+  it('服务端没给原因（老版本 sidecar / 查询失败）时只显示通用说明', async () => {
+    setNodes([genNode({ settings: { genTaskId: 42 } })]);
+    const get = vi.spyOn(api, 'get').mockRejectedValue(new Error('network'));
+    renderBadge();
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    const badge = screen.getByText('未保存到本地').closest('[data-unsaved-local]')!;
+    expect(badge.getAttribute('title')).not.toContain('原因');
+    expect(badge.getAttribute('title')).toContain('上游的临时地址');
+  });
+});
+
+// 文件落了本地但素材记录没写成功（assetId=0）：sidecar 只认 http(s) 打 unsaved，
+// 前端单独认出来挂角标；repersist 只搬外链，所以不给重试。
+describe('「素材未登记」角标', () => {
+  it('isUnregisteredNode：生成类、成功、本机地址且 assetId=0 才算', () => {
+    expect(isUnregisteredNode(genNode({ content: LOCAL, settings: { assetId: 0 } }))).toBe(true);
+    expect(isUnregisteredNode(genNode({ content: 'media://gen/task-1-0', settings: { assetId: 0 } }))).toBe(true);
+    expect(isUnregisteredNode(genNode({ content: LOCAL, settings: { assetId: 9 } }))).toBe(false);
+    expect(isUnregisteredNode(genNode({ content: LOCAL, settings: {} }))).toBe(false);
+    expect(isUnregisteredNode(genNode({ settings: { assetId: 0 } }))).toBe(false); // 外链归「未保存到本地」
+    expect(isUnregisteredNode(genNode({ type: 'input-image', content: LOCAL, settings: { assetId: 0 } }))).toBe(false);
+    expect(isUnregisteredNode(genNode({ status: 'generating', content: LOCAL, settings: { assetId: 0 } }))).toBe(false);
+  });
+
+  it('显示「素材未登记」和说明，没有重试按钮', () => {
+    setNodes([genNode({ content: LOCAL, settings: { assetId: 0 } })]);
+    const get = vi.spyOn(api, 'get');
+    renderBadge();
+    const badge = screen.getByText('素材未登记').closest('[data-unsaved-local]')!;
+    expect(badge.getAttribute('title')).toContain('assetId=0');
+    expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+    expect(screen.queryByText('未保存到本地')).toBeNull();
+    expect(get).not.toHaveBeenCalled();
   });
 });

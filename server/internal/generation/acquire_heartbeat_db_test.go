@@ -34,7 +34,7 @@ func TestCallAndCompleteHeartbeatsWhileWaitingForConcurrencySlot(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, _ = svc.callAndComplete(ctx, id, 1, model, "k", "http://127.0.0.1:1", []byte(`{}`), uid, nil, 40, nil, nil, "")
+		_, _ = svc.callAndComplete(ctx, id, 1, model, "k", "http://127.0.0.1:1", []byte(`{}`), uid, nil, 40, nil, nil, nil, "")
 	}()
 
 	time.Sleep(time.Duration(svc.leaseStaleSec)*time.Second + 1500*time.Millisecond)

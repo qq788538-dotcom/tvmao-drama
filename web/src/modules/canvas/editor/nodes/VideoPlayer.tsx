@@ -20,10 +20,18 @@ import { Maximize, Minimize, MoreVertical, Pause, Play, Volume2, VolumeX } from 
 //
 // 拖拽口径：控制条根节点带 data-video-controls 并拦 mousedown 冒泡——NodeShell
 // 捕获阶段据此只做选中、不启动拖动；画面区域放行冒泡，按住画面照常拖节点。
+//
+// 按需加载（P25/2.2）：画布上的节点传 active（视口 + 一屏边距内才为 true，见
+// useNodeMediaActive）。不活跃时 src 走 React 置为 undefined，再 load() 一次让
+// 元素放掉已缓冲的数据和解码器；画面换成离开前截下的一帧做 poster。**不要**在
+// DOM 上直接 removeAttribute('src')：src 是 React 受控的，React 认为值没变就不会
+// 再写回，节点回到视口会黑屏。播放中、全屏中强制视为活跃。
 
 export type VideoPlayerProps = Omit<VideoHTMLAttributes<HTMLVideoElement>, 'controls'> & {
   /** 外层容器的尺寸类名；默认撑满父元素。灯箱等按视频自身尺寸排版的场景传 inline-flex 之类。 */
   wrapperClassName?: string;
+  /** 是否挂载媒体源。默认 true（灯箱、素材详情这类本来就在看的场景）。 */
+  active?: boolean;
 };
 
 const SPEEDS = [0.5, 1, 1.5, 2];
@@ -31,6 +39,26 @@ const SPEEDS = [0.5, 1, 1.5, 2];
 const IDLE_HIDE_MS = 2500;
 // mousedown → click 之间位移超过这个值视为拖动（拖节点），不切换播放。
 const CLICK_SLOP = 4;
+// 离开视口时截帧做 poster 的最大宽度：节点上显示几百像素足够，JPEG 几十 KB。
+const POSTER_MAX_W = 480;
+
+// captureFrame 把当前画面缩小截成 dataURL。还没解出画面、跨域污染画布（拿不到
+// CORS 授权时 toDataURL 抛 SecurityError）或环境没有 2D 画布都返回 undefined。
+export function captureFrame(el: HTMLVideoElement): string | undefined {
+  if (el.readyState < 2 || !el.videoWidth || !el.videoHeight) return undefined;
+  try {
+    const scale = Math.min(1, POSTER_MAX_W / el.videoWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(el.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(el.videoHeight * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+    ctx.drawImage(el, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.7);
+  } catch {
+    return undefined;
+  }
+}
 
 function formatTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00';
@@ -48,7 +76,7 @@ type WebkitVideo = HTMLVideoElement & {
 };
 
 export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(function VideoPlayer(
-  { wrapperClassName, className, onClick, onMouseDown, ...videoProps },
+  { wrapperClassName, className, onClick, onMouseDown, active: activeProp = true, src, poster, preload, ...videoProps },
   ref,
 ) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -63,14 +91,56 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(functi
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
   const [rate, setRate] = useState(1);
-  const [active, setActive] = useState(false);
+  // 鼠标在播放器上活动（控制条显隐用），与 active prop（是否挂载媒体源）无关。
+  const [hovering, setHovering] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  // 离开视口时截下的画面，按 src 记——换了视频旧截图不能再用。
+  const [snapshot, setSnapshot] = useState<{ src: string; dataUrl: string } | null>(null);
   const idleTimer = useRef<number | undefined>(undefined);
   const downPos = useRef<{ x: number; y: number } | null>(null);
   const seeking = useRef(false);
+  // 卸载媒体源时的播放位置；重新挂载拿到 metadata 后跳回去，与 poster 那一帧对上。
+  const resumeAt = useRef(0);
 
   const v = () => videoRef.current as WebkitVideo | null;
+
+  const live = activeProp || !paused || fullscreen;
+  const effectiveSrc = live ? src : undefined;
+
+  // 变为不活跃：React 已在本次提交里去掉 src 属性，但元素还握着已加载的资源
+  //（去属性不触发加载算法）。先截一帧，再 load() 让它按「无源」重走加载算法、
+  // 释放缓冲与解码器。
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || live || !el.currentSrc) return;
+    resumeAt.current = el.currentTime || 0;
+    const shot = captureFrame(el);
+    if (shot && src) setSnapshot({ src, dataUrl: shot });
+    try {
+      el.load();
+    } catch {
+      // 测试环境（jsdom）没实现 load，忽略。
+    }
+  }, [live, src]);
+
+  // 重新挂载后跳回离开时的位置。
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !live || resumeAt.current <= 0) return;
+    const at = resumeAt.current;
+    const onMeta = () => {
+      resumeAt.current = 0;
+      if (Number.isFinite(el.duration) && at < el.duration) el.currentTime = at;
+    };
+    el.addEventListener('loadedmetadata', onMeta, { once: true });
+    return () => el.removeEventListener('loadedmetadata', onMeta);
+  }, [live]);
+
+  // 换了视频：旧位置作废。
+  useEffect(() => {
+    resumeAt.current = 0;
+  }, [src]);
 
   // 同步 <video> 自身状态（autoPlay、键盘、画中画里操作都会改它，不能只信本地 state）。
   useEffect(() => {
@@ -90,7 +160,7 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(functi
     events.forEach((ev) => el.addEventListener(ev, sync));
     sync();
     return () => events.forEach((ev) => el.removeEventListener(ev, sync));
-  }, [videoProps.src]);
+  }, [effectiveSrc]);
 
   useEffect(() => {
     const onFs = () => setFullscreen(document.fullscreenElement === wrapRef.current);
@@ -101,9 +171,9 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(functi
   useEffect(() => () => window.clearTimeout(idleTimer.current), []);
 
   const poke = useCallback(() => {
-    setActive(true);
+    setHovering(true);
     window.clearTimeout(idleTimer.current);
-    idleTimer.current = window.setTimeout(() => setActive(false), IDLE_HIDE_MS);
+    idleTimer.current = window.setTimeout(() => setHovering(false), IDLE_HIDE_MS);
   }, []);
 
   const togglePlay = () => {
@@ -188,7 +258,8 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(functi
     togglePlay();
   };
 
-  const visible = paused || active || menuOpen || volumeOpen;
+  const visible = paused || hovering || menuOpen || volumeOpen;
+  const shownPoster = poster ?? (snapshot && snapshot.src === src ? snapshot.dataUrl : undefined);
   const shownVolume = muted ? 0 : volume;
   const pct = duration ? (current / duration) * 100 : 0;
   const bufPct = duration ? Math.min(100, (buffered / duration) * 100) : 0;
@@ -200,11 +271,15 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(functi
       ref={wrapRef}
       className={`relative overflow-hidden ${fullscreen ? 'w-full h-full bg-black flex items-center justify-center' : wrapperClassName ?? 'w-full h-full'}`}
       onMouseMove={poke}
-      onMouseLeave={() => setActive(false)}
+      onMouseLeave={() => setHovering(false)}
     >
       <video
         ref={videoRef}
         {...videoProps}
+        src={effectiveSrc}
+        poster={shownPoster}
+        // 默认只拉元数据（时长/尺寸/首帧所需的头部），不让 WebView 按 auto 预取整片。
+        preload={preload ?? 'metadata'}
         className={fullscreen ? 'w-full h-full object-contain bg-black' : className}
         onMouseDown={onVideoMouseDown}
         onClick={onVideoClick}

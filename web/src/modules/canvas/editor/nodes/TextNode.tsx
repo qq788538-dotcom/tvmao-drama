@@ -13,6 +13,7 @@ import { pollCanvasTaskUntilDone } from '@/shared/api';
 import { readMirror } from '../utils/nodeClipboard';
 import { MAX_TEXT_LEN } from './text/useMarkdownEditor';
 import { useReconcileCanvasTask } from './useReconcileCanvasTask';
+import { stallIfUnreachable, usePollStalled } from './pollStall';
 import { NodeContextMenu, type NodeMenuItem } from './NodeContextMenu';
 import { isMacLike, standardNodeMenuItems } from './standardNodeMenuItems';
 import { useMarkdownEditor } from './text/useMarkdownEditor';
@@ -96,7 +97,7 @@ function InlineEditor({
 }
 
 export function TextNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   const readOnly = useCanvasStore((s) => s.readOnly);
   const updateNode = useCanvasStore((s) => s.updateNode);
   const updateNodeSettings = useCanvasStore((s) => s.updateNodeSettings);
@@ -106,6 +107,8 @@ export function TextNode({ id }: { id: string }) {
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   // 兜底对账:节点卡在 generating 且丢 taskId 时按 nodeId 找回任务号(useReconcileCanvasTask 顶部注释)。
   useReconcileCanvasTask(id);
+  // 轮询连续够不着后端时挂起(P23):不判失败,交给对账;NodeShell 上可点「重新检查」。
+  const pollStalled = usePollStalled(node?.taskId);
   const [editing, setEditing] = useState(false);
   // 「进入过编辑又清空」与「从未编辑」的空节点长得不一样：
   // 前者显示「请编写内容」占位，后者显示「尝试:」菜单。只是会话内状态，
@@ -116,7 +119,7 @@ export function TextNode({ id }: { id: string }) {
   // AI 生成的轮询：只要节点持有进行中的任务就恢复/驱动（刷新页面也能续上）。
   // 轮询只为即时展示——settings.text 由后端 sink 权威写回快照，关页面不丢。
   useEffect(() => {
-    if (node?.status === 'generating' && node.taskId) {
+    if (node?.status === 'generating' && node.taskId && !pollStalled) {
       const ctrl = new AbortController();
       let cancelled = false;
       pollCanvasTaskUntilDone(node.taskId, { signal: ctrl.signal })
@@ -137,6 +140,7 @@ export function TextNode({ id }: { id: string }) {
         .catch((err: unknown) => {
           const e = err as { message?: string };
           if (cancelled || e?.message === 'aborted') return;
+          if (node.taskId && stallIfUnreachable(node.taskId, err)) return;
           updateNode(id, { status: 'failed', error: e?.message || '轮询失败', taskId: undefined });
           persistNodeById(id);
         });
@@ -146,7 +150,7 @@ export function TextNode({ id }: { id: string }) {
       };
     }
     return undefined;
-  }, [node?.status, node?.taskId, id, updateNode, updateNodeSettings]);
+  }, [node?.status, node?.taskId, pollStalled, id, updateNode, updateNodeSettings]);
 
   const text = (node?.settings?.text as string | undefined) ?? '';
   // marked + DOMPurify 对长文本不便宜；不缓存的话拖动/选中本节点每一帧都整篇重解析。

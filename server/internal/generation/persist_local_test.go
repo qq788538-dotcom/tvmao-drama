@@ -61,7 +61,7 @@ func TestPersistOutputs_FileURLStreamsExactBytes(t *testing.T) {
 	p, want := writePNG(t)
 	st := &captureStorage{}
 	s := &Service{storage: st, tmpDir: filepath.Dir(p)}
-	urls, ids, mimes, err := s.persistOutputs(context.Background(), 64, 33888, nil, []string{"file://" + p}, 0)
+	urls, ids, mimes, _, err := s.persistOutputs(context.Background(), 64, 33888, nil, []string{"file://" + p}, 0)
 	if err != nil {
 		t.Fatalf("persistOutputs: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestPersistOutputs_FileURLStreamsExactBytes(t *testing.T) {
 func TestPersistOutputs_FileURLUploadFailureIsError(t *testing.T) {
 	p, _ := writePNG(t)
 	s := &Service{storage: &captureStorage{fail: true}, tmpDir: filepath.Dir(p)}
-	_, _, _, err := s.persistOutputs(context.Background(), 64, 1, nil, []string{"file://" + p}, 0)
+	_, _, _, _, err := s.persistOutputs(context.Background(), 64, 1, nil, []string{"file://" + p}, 0)
 	if !errors.Is(err, errLocalPersist) {
 		t.Fatalf("file:// 上传失败必须报 errLocalPersist, got %v", err)
 	}
@@ -92,7 +92,7 @@ func TestPersistOutputs_HTTPFailureStillKeepsUpstreamURL(t *testing.T) {
 	zeroPersistRetryDelays(t)
 	// 现状语义不变：http(s) 拉不到就保留上游 URL,不报错。
 	s := &Service{storage: &captureStorage{}, httpClient: httpClientAlwaysFail()}
-	urls, ids, _, err := s.persistOutputs(context.Background(), 64, 1, nil, []string{"https://gone.example/1.png"}, 0)
+	urls, ids, _, _, err := s.persistOutputs(context.Background(), 64, 1, nil, []string{"https://gone.example/1.png"}, 0)
 	if err != nil {
 		t.Fatalf("http 失败不应返回 error: %v", err)
 	}

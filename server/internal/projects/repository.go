@@ -1,6 +1,7 @@
 package projects
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -23,6 +24,29 @@ type Project struct {
 }
 
 var ErrNotFound = errors.New("project not found")
+
+// GoneMessage 是提交入口发现项目不存在或已删除时给用户看的文案。
+const GoneMessage = "项目不存在或已被删除，请刷新后重试"
+
+// rowQuerier 是 *sql.DB / *sql.Tx 的共同子集。
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// ActiveExists 轻量校验项目存在且未软删。给提交入口（脚本、canvasgen、上传）挡住
+// 「往已删项目里建任务/资产」：只查一行一列，不像 GetForUser 那样 JOIN assets 汇总用量。
+// 不按 user_id 过滤：桌面端身份固定，这里只缺存在性校验。
+func ActiveExists(ctx context.Context, q rowQuerier, projectID int64) (bool, error) {
+	var one int
+	err := q.QueryRowContext(ctx, `SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL`, projectID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
 
 // Snapshot 是 workflow_snapshots 当前最新的一行状态。
 type Snapshot struct {
@@ -157,6 +181,11 @@ func (r *SQLiteRepository) GetForUser(userID, projectID int64) (*Project, error)
 		return nil, err
 	}
 	return &p, nil
+}
+
+// ActiveExists 见包级 ActiveExists。
+func (r *SQLiteRepository) ActiveExists(ctx context.Context, projectID int64) (bool, error) {
+	return ActiveExists(ctx, r.db, projectID)
 }
 
 func (r *SQLiteRepository) Touch(userID, projectID int64) error {

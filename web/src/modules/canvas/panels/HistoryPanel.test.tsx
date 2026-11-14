@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HistoryPanel, resolveOutputKind } from './HistoryPanel';
 import { useCanvasStore } from '@/modules/canvas/editor/store';
 import type { GenerationTask, ModelConfig } from '@/shared/api';
@@ -187,5 +187,79 @@ describe('HistoryPanel 音频任务', () => {
       expect(nodes[0].type).toBe('input-audio');
       expect(nodes[0].content).toBe(AUDIO_URL);
     });
+  });
+});
+
+// P17：面板一次最多 200 条，原来每条视频都是一个 <video preload=metadata>，打开就
+// 同时发几百个媒体请求。改成进入可视区才挂媒体；拖拽/右键/双击挂在外壳上，
+// 没挂媒体时也能用。
+describe('HistoryPanel 媒体懒挂载', () => {
+  let observers: { cb: IntersectionObserverCallback; el?: Element; disconnected: boolean }[] = [];
+  const origIO = (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver;
+
+  beforeEach(() => {
+    observers = [];
+    (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = class {
+      rec: (typeof observers)[number];
+      constructor(cb: IntersectionObserverCallback) {
+        this.rec = { cb, disconnected: false };
+        observers.push(this.rec);
+      }
+      observe(el: Element) {
+        this.rec.el = el;
+      }
+      disconnect() {
+        this.rec.disconnected = true;
+      }
+    };
+    listTasksMock.mockReset();
+    listRuntimeModelsMock.mockReset();
+    listTasksMock.mockResolvedValue({ data: [subtitleEraseTask()], total: 1 });
+    listRuntimeModelsMock.mockResolvedValue([] as ModelConfig[]);
+    useCanvasStore.setState({ nodes: [], connections: [], lightbox: null, selectedIds: new Set() });
+  });
+
+  afterEach(() => {
+    (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = origIO;
+  });
+
+  async function mediaShell() {
+    await screen.findByTitle('放大预览');
+    const rec = observers.find((o) => o.el && !o.disconnected);
+    expect(rec).toBeTruthy();
+    return rec!;
+  }
+
+  it('进入可视区前不挂 <video>，进入后挂上并停止观察', async () => {
+    const { container } = renderHistoryPanel();
+    const rec = await mediaShell();
+    expect(container.querySelector('video')).toBeNull();
+    act(() => {
+      rec.cb([{ isIntersecting: true, target: rec.el! } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
+    expect(container.querySelector('video')?.getAttribute('src')).toBe(SUBTITLE_ERASE_URL);
+    expect(rec.disconnected).toBe(true);
+  });
+
+  it('媒体没挂上时，外壳上右键照样能发送到画布、双击照样预览', async () => {
+    renderHistoryPanel();
+    const rec = await mediaShell();
+    fireEvent.contextMenu(rec.el!, { clientX: 10, clientY: 10 });
+    fireEvent.click(await screen.findByText('发送到画布'));
+    await waitFor(() => expect(useCanvasStore.getState().nodes[0]?.type).toBe('video-input'));
+
+    fireEvent.doubleClick(rec.el!);
+    expect(useCanvasStore.getState().lightbox).toMatchObject({ url: SUBTITLE_ERASE_URL, kind: 'video' });
+  });
+
+  it('外壳可拖，拖拽数据是原图 url', async () => {
+    renderHistoryPanel();
+    const rec = await mediaShell();
+    expect(rec.el!.getAttribute('draggable')).toBe('true');
+    const data: Record<string, string> = {};
+    fireEvent.dragStart(rec.el!, {
+      dataTransfer: { setData: (k: string, v: string) => void (data[k] = v), effectAllowed: '' },
+    });
+    expect(data['text/uri-list']).toBe(SUBTITLE_ERASE_URL);
   });
 });

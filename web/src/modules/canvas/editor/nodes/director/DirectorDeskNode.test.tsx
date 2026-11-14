@@ -17,7 +17,7 @@ vi.mock('../../persistence/canvasMutations', () => ({
   persistNodeById: vi.fn(),
 }));
 
-import { DirectorDeskNode, resolveCachedAssetUrl } from './DirectorDeskNode';
+import { DirectorDeskNode, evictAssetCache, resolveCachedAssetUrl } from './DirectorDeskNode';
 import { useCanvasStore } from '../../store';
 import { persistNodeById, scheduleNodePatch } from '../../persistence/canvasMutations';
 import { setDirectorHostAdapter } from './desk/editor/io/hostAdapter';
@@ -190,5 +190,94 @@ describe('resolveCachedAssetUrl', () => {
     expect(await resolveCachedAssetUrl(url)).toBe(url);
     expect(await resolveCachedAssetUrl(url)).toBe(url);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+// P36：导演台的 Cache Storage 原来只进不出。按条目数/总字节做 LRU 淘汰，
+// 访问时刻记在 localStorage 索引里（Cache API 不记）。
+describe('导演台资产缓存淘汰', () => {
+  const LRU_KEY = 'director-desk-assets-lru-v1';
+  const MB = 1024 * 1024;
+
+  // 只实现淘汰用到的 keys/delete（与 match/put），键按插入顺序。
+  function fakeCache(urls: string[]) {
+    const store = new Map<string, Response>(urls.map((u) => [u, new Response('x')]));
+    return {
+      store,
+      cache: {
+        keys: vi.fn(async () => [...store.keys()].map((url) => ({ url }) as Request)),
+        delete: vi.fn(async (req: Request) => store.delete(req.url)),
+        match: vi.fn(async (k: string) => store.get(new URL(k, window.location.href).href)?.clone()),
+        put: vi.fn(async (k: string, r: Response) => void store.set(new URL(k, window.location.href).href, r)),
+      },
+    };
+  }
+
+  function setIndex(idx: Record<string, { at: number; size: number }>) {
+    window.localStorage.setItem(LRU_KEY, JSON.stringify(idx));
+  }
+
+  afterEach(() => window.localStorage.removeItem(LRU_KEY));
+
+  it('条目数超限：从最久未用的删起，刚写入的保留', async () => {
+    const urls = Array.from({ length: 62 }, (_, i) => `https://oss.example/m/${i}.glb`);
+    setIndex(Object.fromEntries(urls.map((u, i) => [u, { at: i + 1, size: 1 }])));
+    const { store, cache } = fakeCache(urls);
+    await evictAssetCache(cache as unknown as Cache, urls[61]);
+    expect(store.size).toBe(60);
+    expect(store.has(urls[0])).toBe(false);
+    expect(store.has(urls[1])).toBe(false);
+    expect(store.has(urls[61])).toBe(true);
+    const idx = JSON.parse(window.localStorage.getItem(LRU_KEY)!);
+    expect(Object.keys(idx)).toHaveLength(60);
+    expect(idx[urls[0]]).toBeUndefined();
+  });
+
+  it('总字节超限：按 LRU 删到上限内；最近用过的旧条目不先删', async () => {
+    const [a, b, c] = ['a', 'b', 'c'].map((n) => `https://oss.example/m/${n}.glb`);
+    // a 最早写入但刚被用过（at 最大），b 最久未用。
+    setIndex({ [a]: { at: 30, size: 200 * MB }, [b]: { at: 10, size: 200 * MB }, [c]: { at: 20, size: 200 * MB } });
+    const { store, cache } = fakeCache([a, b, c]);
+    await evictAssetCache(cache as unknown as Cache, c);
+    expect([...store.keys()].sort()).toEqual([a, c].sort());
+  });
+
+  it('索引里没有的条目（升级前缓存的）视为最久未用', async () => {
+    const legacy = 'https://oss.example/m/legacy.glb';
+    const urls = Array.from({ length: 60 }, (_, i) => `https://oss.example/m/${i}.glb`);
+    setIndex(Object.fromEntries(urls.map((u, i) => [u, { at: i + 1, size: 1 }])));
+    const { store, cache } = fakeCache([...urls, legacy]);
+    await evictAssetCache(cache as unknown as Cache, urls[59]);
+    expect(store.has(legacy)).toBe(false);
+    expect(store.size).toBe(60);
+  });
+
+  describe('resolveCachedAssetUrl 写入后触发淘汰', () => {
+    const origCaches = (globalThis as { caches?: unknown }).caches;
+    const origFetch = globalThis.fetch;
+    const origCreate = URL.createObjectURL;
+
+    afterEach(() => {
+      (globalThis as { caches?: unknown }).caches = origCaches;
+      globalThis.fetch = origFetch;
+      URL.createObjectURL = origCreate;
+    });
+
+    it('新资产记进索引，超限的旧条目被删', async () => {
+      const urls = Array.from({ length: 60 }, (_, i) => `https://oss.example/old/${i}.glb`);
+      setIndex(Object.fromEntries(urls.map((u, i) => [u, { at: i + 1, size: 1 }])));
+      const { store, cache } = fakeCache(urls);
+      (globalThis as { caches?: unknown }).caches = { open: vi.fn(async () => cache) };
+      globalThis.fetch = vi.fn(async () => new Response('model', { status: 200 })) as unknown as typeof fetch;
+      URL.createObjectURL = vi.fn(() => 'blob:new');
+
+      expect(await resolveCachedAssetUrl('https://oss.example/m/evict-new.glb?sig=1')).toBe('blob:new');
+      const fresh = 'https://oss.example/m/evict-new.glb';
+      expect(store.has(fresh)).toBe(true);
+      expect(store.has(urls[0])).toBe(false);
+      expect(store.size).toBe(60);
+      const idx = JSON.parse(window.localStorage.getItem(LRU_KEY)!);
+      expect(idx[fresh]).toMatchObject({ size: 5 });
+    });
   });
 });

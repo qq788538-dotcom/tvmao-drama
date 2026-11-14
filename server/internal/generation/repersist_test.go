@@ -85,6 +85,26 @@ func TestRepersistTaskMovesUnsavedSlots(t *testing.T) {
 	}
 }
 
+// 补搬成功的槽位清掉首搬留下的失败原因；全部清空时整个字段去掉。
+func TestRepersistTaskClearsPersistErrors(t *testing.T) {
+	srv := pngServer(t)
+	old := srv.URL + "/1.png"
+	repo := &repersistRepo{
+		task: &Task{ID: 11, UserID: 1, Status: "succeeded",
+			Output: json.RawMessage(`{"outputUrls":["` + old + `"],"assetIds":[0],"persistErrors":["下载产物失败：上游返回 HTTP 503"]}`)},
+	}
+	store := &fakeRepersistStore{}
+	svc := &Service{repo: repo, storage: &captureStorage{}, httpClient: srv.Client(), repersist: store, tmpDir: t.TempDir()}
+	if _, err := svc.RepersistTask(context.Background(), 1, 11); err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	_ = json.Unmarshal(store.updated[11], &out)
+	if _, ok := out["persistErrors"]; ok {
+		t.Fatalf("补搬成功后应去掉 persistErrors: %s", store.updated[11])
+	}
+}
+
 func TestRepersistTaskNothingToDo(t *testing.T) {
 	repo := &repersistRepo{task: &Task{ID: 8, UserID: 1, Status: "succeeded",
 		Output: json.RawMessage(`{"outputUrls":["media://a"],"assetIds":[3]}`)}}

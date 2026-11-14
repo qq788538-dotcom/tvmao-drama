@@ -56,4 +56,19 @@ describe('useConnectedInputs', () => {
     expect(result.current.images).toEqual(['https://x/b.png']);
     expect(result.current).not.toBe(first);
   });
+
+  // 读的是 store 派生索引：直接 setState 换掉 nodes（自动排布、外部整拉）也要跟上。
+  it('直接 setState 替换上游节点时跟随索引更新', () => {
+    useCanvasStore.setState({ connections: [{ id: 'c1', from: 'a', to: 'g' }] });
+    const { result } = renderHook(() => useConnectedInputs('g'));
+    expect(result.current.images).toEqual(['https://x/a.png']);
+
+    act(() => useCanvasStore.setState((s) => ({
+      nodes: s.nodes.map((n) => (n.id === 'a' ? { ...n, content: 'https://x/c.png' } : n)),
+    })));
+    expect(result.current.images).toEqual(['https://x/c.png']);
+
+    act(() => useCanvasStore.setState((s) => ({ nodes: s.nodes.filter((n) => n.id !== 'a') })));
+    expect(result.current.images).toEqual([]);
+  });
 });

@@ -19,6 +19,8 @@ import (
 type fakeSettings struct {
 	mu sync.Mutex
 	m  map[string]string
+	// err 非 nil 时 Get 模拟数据库瞬时错误
+	err error
 }
 
 func newFakeSettings(cfg Config) *fakeSettings {
@@ -29,6 +31,9 @@ func newFakeSettings(cfg Config) *fakeSettings {
 func (f *fakeSettings) Get(key string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.err != nil {
+		return "", f.err
+	}
 	return f.m[key], nil
 }
 
@@ -71,8 +76,11 @@ type fakeSkills struct {
 	beforeReturn func()
 }
 
-func (f *fakeSkills) Snapshot(_ context.Context, name string) (skillruntime.Snapshot, error) {
+func (f *fakeSkills) Snapshot(ctx context.Context, name string) (skillruntime.Snapshot, error) {
 	if f.snapErr != nil {
+		if ctx.Err() != nil {
+			return skillruntime.Snapshot{}, ctx.Err()
+		}
 		return skillruntime.Snapshot{}, f.snapErr
 	}
 	return skillruntime.Snapshot{Name: name}, nil
@@ -112,6 +120,10 @@ func testConfig() Config {
 func newTestService(t *testing.T, cfg Config, sk *fakeSkills, m fakeModels) (*Service, *sql.DB) {
 	t.Helper()
 	conn := dbtest.Open(t)
+	// submitOne 等用例挂在项目 7 上：Submit 会校验项目存在且未删除。
+	if _, err := conn.Exec(`INSERT INTO projects (id, user_id, name) VALUES (7, 1, 'p')`); err != nil {
+		t.Fatal(err)
+	}
 	return NewService(conn, newFakeSettings(cfg), m, fakeKeys{key: "sk-test"}, sk), conn
 }
 
@@ -186,6 +198,31 @@ func TestSubmitRejectsMissingModelAndSkill(t *testing.T) {
 	svc2, _ := newTestService(t, testConfig(), &fakeSkills{snapErr: errors.New("no such skill")}, fakeModels{})
 	if _, err := svc2.Submit(context.Background(), 1, 7, "n", testStyle, "x", 10, testModel, nil); err == nil || !strings.Contains(err.Error(), "风格对应的 skill 不可用") {
 		t.Fatalf("skill 不存在应拒绝: %v", err)
+	}
+}
+
+// 项目不存在、已软删都拒绝且不落库；projectID=0（不挂项目）跳过校验。
+func TestSubmitRejectsMissingOrDeletedProject(t *testing.T) {
+	svc, conn := newTestService(t, testConfig(), &fakeSkills{}, fakeModels{})
+	ctx := context.Background()
+	if _, err := svc.Submit(ctx, 1, 999, "n", testStyle, "x", 10, testModel, nil); !errors.Is(err, ErrProjectGone) {
+		t.Fatalf("不存在的项目应拒绝: %v", err)
+	}
+	if _, err := conn.Exec(`UPDATE projects SET deleted_at=CURRENT_TIMESTAMP WHERE id=7`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.Submit(ctx, 1, 7, "n", testStyle, "x", 10, testModel, nil)
+	var ue *UserError
+	if !errors.Is(err, ErrProjectGone) || !errors.As(err, &ue) || !strings.Contains(ue.Msg, "已被删除") {
+		t.Fatalf("已删项目应拒绝且文案可展示: %v", err)
+	}
+	var n int
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM canvas_script_tasks`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("拒绝的提交不应落库，got %d 行", n)
+	}
+	if _, err := svc.Submit(ctx, 1, 0, "n", testStyle, "x", 10, testModel, nil); err != nil {
+		t.Fatalf("projectID=0 应跳过校验: %v", err)
 	}
 }
 
@@ -269,10 +306,137 @@ func TestExecuteFailRequeuesThenFails(t *testing.T) {
 	if status, msg, _ := taskRow(t, conn, id); status != StatusPending || !strings.Contains(msg, "生成失败") {
 		t.Fatalf("第 1 次失败应重排: status=%s err=%s", status, msg)
 	}
+	// 重排带退避：到点前领不到；把时间拨到过去再领。
+	if _, ok := svc.claimOne(context.Background()); ok {
+		t.Fatal("退避未到点不应被领走")
+	}
+	expireBackoff(t, conn, id)
 	task, _ = svc.claimOne(context.Background())
 	svc.execute(context.Background(), task, testConfig())
 	if status, msg, attempts := taskRow(t, conn, id); status != StatusFailed || attempts != 2 || !strings.Contains(msg, "生成失败") || strings.Contains(msg, "上游 500") {
 		t.Fatalf("用尽重试应判失败: status=%s attempts=%d err=%s", status, attempts, msg)
+	}
+}
+
+// expireBackoff 把任务的退避时间拨到过去，模拟等够了。
+func expireBackoff(t *testing.T, conn *sql.DB, id int64) {
+	t.Helper()
+	if _, err := conn.Exec(`UPDATE canvas_script_tasks SET next_attempt_at=datetime('now', '-1 seconds') WHERE id=?`, id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRetryBackoff(t *testing.T) {
+	for _, c := range []struct {
+		attempts int64
+		want     time.Duration
+	}{{1, 15 * time.Second}, {2, 30 * time.Second}, {3, time.Minute}, {5, 4 * time.Minute}, {6, 5 * time.Minute}, {11, 5 * time.Minute}} {
+		if got := retryBackoff(c.attempts); got != c.want {
+			t.Errorf("attempts=%d: got %s want %s", c.attempts, got, c.want)
+		}
+	}
+}
+
+// 失败重排写下次可领时间（约 15s 后）；退避中的任务不挡后面已到点的任务。
+func TestFailRequeueSetsBackoffAndClaimSkipsIt(t *testing.T) {
+	sk := &fakeSkills{runErr: errors.New("上游 429")}
+	svc, conn := newTestService(t, testConfig(), sk, fakeModels{})
+	first := submitOne(t, svc)
+	task, _ := svc.claimOne(context.Background())
+	svc.execute(context.Background(), task, testConfig())
+	var delta float64
+	if err := conn.QueryRow(`SELECT (julianday(next_attempt_at) - julianday('now')) * 86400 FROM canvas_script_tasks WHERE id=?`, first).Scan(&delta); err != nil {
+		t.Fatal(err)
+	}
+	if delta < 10 || delta > 16 {
+		t.Fatalf("第 1 次失败应退避约 15s, got %.1fs", delta)
+	}
+	second := submitOne(t, svc)
+	got, ok := svc.claimOne(context.Background())
+	if !ok || got.ID != second {
+		t.Fatalf("应跳过退避中的 %d 领到 %d: ok=%v got=%+v", first, second, ok, got)
+	}
+	expireBackoff(t, conn, first)
+	got, ok = svc.claimOne(context.Background())
+	if !ok || got.ID != first {
+		t.Fatalf("退避到点后应能领到 %d: ok=%v got=%+v", first, ok, got)
+	}
+	var next sql.NullString
+	_ = conn.QueryRow(`SELECT next_attempt_at FROM canvas_script_tasks WHERE id=?`, first).Scan(&next)
+	if next.Valid {
+		t.Fatalf("领走后应清掉退避时间: %v", next)
+	}
+}
+
+// 配置类错误不重试：第一次就判 failed，不占重试额度。
+func TestExecuteConfigErrorsFailImmediately(t *testing.T) {
+	cases := []struct {
+		name string
+		prep func(svc *Service, sk *fakeSkills) Config
+		want string
+	}{
+		{"模型移出候选", func(svc *Service, sk *fakeSkills) Config {
+			cfg := testConfig()
+			cfg.ModelCandidates = []ModelCandidate{{ModelID: "other"}}
+			return cfg
+		}, "所选模型已不可用"},
+		{"skill 不存在", func(svc *Service, sk *fakeSkills) Config {
+			sk.snapErr = errors.New("no such skill")
+			return testConfig()
+		}, "skill 不可用"},
+		{"上游地址未配置", func(svc *Service, sk *fakeSkills) Config {
+			_ = svc.settings.Set("base_domain", "")
+			return testConfig()
+		}, "未配置上游地址"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			sk := &fakeSkills{content: validCandidate}
+			svc, conn := newTestService(t, testConfig(), sk, fakeModels{})
+			id := submitOne(t, svc)
+			cfg := c.prep(svc, sk)
+			task, _ := svc.claimOne(context.Background())
+			svc.execute(context.Background(), task, cfg)
+			status, msg, attempts := taskRow(t, conn, id)
+			if status != StatusFailed || attempts != 1 || !strings.Contains(msg, c.want) || len(sk.runs) != 0 {
+				t.Fatalf("status=%s attempts=%d err=%s runs=%d", status, attempts, msg, len(sk.runs))
+			}
+		})
+	}
+}
+
+// 读 skill 时进程正在关闭（ctx 已取消）：不是配置错误，退回计数、回到 pending，下次启动重跑。
+func TestExecuteSnapshotInterruptedByShutdownRequeues(t *testing.T) {
+	sk := &fakeSkills{content: validCandidate}
+	svc, conn := newTestService(t, testConfig(), sk, fakeModels{})
+	id := submitOne(t, svc)
+	sk.snapErr = errors.New("read skill: context canceled")
+	task, _ := svc.claimOne(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	svc.execute(ctx, task, testConfig())
+	if status, _, attempts := taskRow(t, conn, id); status != StatusPending || attempts != 0 {
+		t.Fatalf("关闭打断应回到 pending 且不计次: status=%s attempts=%d", status, attempts)
+	}
+}
+
+// 读配置遇到数据库瞬时错误：LoadConfig 必须报错，worker 跳过这一拍；不能拿零值配置
+// 去跑任务，否则候选列表为空会把排队任务全部按「模型已不可用」判死。
+func TestLoadConfigErrorDoesNotFailQueuedTasks(t *testing.T) {
+	sk := &fakeSkills{content: validCandidate}
+	svc, conn := newTestService(t, testConfig(), sk, fakeModels{})
+	id := submitOne(t, svc)
+	fs := svc.settings.(*fakeSettings)
+	fs.mu.Lock()
+	fs.err = errors.New("database is locked")
+	fs.mu.Unlock()
+	if _, err := svc.LoadConfig(); err == nil {
+		t.Fatal("读库失败应返回错误")
+	}
+	svc.claimAndRun(context.Background())
+	svc.running.Wait()
+	if status, _, attempts := taskRow(t, conn, id); status != StatusPending || attempts != 0 {
+		t.Fatalf("读配置失败不应动排队任务: status=%s attempts=%d", status, attempts)
 	}
 }
 

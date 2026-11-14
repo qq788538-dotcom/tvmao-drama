@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +23,21 @@ import (
 	"github.com/qq788538-dotcom/tvmao-drama/server/internal/projects"
 	"github.com/qq788538-dotcom/tvmao-drama/server/internal/settings"
 )
+
+// 生成临时目录对外暴露，后处理探测的临时文件也放进去，随启动清理（PrepareTempDir）一起回收。
+func TestWireGenerationExposesTempDir(t *testing.T) {
+	dataDir := t.TempDir()
+	w, err := wireGeneration(dbtest.Open(t), dataDir, genExternal{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dataDir, "tmp", "gen"); w.TempDir != want {
+		t.Fatalf("TempDir=%q want %q", w.TempDir, want)
+	}
+	if st, err := os.Stat(w.TempDir); err != nil || !st.IsDir() {
+		t.Fatalf("临时目录应已建好: %v", err)
+	}
+}
 
 // memGenStorage：内存版本地存储（生产是磁盘实现）。
 type memGenStorage struct {

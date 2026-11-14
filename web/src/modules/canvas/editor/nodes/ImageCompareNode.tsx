@@ -5,7 +5,7 @@ import { ThumbImg } from '../ThumbImg';
 import { NodeShell } from '../NodeShell';
 
 export function ImageCompareNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   const linked = useConnectedInputs(id);
   const setLightbox = useCanvasStore((s) => s.setLightbox);
 

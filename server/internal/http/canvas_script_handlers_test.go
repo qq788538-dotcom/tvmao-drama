@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	nethttp "net/http"
 	"net/http/httptest"
 	"strconv"
@@ -41,6 +42,10 @@ func (csFakeSkills) Run(context.Context, skillruntime.RunRequest) (skillruntime.
 func newCanvasScriptRouter(t *testing.T) (nethttp.Handler, *canvasscript.Service) {
 	t.Helper()
 	conn := dbtest.Open(t)
+	// 用例都挂在项目 7 上：Submit 会校验项目存在且未删除。
+	if _, err := conn.Exec(`INSERT INTO projects (id, user_id, name) VALUES (7, 1, 'p')`); err != nil {
+		t.Fatal(err)
+	}
 	st := settings.NewSQLiteRepository(conn)
 	svc := canvasscript.NewService(conn, st, csFakeModels{}, csFakeKeys{}, csFakeSkills{})
 	if err := svc.SaveConfig(canvasscript.Config{
@@ -113,6 +118,16 @@ func TestCanvasScriptSubmitValidation(t *testing.T) {
 	if code, out := doJSON(t, h, "POST", "/api/v1/canvas-script-tasks",
 		`{"projectId":7,"nodeId":"n","style":"真人短剧风格 v3","durationSec":99,"script":"x","model":"canvas-gpt-5.5"}`); code != 400 || !strings.Contains(out["error"].(string), "时长") {
 		t.Fatalf("业务校验错误应 400 并带原因: %d %v", code, out)
+	}
+}
+
+// 项目不存在（或已删除）：404 + 可读文案，前端直接展示。
+func TestCanvasScriptSubmitMissingProject404(t *testing.T) {
+	h, _ := newCanvasScriptRouter(t)
+	code, out := doJSON(t, h, "POST", "/api/v1/canvas-script-tasks",
+		`{"projectId":8,"nodeId":"n","style":"真人短剧风格 v3","durationSec":10,"script":"x","model":"canvas-gpt-5.5"}`)
+	if code != 404 || !strings.Contains(fmt.Sprint(out["error"]), "已被删除") {
+		t.Fatalf("不存在的项目应 404 并带文案: %d %v", code, out)
 	}
 }
 
