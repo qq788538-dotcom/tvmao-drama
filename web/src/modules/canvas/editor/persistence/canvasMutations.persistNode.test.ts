@@ -283,3 +283,98 @@ describe('persistNodeById 字段级 diff', () => {
     expect(patchNode).not.toHaveBeenCalled();
   });
 });
+
+// P8：抽帧 dataURL 与超大 dataURL 不进服务端 payload；store 里的节点保持原样。
+describe('发往服务端的节点净化', () => {
+  let patchNode: ReturnType<typeof vi.fn>;
+  let upsertNode: ReturnType<typeof vi.fn>;
+  const frame = { url: 'data:image/jpeg;base64,AAAA', time: 0 };
+  const bigDataUrl = `data:image/png;base64,${'A'.repeat(64 * 1024)}`;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetCanvasPersistenceForTest();
+    setNodes([]);
+    patchNode = vi.fn(async () => ({ version: 1 }));
+    upsertNode = vi.fn(async () => ({ version: 1 }));
+    configureCanvasPersistence({ projectID: 42, patchNode, upsertNode });
+    setCanvasOwnerToken('owner-token');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function videoNode(settings: Record<string, unknown>): CanvasNode {
+    return node('v1', { type: 'video-input', content: 'https://x/v.mp4', settings });
+  }
+
+  it('video-input 整节点 upsert 不带 frames/selectedKeyframes/extractingFrames，store 不受影响', async () => {
+    setNodes([videoNode({ frames: [frame], selectedKeyframes: [frame], extractingFrames: false, videoExpanded: true })]);
+
+    persistNodeById('v1');
+    await flushCanvasMutations();
+
+    const sent = upsertNode.mock.calls[0][2] as CanvasNode;
+    expect(sent.settings).toEqual({ videoExpanded: true });
+    expect(JSON.stringify(sent)).not.toContain('data:image');
+    expect(useCanvasStore.getState().nodes[0].settings?.frames).toEqual([frame]);
+  });
+
+  it('有基线时抽帧变化不算差量：只抽帧不发请求', async () => {
+    seedCanvasBaselines([videoNode({ videoExpanded: true })]);
+    setNodes([videoNode({ videoExpanded: true, frames: [frame], selectedKeyframes: [frame] })]);
+
+    persistNodeById('v1');
+    await flushCanvasMutations();
+
+    expect(patchNode).not.toHaveBeenCalled();
+    expect(upsertNode).not.toHaveBeenCalled();
+  });
+
+  it('存量快照里带着帧：下一次落库对这些键发 null，把服务端那份删掉', async () => {
+    seedCanvasBaselines([videoNode({ frames: [frame], selectedKeyframes: [frame] })]);
+    setNodes([videoNode({ frames: [frame], selectedKeyframes: [frame], videoMeta: { duration: 3 } })]);
+
+    persistNodeById('v1');
+    await flushCanvasMutations();
+
+    expect(patchNode).toHaveBeenCalledWith(42, 'owner-token', 'v1', {
+      settings: { frames: null, selectedKeyframes: null, videoMeta: { duration: 3 } },
+    });
+  });
+
+  it('其他节点同名字段不受影响（只剥 video-input）', async () => {
+    setNodes([node('n1', { settings: { frames: [1, 2] } })]);
+
+    persistNodeById('n1');
+    await flushCanvasMutations();
+
+    expect((upsertNode.mock.calls[0][2] as CanvasNode).settings).toEqual({ frames: [1, 2] });
+  });
+
+  it('超过 64KB 的 data: 字符串一律不进 upsert，小 dataURL 与普通长串照常', async () => {
+    const longText = 'x'.repeat(64 * 1024 + 1);
+    setNodes([node('n1', {
+      content: bigDataUrl,
+      settings: { icon: 'data:image/png;base64,AA', text: longText, list: ['a', bigDataUrl] },
+    })]);
+
+    persistNodeById('n1');
+    await flushCanvasMutations();
+
+    const sent = upsertNode.mock.calls[0][2] as CanvasNode;
+    expect(sent.content).toBeUndefined();
+    expect(sent.settings).toEqual({ icon: 'data:image/png;base64,AA', text: longText, list: ['a', null] });
+  });
+
+  it('scheduleNodePatch 的 payload 同样拒收超大 dataURL', async () => {
+    seedCanvasBaselines([node('n1')]);
+    setNodes([node('n1')]);
+
+    scheduleNodePatch('n1', { settings: { prompt: 'p', thumb: bigDataUrl } });
+    await flushNodePatch('n1');
+
+    expect(patchNode).toHaveBeenCalledWith(42, 'owner-token', 'n1', { settings: { prompt: 'p' } });
+  });
+});

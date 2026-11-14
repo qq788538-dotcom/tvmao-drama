@@ -48,10 +48,16 @@ export function Minimap() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // 只在尺寸（含 dpr 变化）不同时才设 width/height：给 canvas 赋尺寸会清空
+    // 位图并重建 backing store，平移/拖动每帧重画时没必要（P32）。也因此缩放
+    // 改用 setTransform 设成绝对值——scale 是在现有变换上累乘，不重设尺寸的话
+    // 每帧都会再乘一次 dpr。
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = MAP_W * dpr;
-    canvas.height = MAP_H * dpr;
-    ctx.scale(dpr, dpr);
+    const pixelW = MAP_W * dpr;
+    const pixelH = MAP_H * dpr;
+    if (canvas.width !== pixelW) canvas.width = pixelW;
+    if (canvas.height !== pixelH) canvas.height = pixelH;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // 清空
     ctx.clearRect(0, 0, MAP_W, MAP_H);

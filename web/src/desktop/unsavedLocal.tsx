@@ -107,7 +107,7 @@ export function retryErrorMessage(err: unknown): string {
 
 /** 节点名字行上的「未保存到本地」角标；节点已在本机时返回 null。 */
 export function useUnsavedLocalBadge(nodeId: string): ReactNode | null {
-  const unsaved = useCanvasStore((s) => isUnsavedNode(s.nodes.find((n) => n.id === nodeId)));
+  const unsaved = useCanvasStore((s) => isUnsavedNode(s.nodesById.get(nodeId)));
   const readOnly = useCanvasStore((s) => s.readOnly);
   const { message } = AntApp.useApp();
   const [retrying, setRetrying] = useState(false);

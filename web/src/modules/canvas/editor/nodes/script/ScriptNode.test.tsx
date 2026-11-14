@@ -5,7 +5,7 @@ import { useCanvasStore } from '../../store';
 import { ScriptNode } from './ScriptNode';
 
 // 生成器面板依赖网络 api 与落库调度，节点级测试只关心开合行为，全部 mock 掉。
-vi.mock('../../persistence/canvasMutations', () => ({ scheduleNodePatch: vi.fn(), persistNodeById: vi.fn() }));
+vi.mock('../../persistence/canvasMutations', () => ({ scheduleNodePatch: vi.fn(), persistNodeById: vi.fn(), flushNodePatch: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/shared/api', () => ({
   getCanvasScriptStyles: vi.fn().mockResolvedValue({ styles: [{ name: '古风' }], modelCandidates: [] }),
   submitCanvasScriptTask: vi.fn(),

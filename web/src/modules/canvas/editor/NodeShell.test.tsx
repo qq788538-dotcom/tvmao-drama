@@ -8,6 +8,7 @@ import { setCanvasOwnerToken } from './persistence/canvasMutations';
 import { patchCanvasNodePositions } from '@/shared/api';
 import type { CanvasNode } from './types';
 import { StoryboardModeContext } from '../storyboard/StoryboardContext';
+import { stubFrames } from './utils/manualFrames.testing';
 
 vi.mock('@/shared/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/shared/api')>();
@@ -274,6 +275,97 @@ describe('NodeShell 拖拽落库', () => {
     await vi.waitFor(() => expect(patchCanvasNodePositions).toHaveBeenCalledTimes(1));
     const ids = vi.mocked(patchCanvasNodePositions).mock.calls[0][2].map((p: { id: string }) => p.id).sort();
     expect(ids).toEqual(['multi-a', 'multi-b']);
+  });
+});
+
+// 拖动按帧合并（P5）：一帧内的多个 mousemove 只 set 一次 store；撤销点仍在第一次
+// 移动时打下，松手先补交未到帧的位移再落库。
+describe('NodeShell 拖动按帧合并', () => {
+  let frames: ReturnType<typeof stubFrames>;
+  const realMoveNodes = useCanvasStore.getState().moveNodes;
+
+  beforeEach(() => {
+    frames = stubFrames();
+    window.history.pushState({}, '', '/canvas/14');
+    setCanvasOwnerToken('owner-token');
+    vi.mocked(patchCanvasNodePositions).mockClear();
+  });
+
+  afterEach(() => {
+    useCanvasStore.setState({ moveNodes: realMoveNodes });
+    setCanvasOwnerToken('');
+    vi.unstubAllGlobals();
+  });
+
+  function renderDraggable(id: string) {
+    const node = makeNode(id, 0);
+    const moveNodes = vi.fn(realMoveNodes);
+    useCanvasStore.setState({
+      nodes: [node],
+      selectedIds: new Set<string>(),
+      view: { x: 0, y: 0, zoom: 2 },
+      undoStack: [],
+      redoStack: [],
+      readOnly: false,
+      moveNodes,
+    });
+    const view = render(
+      <NodeShell node={node}>
+        <div>body</div>
+      </NodeShell>,
+    );
+    const shell = view.container.querySelector(`[data-node-id="${id}"]`) as HTMLElement;
+    return { ...view, shell, moveNodes };
+  }
+
+  it('一帧内多次 mousemove 只提交一次，位移累加并按 zoom 换算', () => {
+    const { shell, moveNodes } = renderDraggable('frame-a');
+    fireEvent.mouseDown(shell, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(window, { clientX: 10, clientY: 4 });
+    fireEvent.mouseMove(window, { clientX: 30, clientY: 10 });
+    fireEvent.mouseMove(window, { clientX: 40, clientY: 20 });
+
+    // 帧还没到：store 不动，但撤销点已经打下（拖动前的状态）。
+    expect(moveNodes).not.toHaveBeenCalled();
+    expect(useCanvasStore.getState().undoStack).toHaveLength(1);
+
+    act(() => frames.runFrame());
+    expect(moveNodes).toHaveBeenCalledTimes(1);
+    expect(useCanvasStore.getState().nodes[0]).toMatchObject({ x: 20, y: 10 });
+    fireEvent.mouseUp(window);
+  });
+
+  it('松手先提交未到帧的位移，落库坐标是最终位置；撤销一步回到拖动前', async () => {
+    const { shell, moveNodes } = renderDraggable('frame-b');
+    fireEvent.mouseDown(shell, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(window, { clientX: 20, clientY: 0 });
+    act(() => frames.runFrame());
+    fireEvent.mouseMove(window, { clientX: 60, clientY: 20 });
+    fireEvent.mouseUp(window);
+
+    expect(moveNodes).toHaveBeenCalledTimes(2);
+    expect(useCanvasStore.getState().nodes[0]).toMatchObject({ x: 30, y: 10 });
+    await vi.waitFor(() => expect(patchCanvasNodePositions).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(patchCanvasNodePositions).mock.calls[0][2]).toEqual([
+      expect.objectContaining({ id: 'frame-b', x: 30, y: 10 }),
+    ]);
+    // 整次拖动只有一个撤销点。
+    expect(useCanvasStore.getState().undoStack).toHaveLength(1);
+    act(() => useCanvasStore.getState().undo());
+    expect(useCanvasStore.getState().nodes[0]).toMatchObject({ x: 0, y: 0 });
+
+    // 松手后迟到的帧不再改坐标。
+    act(() => frames.runFrame());
+    expect(moveNodes).toHaveBeenCalledTimes(2);
+  });
+
+  it('卸载时丢掉未提交的那一帧', () => {
+    const { shell, moveNodes, unmount } = renderDraggable('frame-c');
+    fireEvent.mouseDown(shell, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(window, { clientX: 20, clientY: 0 });
+    unmount();
+    act(() => frames.runFrame());
+    expect(moveNodes).not.toHaveBeenCalled();
   });
 });
 

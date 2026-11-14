@@ -14,6 +14,7 @@ import {
   upsertCanvasNode,
 } from '@/shared/api';
 import { applyMergePatch } from '../mergePatch';
+import { cloneWithoutOversizedDataUrls, hasOversizedDataUrl, nodeForServer } from './payloadHygiene';
 import { setCanvasOpSink, useCanvasStore, type CanvasOp } from '../store';
 import type { CanvasNode } from '../types';
 
@@ -142,6 +143,11 @@ export function applyCanvasOp(op: CanvasOp): void {
     case 'upsertNode':
       sendNodeUpsert(op.node);
       break;
+    case 'patchNode':
+      // undo/redo 里前后都存在的节点：与 persistNodeById 同一套「对基线 diff」，
+      // 但 diff 推迟到轮到它执行时才算，见 sendNodeDiffQueued。
+      sendNodeDiffQueued(op.node);
+      break;
     case 'deleteNodes':
       // 节点没了，基线也就没了（同 id 的节点将来若再出现，从 upsert 重新建基线）。
       for (const id of op.ids) nodeBaselines.delete(id);
@@ -172,16 +178,52 @@ export function applyCanvasOp(op: CanvasOp): void {
  *   - 无基线（本地新建、或没播种过快照） → UpsertNode 整节点，成功后建立基线。
  */
 export function persistNodeById(nodeID: string): void {
-  const node = useCanvasStore.getState().nodes.find((n) => n.id === nodeID);
+  const node = useCanvasStore.getState().nodesById.get(nodeID);
   if (!node) return;
-  const baseline = nodeBaselines.get(nodeID);
+  persistNodeState(node);
+}
+
+function persistNodeState(node: CanvasNode): void {
+  const baseline = nodeBaselines.get(node.id);
   if (!baseline) {
     sendNodeUpsert(node);
     return;
   }
-  const diff = diffNodeAgainstBaseline(baseline, node);
+  // 与 upsert 同一份「发往服务端的形态」做 diff：抽帧这类本机字段不会被算成变更；
+  // 基线里还留着存量快照带上来的帧时，会算出 null 把服务端那份删掉（P8）。
+  const diff = diffNodeAgainstBaseline(baseline, nodeForServer(node));
   if (diff.kind === 'none') return;
   sendNodePatch(node.id, diff.patch);
+}
+
+// undo/redo 的 patchNode：入队时不算 diff，轮到执行时再对基线算。
+// 基线只在 mutation 成功后才推进，入队时就算的话会落后于队列里还没跑完的那些：
+// 拖完 B 立刻撤销，松手的几何 PATCH 还在途、基线仍是拖动前的位置，撤销后的
+// 位置与它「相同」，diff 为空什么都不发——在途 PATCH 随后把拖动后的位置写上
+// 服务端，与 store 分叉；撤销后马上重做同理。整节点 upsert 时代没有这个问题，
+// 因为发的是全量。串行队列保证执行到这里时前面的 mutation 都已落定。
+function sendNodeDiffQueued(node: CanvasNode): void {
+  const context = captureMutationContext();
+  const projectID = context.projectID;
+  const token = context.ownerToken;
+  if (projectID == null || !token) return;
+  const upsert = config.upsertNode ?? upsertCanvasNode;
+  const patchNode = config.patchNode ?? patchCanvasNode;
+  void runNodeMutation(context, async () => {
+    const sent = nodeForServer(node);
+    // 上下文已失效（切项目/重挂）时基线属于新会话，不能拿来 diff：退回整节点 upsert。
+    const baseline = isMutationContextCurrent(context) ? nodeBaselines.get(node.id) : undefined;
+    if (!baseline) {
+      const result = await upsert(projectID, token, sent as unknown as CanvasMutationNode);
+      if (isMutationContextCurrent(context)) nodeBaselines.set(sent.id, sent);
+      return result;
+    }
+    const diff = diffNodeAgainstBaseline(baseline, sent);
+    if (diff.kind === 'none') return;
+    const result = await patchNode(projectID, token, node.id, diff.patch);
+    if (isMutationContextCurrent(context)) mergePatchIntoBaseline(node.id, diff.patch);
+    return result;
+  });
 }
 
 // 整节点 upsert：发出去的那一份就是服务端随后的状态，成功即成为新基线。
@@ -190,7 +232,8 @@ function sendNodeUpsert(node: CanvasNode): void {
   const projectID = context.projectID;
   const token = context.ownerToken;
   if (projectID == null || !token) return;
-  const sent = cloneNode(node);
+  // nodeForServer 已经是深拷贝：去掉本机抽帧字段、拒收超大 dataURL（P8）。
+  const sent = nodeForServer(node);
   const upsert = config.upsertNode ?? upsertCanvasNode;
   void runNodeMutation(context, async () => {
     const result = await upsert(projectID, token, sent as unknown as CanvasMutationNode);
@@ -440,11 +483,16 @@ export async function flushNodePatch(nodeID: string): Promise<void> {
     nodePatchTimers.delete(nodeID);
   }
 
-  const patch = pendingNodePatches.get(nodeID);
-  if (!patch) return;
+  const pending = pendingNodePatches.get(nodeID);
+  if (!pending) return;
   pendingNodePatches.delete(nodeID);
 
-  if (!isMutationContextCurrent(patch)) return;
+  if (!isMutationContextCurrent(pending)) return;
+  // 调用方各自拼的 patch 也要过一遍：超大 dataURL 不进 payload（P8）。只在真的
+  // 夹带时才 JSON 往返拷贝，平常原样发出（Date 等非普通值留给 axios 序列化）。
+  const patch = hasOversizedDataUrl(pending.patch)
+    ? { ...pending, patch: cloneWithoutOversizedDataUrls(pending.patch) }
+    : pending;
 
   await enqueueCanvasMutationInContext(async () => {
     if (patch.projectID == null) {

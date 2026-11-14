@@ -9,7 +9,7 @@ import { AudioActionsBar } from './AudioActionsBar';
 import { useStoryboardMode } from '../../storyboard/StoryboardContext';
 
 export function AudioInputNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const storyboardMode = useStoryboardMode();
   const { onContextMenu, overlay: menuOverlay, badge: seedanceBadge } = useMediaNodeMenu({

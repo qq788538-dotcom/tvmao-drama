@@ -123,6 +123,80 @@ describe('canvas store 结构性 op 广播', () => {
     expect(dup.taskId).toBeUndefined();
   });
 
+  // P8：抽帧是本机缓存（IndexedDB 按原节点 id 存），副本不带，原节点不受影响。
+  it('duplicateNodes / buildCopyPayload 不复制 video-input 的抽帧字段', () => {
+    const frame = { url: 'data:image/jpeg;base64,AA', time: 0 };
+    const a = useCanvasStore.getState().addNode('video-input', { x: 0, y: 0 });
+    useCanvasStore.getState().updateNodeSettings(a, {
+      frames: [frame], selectedKeyframes: [frame], extractingFrames: true, videoExpanded: false,
+    });
+
+    const payload = useCanvasStore.getState().buildCopyPayload([a])!;
+    expect(payload.nodes[0].settings).toEqual({ videoExpanded: false });
+
+    useCanvasStore.getState().duplicateNodes([a]);
+    const dup = useCanvasStore.getState().nodes.find((n) => n.id !== a)!;
+    expect(dup.settings).toEqual({ videoExpanded: false });
+    const orig = useCanvasStore.getState().nodes.find((n) => n.id === a)!;
+    expect(orig.settings!.frames).toEqual([frame]);
+  });
+
+  it('复制时丢掉超过 64KB 的 data: 字符串', () => {
+    const big = `data:image/png;base64,${'A'.repeat(64 * 1024)}`;
+    const a = useCanvasStore.getState().addNode('gen-image', { x: 0, y: 0 });
+    useCanvasStore.getState().updateNodeSettings(a, { thumb: big, prompt: 'p' });
+    const payload = useCanvasStore.getState().buildCopyPayload([a])!;
+    expect(payload.nodes[0].settings!.thumb).toBeUndefined();
+    expect(payload.nodes[0].settings!.prompt).toBe('p');
+  });
+
+  // P11：脚本节点的任务挂在 settings.gen.taskId，副本带着它会轮询原节点的任务并导入同一份分镜。
+  it('复制脚本节点清掉 gen.taskId/error，保留风格/模型等选择', () => {
+    const a = useCanvasStore.getState().addNode('script', { x: 0, y: 0 });
+    useCanvasStore.getState().updateNodeSettings(a, {
+      gen: { taskId: 99, style: 's', model: 'm', durationSec: 8, error: '旧错误' },
+    });
+
+    const payload = useCanvasStore.getState().buildCopyPayload([a])!;
+    expect(payload.nodes[0].settings!.gen).toEqual({ taskId: 0, style: 's', model: 'm', durationSec: 8, error: '' });
+
+    useCanvasStore.getState().duplicateNodes([a]);
+    const dup = useCanvasStore.getState().nodes.find((n) => n.id !== a)!;
+    expect((dup.settings!.gen as { taskId: number }).taskId).toBe(0);
+    const orig = useCanvasStore.getState().nodes.find((n) => n.id === a)!;
+    expect((orig.settings!.gen as { taskId: number }).taskId).toBe(99);
+  });
+
+  // 剪贴板镜像跨版本保留：旧版复制的 payload 没经过净化，粘贴侧也要剥掉。
+  it('pasteNodes 对未净化的旧 payload 同样剥掉抽帧、脚本任务与在途状态', () => {
+    const frame = { url: 'data:image/jpeg;base64,AA', time: 0 };
+    const legacy: CanvasNode[] = [
+      {
+        id: 'old-v', type: 'video-input', x: 0, y: 0, width: 580, height: 400, content: 'https://x/v.mp4',
+        settings: { frames: [frame], selectedKeyframes: [frame], videoExpanded: true },
+      },
+      {
+        id: 'old-s', type: 'script', x: 600, y: 0, width: 300, height: 220,
+        settings: { gen: { taskId: 77, style: 's', error: '' } },
+      },
+      {
+        id: 'old-g', type: 'gen-image', x: 0, y: 500, width: 280, height: 280,
+        status: 'generating', taskId: 5, settings: { prompt: 'p', pendingGen: { prompt: 'p' } },
+      },
+    ];
+    const ids = useCanvasStore.getState().pasteNodes(legacy, [], { x: 0, y: 0 });
+    const byId = (id: string) => useCanvasStore.getState().nodes.find((n) => n.id === id)!;
+    const [v, s, g] = ids.map(byId);
+    expect(v.settings).toEqual({ videoExpanded: true });
+    expect((s.settings!.gen as { taskId: number; style: string }).taskId).toBe(0);
+    expect((s.settings!.gen as { style: string }).style).toBe('s');
+    expect(g.taskId).toBeUndefined();
+    expect(g.status).toBe('idle');
+    expect(g.settings).toEqual({ prompt: 'p' });
+    // payload 本身不被改写（同一份可以粘多次）。
+    expect(legacy[0].settings!.frames).toEqual([frame]);
+  });
+
   // 副本要能立刻重跑同样的生成,就得连着同样的输入。
   it('duplicateNodes 复制入边,上游仍指向原来的输入源', () => {
     const up = useCanvasStore.getState().addNode('input-image', { x: 0, y: 0 });

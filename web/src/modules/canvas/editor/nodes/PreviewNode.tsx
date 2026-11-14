@@ -15,16 +15,16 @@ import { WaveformPlayer } from './WaveformPlayer';
 import { AudioActionsBar } from './AudioActionsBar';
 
 export function PreviewNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   const setLightbox = useCanvasStore((s) => s.setLightbox);
   // fallback URL 故意只限定在「asset」类源节点（用户上传的输入）。这里
   // 绝不读取 gen-image / gen-video 源节点，哪怕它们的 .content 里还留着
   // URL——生成结果直接落在 gen 节点自身上，不走连线。在这里读 gen 源会把
   // 过期 URL 漏到新连上来的预览节点上。
   const fallbackUrl = useCanvasStore((s) => {
-    const incoming = s.connections.filter((c) => c.to === id);
+    const incoming = s.incomingByNode.get(id) ?? [];
     for (const c of incoming) {
-      const src = s.nodes.find((n) => n.id === c.from);
+      const src = s.nodesById.get(c.from);
       if (!src) continue;
       if (
         src.type !== 'input-image' &&

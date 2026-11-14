@@ -15,7 +15,7 @@ export function useReconcileCanvasTask(
   nodeId: string,
   opts: { initialDelayMs?: number; intervalMs?: number; maxMisses?: number } = {},
 ): void {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === nodeId));
+  const node = useCanvasStore((s) => s.nodesById.get(nodeId));
   const updateNode = useCanvasStore((s) => s.updateNode);
   const needsReconcile = node?.status === 'generating' && !node?.taskId;
 

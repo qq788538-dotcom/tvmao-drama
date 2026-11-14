@@ -115,6 +115,20 @@ func (s *Service) repersistTask(ctx context.Context, store RepersistStore, t Tas
 	}
 	output["outputUrls"] = urls
 	output["assetIds"] = assetIDs
+	// 已搬回本地的槽位清掉首搬留下的失败原因；全部清空就整个去掉。
+	if _, ok := output["persistErrors"]; ok {
+		errs := anyStrings(output["persistErrors"])
+		for _, rep := range reps {
+			if rep.Index < len(errs) {
+				errs[rep.Index] = ""
+			}
+		}
+		if anyNonEmpty(errs) {
+			output["persistErrors"] = errs
+		} else {
+			delete(output, "persistErrors")
+		}
+	}
 	if outputKind != "" {
 		output["outputKind"] = outputKind
 	}

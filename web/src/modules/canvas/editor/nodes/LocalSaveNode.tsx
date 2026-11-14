@@ -7,7 +7,7 @@ import { NodeShell } from '../NodeShell';
 import { mediaCrossOrigin } from '../utils/mediaCrossOrigin';
 
 export function LocalSaveNode({ id }: { id: string }) {
-  const node = useCanvasStore((s) => s.nodes.find((n) => n.id === id));
+  const node = useCanvasStore((s) => s.nodesById.get(id));
   const linked = useConnectedInputs(id);
   const { message } = AntApp.useApp();
 
