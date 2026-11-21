@@ -23,7 +23,7 @@ description: 棘轮主轴（coordinator）派活前写任务书时使用。把�
 | 目标 | 只做一件事；写成能判对错的结果 |
 | 输入 | issue 链接、文件路径、复现步骤 |
 | 信息可见范围 | 三栏都要写：给该 worker / 可见的此前产出 / 不可见（及原因） |
-| 输出 | draft PR（分支 `ratchet/<任务号>`）+ 回传书 `.ratchet/reports/<任务号>.md` + 证据目录 `.ratchet/evidence/<任务号>/` |
+| 输出 | ready PR（不开 draft；分支 `ratchet/<任务号>`）+ 回传书 `.ratchet/reports/<任务号>.md` + 证据目录 `.ratchet/evidence/<任务号>/` |
 | 禁止事项 | 模板里的 5 条保留，按任务追加 |
 | 验收 | 按改动路径列本地检查命令；要跑的 verify-tvmao feature；证据至少三类 |
 | 数量与成本上限 | 必须有数字：PR 数、token、爬坡轮数、付费次数 |

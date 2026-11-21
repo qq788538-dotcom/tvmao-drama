@@ -26,7 +26,7 @@ verifier: codex         # 必须和 worker 不同模型家族
 
 ## 4. 输出
 
-<!-- 一个 draft PR（分支名 ratchet/T-0000）+ 回传书 .ratchet/reports/T-0000.md + 证据目录 .ratchet/evidence/T-0000/ -->
+<!-- 一个 ready PR（不开 draft；分支名 ratchet/T-0000）+ 回传书 .ratchet/reports/T-0000.md + 证据目录 .ratchet/evidence/T-0000/ -->
 
 ## 5. 禁止事项
 
