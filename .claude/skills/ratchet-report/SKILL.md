@@ -1,6 +1,6 @@
 ---
 name: ratchet-report
-description: 棘轮 worker（齿）完成任务、开好 draft PR 后写回传书时使用。五项必填，证据路径必须真实存在，写完自己跑 check-report。
+description: 棘轮 worker（齿）完成任务、开好 PR（直接开 ready）后写回传书时使用。五项必填，证据路径必须真实存在，写完自己跑 check-report。
 ---
 
 # 写回传书（ratchet-report）

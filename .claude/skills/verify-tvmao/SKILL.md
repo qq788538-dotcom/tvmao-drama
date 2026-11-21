@@ -19,7 +19,7 @@ description: 在喵剧（tvmao-drama）上验证一项改动或一个功能时�
 node scripts/ratchet/browser-mode.mjs > /tmp/ratchet-browser.out &   # 后台跑
 ```
 
-环境：Node 22、`pnpm install` 过；Go 要 1.26。本机 Go 更老时保持 `GOTOOLCHAIN=auto`（默认值），go 会按 go.mod 自动下载 1.26，需要网络；`GOTOOLCHAIN=local` 会构建失败。
+环境：Node 22、`pnpm install` 过；Playwright 全局装（`npm i -g playwright && npx playwright install chromium`），跑冒烟和 `verify-*.sh` 时带 `NODE_PATH="$(npm root -g)"`；Go 要 1.26。本机 Go 更老时保持 `GOTOOLCHAIN=auto`（默认值），go 会按 go.mod 自动下载 1.26，需要网络；`GOTOOLCHAIN=local` 会构建失败。
 
 **等就绪**：启动时它先删掉旧的 `.ratchet/state/browser-mode.json`，就绪后才重新写。所以等这个文件出现即可（首次要构建 sidecar，给 3 分钟）：
 

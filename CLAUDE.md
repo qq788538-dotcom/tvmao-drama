@@ -21,6 +21,8 @@
 
 没跑的检查不要写"通过"；CI 没出结果写「CI 待核」。
 
+工具链是否齐全，跑 `python3 scripts/ratchet/ratchet.py doctor`，结论是「就绪」再开工。
+
 ## 验证（verify-tvmao）
 
 验证改动或功能时按 `.claude/skills/verify-tvmao/SKILL.md` 做：临时验证实例 + CLI/浏览器驱动 + 至少三类证据。F1（建图与连线）可以一键跑：`scripts/ratchet/verify-f1.sh <任务号>`。
@@ -34,6 +36,7 @@ node scripts/ratchet/browser-mode.mjs            # 临时数据目录起 sidecar
 node scripts/ratchet/browser-smoke.mjs --task T-0001   # 另开终端：打开页面、截图、记 console，证据进 .ratchet/evidence/T-0001/
 ```
 
+- 冒烟脚本要用 Playwright，仓库没把它列为依赖：`npm i -g playwright && npx playwright install chromium`。全局装的包 Node 默认找不到，跑 `browser-smoke.mjs` 和 `verify-f1.sh` 时要带上 `NODE_PATH="$(npm root -g)"`。
 - `miaoju` 连这个临时 sidecar：`MIAOJU_ENDPOINT_DIR=<就绪 JSON 里的 endpointDir> miaoju …`。**不设这个变量时 miaoju 连的是你正在用的喵剧**。
 - 永远用临时数据目录，不要传日常使用的数据目录给 `--data-dir`。
 - 只连 sidecar 的端口和 token；数据目录、对话框等壳命令在这个模式下不可用。
@@ -51,7 +54,9 @@ node scripts/ratchet/browser-smoke.mjs --task T-0001   # 另开终端：打开�
 
 Ratchet 不重写 pstack 已经有的能力。工作方法直接用土豆姐（poteto）开源的 [pstack](https://github.com/cursor/plugins/tree/main/pstack)（MIT），Ratchet 只补 pstack 没有、而 James 的红线需要的那一层。
 
-pstack 在 `.claude/settings.json` 里按项目启用，并锁定到 cursor/plugins 的一个 commit（0.15.36）。第一次在本仓库打开 Claude Code 时，按提示信任这个 marketplace 即可。Claude Code 里 pstack 的命令要加前缀，比如 `/pstack:poteto-mode`；Cursor 名字怎么对应，见插件里的 `docs/harness/claude-code.md`。
+pstack 在 `.claude/settings.json` 里按项目启用，并锁定到 cursor/plugins 的一个 commit（0.15.36）。第一次在本仓库打开 Claude Code 时，按提示信任这个 marketplace；`/pstack:` 命令还是没有的话，跑 `claude plugin install pstack@cursor-plugins --scope project`，再 `/reload-plugins`。Claude Code 里 pstack 的命令要加前缀，比如 `/pstack:poteto-mode`；Cursor 名字怎么对应，见插件里的 `docs/harness/claude-code.md`。
+
+本机如果还装了 `ratchet@ratchet-stack` 插件（pstack 的改名分支，skill 和 agent 与 pstack 同名），在本仓库仍然用 `/pstack:` 前缀和 `pstack:` 开头的 agent：项目锁定的是 pstack，`check-plan.mjs` 也只有 pstack 带。
 
 | 要做的事 | 用什么 | 来源 |
 |---|---|---|
@@ -71,8 +76,8 @@ pstack 在 `.claude/settings.json` 里按项目启用，并锁定到 cursor/plug
 
 - 主轴（coordinator）用 `RATCHET_ROLE=coordinator claude` 启动，只管项目、不写代码，只能写 `.ratchet/`。
 - 每个 PR 要有一个不是作者、而且模型家族不同的 verifier（orchestrate 的要求）。
-- 多 PR 的计划直接用 pstack multi-phase-plan 的骨架，并跑 `check-plan.mjs` 到 0 problems。计划里的每个 PR 派给 owner 时，再写一份 Ratchet 任务书作为 kickoff，`precheck-brief` 检查关卡和成本。一份任务书只对一个仓库的一个 PR。
-- pstack 的 live lane 要用 cursor-team-kit 里的 `control-ui` / `control-cli`。在本仓库用 `verify-tvmao`（浏览器验证模式 + `miaoju`）代替。
+- 多 PR 的计划直接用 pstack multi-phase-plan 的骨架，并跑 pstack 插件里的 `skills/poteto-mode/scripts/check-plan.mjs` 到 0 problems。计划里的每个 PR 派给 owner 时，再写一份 Ratchet 任务书作为 kickoff，`precheck-brief` 检查关卡和成本。一份任务书只对一个仓库的一个 PR。
+- pstack 的 live lane 要用 cursor-team-kit 里的 `control-ui` / `control-cli`。在本仓库用 `verify-tvmao`（浏览器验证模式 + `miaoju`）代替。cursor-team-kit 没有 Claude Code 版，它的 `/deslop` 这一步跳过。
 - `miaoju run <节点ID>`、`miaoju node run`，以及直接向 sidecar 生成接口（`/api/v1/canvas-tasks` 等）发写请求，都是一提交就计费且不可取消，任何会话都不许跑（G5）。只读的 `miaoju run get`、`miaoju run wait` 可以用。
 
 ## 规则 ↔ 由什么强制执行
